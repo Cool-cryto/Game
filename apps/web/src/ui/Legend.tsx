@@ -13,6 +13,7 @@ export function Legend() {
           {l.label}
         </div>
       ))}
+      {mode.legend.note && <div className="legend__note">{mode.legend.note}</div>}
     </div>
   );
 }

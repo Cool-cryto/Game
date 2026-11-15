@@ -7,6 +7,17 @@ description: How this grand strategy game's simulation works — the game clock 
 
 The simulation is the game's rules engine. It must be predictable, testable and separate from the UI.
 
+## Where things are (current implementation)
+
+- `packages/sim/src/state.ts` – `GameState`, `createGameState(scenario, seed)`, starting values, constants.
+- `packages/sim/src/systems.ts` – monthly systems (`runMonthly`) and the growth/stability breakdowns.
+- `packages/sim/src/commands.ts` – `Command` union, `validateCommand`, `applyCommand`.
+- `packages/sim/src/engine.ts` – `tick(state, commands)`, `serialize`, `deserialize` (checks `SAVE_VERSION`).
+- `apps/web/src/sim/sim.worker.ts` – runs ticks in the browser; `apps/web/src/state/gameStore.ts` talks to it.
+- Tests: `packages/sim/src/sim.test.ts` (rules, determinism, saves, 20-year world run with sanity ranges).
+- When you change a rule, rerun the 20-year test and look at the numbers, not just pass/fail.
+- Bump `SAVE_VERSION` whenever `GameState`'s shape changes.
+
 ## Core rules
 
 - **Simulation code is plain TypeScript with no React, no DOM and no browser APIs.** It lives in `src/sim/`. The UI only reads state and sends commands.
@@ -24,7 +35,7 @@ The simulation is the game's rules engine. It must be predictable, testable and 
 ## Systems
 
 - Each system is a function: `(state, ctx) => void` (mutating a draft, e.g. with Immer) or `(state, ctx) => GameState`. Pick one style and use it everywhere.
-- Systems run in a fixed, documented order each tick, e.g.:
+- Systems run in a fixed, documented order (currently monthly, see `systems.ts`), e.g.:
   1. apply player and AI commands
   2. economy
   3. population

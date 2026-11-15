@@ -11,7 +11,7 @@ const low = read<ProvinceTopology>("provinces-low.topo.json");
 const high = read<ProvinceTopology>("provinces-high.topo.json");
 const cities = read<City[]>("cities.json");
 const frame = createWorldFrame();
-const owners = MODERN_SCENARIO.owners;
+const owners = Object.fromEntries(Object.entries(MODERN_SCENARIO.provinces).map(([id, p]) => [id, p.owner])) as Record<ProvinceId, CountryId>;
 const ids = (t: ProvinceTopology) => t.objects.provinces.geometries.map((g) => String(g.id));
 
 describe("map data", () => {

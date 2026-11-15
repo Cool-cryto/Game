@@ -13,7 +13,8 @@
 //   public/flags/*.svg
 //   src/data/countries.json               reference facts per country
 //   src/data/provinces.json               reference facts per province
-//   src/data/scenario-modern.json         modern-world starting state: province owners, population, GDP
+//   src/data/scenario-modern.json         modern-world starting state: owners, province population
+//                                         estimates, game-generated resource deposits, country population/GDP
 import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -21,6 +22,8 @@ import { fileURLToPath } from "node:url";
 import { geoArea, geoContains } from "d3-geo";
 import { neighbors } from "topojson-client";
 import mapshaper from "mapshaper";
+
+const sortObj = (o) => Object.fromEntries(Object.entries(o).sort(([a], [b]) => a.localeCompare(b)));
 
 const require = createRequire(import.meta.url);
 const here = dirname(fileURLToPath(import.meta.url));
@@ -95,6 +98,7 @@ for (const f of provinceFeatures) {
 
 const provinces = {};
 const owners = {};
+const provinceLat = {};
 for (const f of provinceFeatures) {
   const p = f.properties;
   const id = p.adm1_code;
@@ -117,6 +121,7 @@ for (const f of provinceFeatures) {
     cityCount: 0,
   };
   owners[id] = country;
+  provinceLat[id] = Number.isFinite(p.latitude) ? p.latitude : (f.bbox ? (f.bbox[1] + f.bbox[3]) / 2 : 0);
 }
 
 // Geometry: keep only the id, then simplify into two levels of detail with shared borders.
@@ -283,19 +288,78 @@ for (const c of Object.values(countries)) {
 }
 
 // ---------- Scenario: the modern world ----------
+
+// Deterministic per-province random numbers, so the same build always gives the same world.
+function rngFor(text) {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  let seed = h >>> 0;
+  return () => {
+    let t = (seed = (seed + 0x6d2b79f5) | 0);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Rough farming suitability by latitude (0-1): best in temperate and tropical bands, poor near the poles. */
+const farmland = (lat) => {
+  const a = Math.abs(lat);
+  if (a > 66) return 0.05;
+  if (a > 58) return 0.3;
+  return 1;
+};
+
+// Province population estimate: split each country's population between its provinces by
+// city population (urban) and land area weighted by farming suitability (rural).
+const cityPopByProvince = {};
+for (const c of cities) cityPopByProvince[c.prov] = (cityPopByProvince[c.prov] ?? 0) + c.pop;
+const provinceIdsByCountry = {};
+for (const [pid, owner] of Object.entries(owners)) (provinceIdsByCountry[owner] ??= []).push(pid);
+
+const scenarioProvinces = {};
+for (const [country, pids] of Object.entries(provinceIdsByCountry)) {
+  const total = econ.get(country)?.population ?? 0;
+  const urban = pids.map((pid) => cityPopByProvince[pid] ?? 0);
+  const rural = pids.map((pid) => Math.sqrt(provinces[pid].areaKm2) * farmland(provinceLat[pid]));
+  const sumUrban = urban.reduce((a, b) => a + b, 0);
+  const sumRural = rural.reduce((a, b) => a + b, 0);
+  const urbanShare = sumUrban > 0 ? 0.55 : 0;
+  pids.forEach((pid, i) => {
+    const w = (sumUrban > 0 ? (urbanShare * urban[i]) / sumUrban : 0) + (sumRural > 0 ? ((1 - urbanShare) * rural[i]) / sumRural : 0);
+    // Game-generated resource deposits (0-5). Not real-world data.
+    const rand = rngFor(pid);
+    const food = Math.round(Math.min(5, farmland(provinceLat[pid]) * 5 * (0.35 + 0.75 * rand())));
+    const energy = rand() < 0.4 ? 1 + Math.floor(rand() * 5) : 0;
+    const minerals = rand() < 0.5 ? 1 + Math.floor(rand() * 5) : 0;
+    scenarioProvinces[pid] = {
+      owner: country,
+      population: country === "ATA" ? 0 : Math.round(total * w),
+      areaKm2: provinces[pid].areaKm2,
+      deposits: country === "ATA" ? { food: 0, energy: 0, minerals: 0 } : { food, energy, minerals },
+    };
+  });
+}
+
 const scenario = {
   id: "modern",
   name: "Modern World",
   startDate: "2020-01-01",
-  dataNote: "Population and GDP are Natural Earth estimates for 2019.",
-  owners,
+  dataNote: "Starting population and GDP are Natural Earth estimates for 2019.",
+  provinces: sortObj(scenarioProvinces),
   countries: Object.fromEntries(
-    countryIds.map((id) => [id, { population: econ.get(id)?.population ?? null, gdpMillionUsd: econ.get(id)?.gdpMillionUsd ?? null }]),
+    countryIds.map((id) => [
+      id,
+      {
+        population: econ.get(id)?.population ?? null,
+        gdpMillionUsd: econ.get(id)?.gdpMillionUsd ?? null,
+        incomeGroup: econ.get(id)?.incomeGroup ?? null,
+      },
+    ]),
   ),
 };
 
 const dataDir = join(webRoot, "src", "data");
-const sortObj = (o) => Object.fromEntries(Object.entries(o).sort(([a], [b]) => a.localeCompare(b)));
 writeFileSync(join(dataDir, "countries.json"), JSON.stringify(sortObj(countries)));
 writeFileSync(join(dataDir, "provinces.json"), JSON.stringify(sortObj(provinces)));
 writeFileSync(join(dataDir, "scenario-modern.json"), JSON.stringify(scenario));

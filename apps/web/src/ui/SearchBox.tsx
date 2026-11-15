@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { flagUrl, loadCities, search, type SearchResult } from "../data/countries";
 import { ownerOf } from "../state/gameStore";
 import { useUi } from "../state/uiStore";
@@ -8,6 +8,8 @@ export function SearchBox() {
   const [active, setActive] = useState(0);
   const [open, setOpen] = useState(false);
   const [citiesReady, setCitiesReady] = useState(false);
+  // Closing is delayed so a click on a result still lands; cancel it if the box is focused again.
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     loadCities().then(() => setCitiesReady(true), () => {});
   }, []);
@@ -44,8 +46,13 @@ export function SearchBox() {
           setActive(0);
           setOpen(true);
         }}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 120)}
+        onFocus={() => {
+          if (closeTimer.current) clearTimeout(closeTimer.current);
+          setOpen(true);
+        }}
+        onBlur={() => {
+          closeTimer.current = setTimeout(() => setOpen(false), 120);
+        }}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown") setActive((a) => Math.min(a + 1, results.length - 1));
           else if (e.key === "ArrowUp") setActive((a) => Math.max(a - 1, 0));

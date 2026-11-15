@@ -142,13 +142,19 @@ test("map modes recolor the map and show a legend", async ({ page }) => {
   await openMap(page);
   await expect(page.locator(".legend")).toHaveCount(0);
   for (const [mode, title] of [
-    ["Continents", "Continents"],
-    ["Population", "Population"],
-    ["Wealth", "GDP per person"],
+    ["region", "Continents"],
+    ["population", "Population"],
+    ["wealth", "GDP per person"],
+    ["stability", "Stability"],
+    ["technology", "Technology level"],
+    ["infrastructure", "Infrastructure"],
+    ["density", "People per km²"],
+    ["energy", "Energy deposits"],
   ] as const) {
-    await page.getByRole("radio", { name: mode }).click();
+    await page.getByLabel("Map mode").selectOption(mode);
     await expect(page.locator(".legend")).toContainText(title);
   }
+  await expect(page.locator(".legend")).toContainText("Game-generated");
 });
 
 test("works on a phone-sized screen", async ({ page }) => {
@@ -158,4 +164,94 @@ test("works on a phone-sized screen", async ({ page }) => {
   await expect(panel(page)).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(0);
+});
+
+// ---------- Stage 3: simulation ----------
+
+const gameDate = (page: Page) => page.getByTestId("game-date");
+
+test("time starts paused, runs when played, and stops when paused", async ({ page }) => {
+  await openMap(page);
+  await expect(gameDate(page)).toContainText("1 Jan 2020");
+  await expect(gameDate(page)).toContainText("Paused");
+  await page.getByRole("radio", { name: "Speed 5" }).click();
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(gameDate(page)).not.toContainText("2020", { timeout: 10_000 });
+  await page.getByRole("button", { name: "Pause" }).click();
+  // The worker may send one final update as it stops; after that the date must not move.
+  await page.waitForTimeout(300);
+  const stopped = await gameDate(page).textContent();
+  await page.waitForTimeout(1000);
+  expect(await gameDate(page).textContent()).toBe(stopped);
+  // Space toggles pause too.
+  await page.keyboard.press("Space");
+  await expect(gameDate(page)).not.toContainText("Paused");
+  await page.keyboard.press("Space");
+  await expect(gameDate(page)).toContainText("Paused");
+});
+
+test("you can play as a country and change its policies", async ({ page }) => {
+  await openMap(page);
+  await expect(page.getByTestId("player-card")).toContainText("Play as");
+  await searchFor(page, "japan");
+  await panel(page).getByRole("button", { name: "Play as Japan" }).click();
+  await expect(panel(page).getByLabel("Policies")).toBeVisible();
+  await expect(page.getByTestId("player-card")).toContainText("Japan");
+
+  // Raise taxes: the budget shows a surplus, and running time fills the treasury.
+  const tax = panel(page).getByLabel("Tax rate");
+  await tax.focus();
+  for (let i = 0; i < 10; i++) await page.keyboard.press("ArrowRight");
+  await expect(page.getByTestId("budget-balance")).toContainText("Surplus");
+  await page.getByRole("radio", { name: "Speed 5" }).click();
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(gameDate(page)).toContainText("2021", { timeout: 10_000 });
+  await page.getByRole("button", { name: "Pause" }).click();
+  await expect(page.getByTestId("player-card")).toContainText(/Treasury\s*\$[1-9]/);
+});
+
+test("other countries show their policies but can't be changed", async ({ page }) => {
+  await openMap(page);
+  await searchFor(page, "brazil");
+  await expect(panel(page)).toContainText("Tax rate");
+  await expect(panel(page).getByLabel("Policies")).toHaveCount(0);
+  await expect(panel(page)).toContainText("AI decisions arrive in Stage 4");
+});
+
+test("save to a slot, keep playing, then load it back", async ({ page }) => {
+  await openMap(page);
+  await searchFor(page, "kenya");
+  await panel(page).getByRole("button", { name: "Play as Kenya" }).click();
+  await page.getByRole("button", { name: "Game", exact: true }).click();
+  await page.getByTestId("slot-2").getByRole("button", { name: "Save" }).click();
+  await expect(page.getByTestId("slot-2")).toContainText("Kenya · 1 Jan 2020");
+  await page.getByRole("button", { name: "Close menu" }).click();
+
+  await page.getByRole("radio", { name: "Speed 5" }).click();
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(gameDate(page)).not.toContainText("2020", { timeout: 10_000 });
+  await page.getByRole("button", { name: "Pause" }).click();
+
+  await page.getByRole("button", { name: "Game", exact: true }).click();
+  await page.getByTestId("slot-2").getByRole("button", { name: "Load" }).click();
+  await expect(gameDate(page)).toContainText("1 Jan 2020");
+  await expect(page.getByTestId("player-card")).toContainText("Kenya");
+});
+
+test("saves survive reloading the page", async ({ page }) => {
+  await openMap(page);
+  await page.getByRole("button", { name: "Game", exact: true }).click();
+  await page.getByTestId("slot-1").getByRole("button", { name: "Save" }).click();
+  await expect(page.getByTestId("slot-1")).toContainText("1 Jan 2020");
+  await page.reload();
+  await page.waitForFunction(() => window.__gsMap);
+  await page.getByRole("button", { name: "Game", exact: true }).click();
+  await expect(page.getByTestId("slot-1")).toContainText("1 Jan 2020");
+});
+
+test("importing a file that isn't a save shows a clear error", async ({ page }) => {
+  await openMap(page);
+  await page.getByRole("button", { name: "Game", exact: true }).click();
+  await page.getByTestId("import-input").setInputFiles({ name: "notes.json", mimeType: "application/json", buffer: Buffer.from('{"hello":1}') });
+  await expect(page.getByRole("status")).toContainText("isn't a saved game");
 });

@@ -4,7 +4,7 @@ import { zoom as d3zoom, zoomIdentity, type ZoomTransform } from "d3-zoom";
 import "d3-transition";
 import type { CountryId, ProvinceId } from "@gs/shared";
 import { createWorldFrame, projectCities, type Bounds, type CityPoint, type CountryShape, type ProvinceShape } from "./geo";
-import { MAP_MODES } from "./mapModes";
+import { MAP_MODES, NO_DATA } from "./mapModes";
 import type { DetailLevel, WorkerRequest, WorkerResponse } from "./workerProtocol";
 import { COUNTRIES, getCountry, getProvince, loadCities } from "../data/countries";
 import { ownersRecord, useGame } from "../state/gameStore";
@@ -125,9 +125,11 @@ export function WorldMap() {
 
     // When provinces change hands, rebuild country shapes (borders follow ownership).
     const unsubGame = useGame.subscribe((s, prev) => {
-      if (s.state.provinces !== prev.state.provinces) {
+      if (s.state.ownershipVersion !== prev.state.ownershipVersion || s.generation !== prev.generation) {
         worker.postMessage({ type: "owners", owners: ownersRecord(s.state) } satisfies WorkerRequest);
       }
+      // Numbers changed as time passed: recolor (map modes read the game state).
+      if (s.state !== prev.state) requestDraw();
     });
 
     // ---------- Drawing ----------
@@ -167,9 +169,22 @@ export function WorldMap() {
       const onScreen = (b: Bounds) => b[1][0] >= vx0 && b[0][0] <= vx1 && b[1][1] >= vy0 && b[0][1] <= vy1;
       const visible = L.countryList.filter((c) => onScreen(c.bounds));
 
-      for (const c of visible) {
-        ctx.fillStyle = mode.color(c.id, { info: COUNTRIES[c.id], state: game.countries[c.id] });
-        ctx.fill(c.path);
+      if (mode.level === "country") {
+        for (const c of visible) {
+          ctx.fillStyle = mode.color(c.id, { info: COUNTRIES[c.id], state: game.countries[c.id] });
+          ctx.fill(c.path);
+        }
+      } else {
+        // Province modes color each province; draw thin outlines so the fill doesn't seam.
+        ctx.lineWidth = 0.5 / t.k;
+        for (const p of L.provinceList) {
+          if (!onScreen(p.bounds)) continue;
+          const ps = game.provinces[p.id];
+          ctx.fillStyle = ps ? mode.provinceColor(ps) : NO_DATA;
+          ctx.fill(p.path);
+          ctx.strokeStyle = ctx.fillStyle;
+          ctx.stroke(p.path);
+        }
       }
 
       ctx.lineJoin = "round";

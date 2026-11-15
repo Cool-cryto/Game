@@ -63,12 +63,25 @@ export interface City {
   prov: ProvinceId;
 }
 
-/** Starting data for a game: who owns what, and each country's starting numbers. */
+export type ResourceId = "food" | "energy" | "minerals";
+export const RESOURCES: ResourceId[] = ["food", "energy", "minerals"];
+
+/** Starting data for a game: who owns what, and the starting numbers. */
 export interface Scenario {
   id: string;
   name: string;
   startDate: string;
   dataNote: string;
-  owners: Record<ProvinceId, CountryId>;
-  countries: Record<CountryId, { population: number | null; gdpMillionUsd: number | null }>;
+  provinces: Record<
+    ProvinceId,
+    {
+      owner: CountryId;
+      /** Estimated from the country's population, its cities and land area. */
+      population: number;
+      areaKm2: number;
+      /** Game-generated resource deposits, 0-5. Not real-world data. */
+      deposits: Record<ResourceId, number>;
+    }
+  >;
+  countries: Record<CountryId, { population: number | null; gdpMillionUsd: number | null; incomeGroup: string | null }>;
 }

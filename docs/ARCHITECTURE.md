@@ -96,3 +96,22 @@ GameState.provinces[*].owner ──▶ map worker ──▶ country shapes ─�
 
 Reference facts (names, capitals, areas) never change during a game. Everything that can change (owners,
 population, GDP) lives in `GameState`.
+
+## Simulation (Stage 3)
+
+```
+ UI (React)            gameStore (zustand)           sim.worker.ts (background thread)
+ sliders, buttons ──▶  send(command) ───────────────▶ queue ─▶ tick(state, commands)
+                       setSpeed / setPaused ────────▶ clock: 1–120 days per second
+ map, panels  ◀──────  state  ◀──── a few times a second (immediately while paused)
+```
+
+- `packages/sim/src/engine.ts` – `tick()`: apply queued commands, advance a day, run monthly systems on the 1st.
+- `packages/sim/src/systems.ts` – monthly systems in fixed order: world resource market → economy → investment
+  (infrastructure, research) → society (stability, population) → history. Growth and stability expose a
+  breakdown so the UI can explain them.
+- `packages/sim/src/commands.ts` – the only way to change the game: `claimCountry`, `setTaxRate`, `setBudget`.
+  Every command is validated; invalid ones are reported, never applied.
+- Saves are `JSON.stringify(GameState)` with a `version` number; loading an incompatible version gives a clear error.
+  Browser saves use IndexedDB (saves are ~1–2 MB).
+- The same engine will run on the multiplayer server later; the browser worker is the single-player host.
