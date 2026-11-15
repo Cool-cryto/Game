@@ -42,6 +42,20 @@ Not built yet: government types, naval battles, trade deals. To put the game onl
 
 ## How to play
 
+The game starts in **simple mode**:
+
+1. **Choose a country** on the start screen (or click any country and press **Lead …**). Your goal: make it the
+   strongest in the world. Your choice is locked in; to lead another country, start a new game.
+2. Use the three buttons at the bottom left:
+   - **🏛️ My country**: pick a focus (balanced, grow the economy, build the army, keep people happy) and a tax level.
+     Your budget always balances, so you never fall into debt.
+   - **🛡️ Army**: recruit armies, fleets and air forces; see where they are.
+   - **🌍 World**: make friends, form alliances, declare war, then press **Attack** and your armies march on the
+     enemy's capital. **Make peace** offers the best terms they'd accept.
+3. Press **Play** to let time run and watch your **world rank** climb.
+
+**Advanced mode** (Game → Options → Advanced controls) shows every detail. That is what the steps below describe:
+
 1. Click a country (or search for it) and press **Play as …**.
 2. Press **Play** (or Space) to start time; pick a speed with the bars next to the date.
 3. **Economy**: in your country's panel, set the tax rate and spending. Defense spending fills your defense fund.

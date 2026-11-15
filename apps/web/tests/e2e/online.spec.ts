@@ -1,11 +1,12 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
+import { ADVANCED_STORAGE } from "./storage";
 
 // Online play. These tests use the game server started by playwright.config.ts.
 
 const unique = () => `${Date.now() % 1e7}${Math.floor(Math.random() * 100)}`;
 
 async function player(browser: Browser) {
-  const context = await browser.newContext({ viewport: { width: 1400, height: 860 } });
+  const context = await browser.newContext({ viewport: { width: 1400, height: 860 }, storageState: ADVANCED_STORAGE });
   const page = await context.newPage();
   await page.goto("/");
   await page.waitForFunction(() => (window as unknown as { __gsMap?: unknown }).__gsMap);

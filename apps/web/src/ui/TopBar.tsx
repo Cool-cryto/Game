@@ -25,6 +25,7 @@ const GROUPS = [...new Set(Object.values(MAP_MODES).map((m) => m.group))];
 export function TopBar() {
   const mapMode = useUi((s) => s.mapMode);
   const setMapMode = useUi((s) => s.setMapMode);
+  const advanced = useUi((s) => s.advanced);
   return (
     <header className="topbar">
       <div className="brand">
@@ -33,10 +34,10 @@ export function TopBar() {
           <path d="M3 12h18M12 3c2.8 3 2.8 15 0 18M12 3c-2.8 3-2.8 15 0 18" fill="none" stroke="currentColor" strokeWidth="1.2" />
         </svg>
         <span>World Ascendant</span>
-        <span className="brand__stage">Stage 8 · fog of war &amp; online</span>
+        {advanced && <span className="brand__stage">Stage 8 · fog of war &amp; online</span>}
       </div>
       <SearchBox />
-      <label className="mode-select">
+      {advanced && <label className="mode-select">
         <span className="mode-select__label">Map</span>
         <select aria-label="Map mode" value={mapMode} onChange={(e) => setMapMode(e.target.value as MapModeId)}>
           {GROUPS.map((g) => (
@@ -51,7 +52,7 @@ export function TopBar() {
             </optgroup>
           ))}
         </select>
-      </label>
+      </label>}
       <OnlineButton />
       <GameMenu />
     </header>

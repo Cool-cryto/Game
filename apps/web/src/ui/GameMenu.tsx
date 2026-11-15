@@ -183,11 +183,20 @@ function MenuBody({ close }: { close: () => void }) {
 /** Game options. */
 function OptionsSection() {
   const fog = useUi((s) => s.fog);
+  const advanced = useUi((s) => s.advanced);
+  const setAdvanced = useUi((s) => s.setAdvanced);
   const setFog = useUi((s) => s.setFog);
   const isOnline = useOnline((s) => !!s.room);
   return (
     <>
       <h3>Options</h3>
+      <label className="dialog__row dialog__check">
+        <input type="checkbox" checked={advanced} onChange={(e) => setAdvanced(e.target.checked)} />
+        <span>
+          <strong>Advanced controls</strong>
+          <span className="dialog__hint">Every map mode, exact tax and spending sliders, and all the numbers. Off keeps the game simple.</span>
+        </span>
+      </label>
       <label className="dialog__row dialog__check">
         <input type="checkbox" checked={isOnline || fog} disabled={isOnline} onChange={(e) => setFog(e.target.checked)} />
         <span>
