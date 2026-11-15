@@ -12,6 +12,9 @@ description: How this game's multiplayer works — the Node.js game server, acco
   Never add a command type without adding it to both, and never trust ids or values from the client.
 - **New `GameState` fields** must also be handled in `StateDiffer.diff` / `applyPatch` (packages/sim/src/net.ts), or online
   players will never see them. Add a test in the "network sync" block of `packages/sim/src/sim.test.ts`.
+- **Fog of war: never send the whole state to a player.** Snapshots are `fogView(state, geo, country)`, and units and
+  sieges go out per connection through `ViewSync` (room.ts `broadcastPatch`). Anything new that reveals military
+  information (where units are, what they're doing) must go through `packages/sim/src/visibility.ts`, not the shared patch.
 - Picking a country uses the `claim`/`release` messages (one human per country), not commands.
 - Keep patches small: send changed fields only; round numbers (`round5`); don't resend all provinces every month.
   Re-run the server load test (`npm test -w @gs/server`, look for `LOAD`) after changing what's synced.

@@ -29,13 +29,16 @@ and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the project is put toge
 - **Multiplayer**: accounts, a shared **Global World**, and **private servers** for up to 50 players with invite codes.
   The server runs the game; you can only command your own country; the host controls time; chat; if you disconnect,
   the AI runs your country after 30 seconds until you return; games are saved on the server
+- **Fog of war**: you only see foreign forces near your own land, your units and your allies; the rest of the map is
+  darkened. Online, the server only sends each player what they can see. In single player it can be switched off
+  under **Game → Options**
 
 - **Scenarios**: Modern World (2020) and End of the Cold War (1991, with the Soviet Union, Yugoslavia and
   Czechoslovakia, and World Bank figures for 1991). Pick one under **Game → New game**, or when creating a private server
 - **World editor** (**Game → New game → Create a custom world**): create countries, paint provinces onto them,
   undo, save in the browser, export/import files, play it, or host it online
 
-Not built yet: government types, naval battles, trade deals, fog of war, internet hosting. See [PROJECT.md](PROJECT.md).
+Not built yet: government types, naval battles, trade deals, internet hosting. See [PROJECT.md](PROJECT.md).
 
 ## How to play
 

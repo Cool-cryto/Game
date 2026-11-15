@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 import type { CountryId, Scenario } from "@gs/shared";
-import { applyPatch, geographyFrom, round5, GLOBAL_ROOM_ID, type ClientMessage, type GameState, type GeographyData, type ServerMessage } from "@gs/sim";
+import { applyPatch, fogView, geographyFrom, round5, visibleProvinces, visionGroup, GLOBAL_ROOM_ID, type ClientMessage, type GameState, type GeographyData, type ServerMessage } from "@gs/sim";
 import { register } from "../src/auth";
 import { Db } from "../src/db";
 import { startServer } from "../src/server";
@@ -178,6 +178,9 @@ describe("playing together", () => {
 
     h.send({ t: "claim", country: "FRA" as CountryId });
     expect((await h.next("you")).country).toBe("FRA");
+    // Fog of war: France's player is now sent France's units.
+    const frenchPatch = await h.next("patch", (m) => Object.values(m.patch.units).some((u) => u?.owner === "FRA"));
+    const frenchUnit = Object.values(frenchPatch.patch.units).find((u) => u?.owner === "FRA")!;
     g.send({ t: "claim", country: "FRA" as CountryId });
     expect((await g.next("error")).message).toMatch(/already played/);
     g.send({ t: "claim", country: "DEU" as CountryId });
@@ -186,7 +189,6 @@ describe("playing together", () => {
     // Germany tries to order France around, and to move France's units.
     g.send({ t: "cmd", command: { type: "setTaxRate", country: "FRA" as CountryId, value: 0.5 } });
     expect((await g.next("error")).message).toMatch(/own country/);
-    const frenchUnit = Object.values(g.state!.units).find((u) => u.owner === "FRA")!;
     g.send({ t: "cmd", command: { type: "moveUnits", country: "DEU" as CountryId, units: [frenchUnit.id], to: frenchUnit.province } });
     expect((await g.next("error")).message).toMatch(/your own units/);
     g.send({ t: "cmd", command: { type: "claimCountry", country: "ITA" as CountryId } });
@@ -211,13 +213,56 @@ describe("playing together", () => {
     const { history: _h, ...deu } = real.countries["DEU" as CountryId]!;
     const { history: _gh, ...gDeu } = g.state!.countries["DEU" as CountryId]!;
     expect(gDeu).toEqual(round5(deu));
-    expect(g.state!.units).toEqual(real.units);
+    // Units: exactly what Germany can see (fog of war).
+    expect(g.state!.units).toEqual(fogView(real, geo, "DEU" as CountryId).units);
 
     // Chat reaches everyone.
     g.send({ t: "chat", text: "  hello france  " });
     expect((await h.next("chat")).message).toMatchObject({ from: guest.username, text: "hello france" });
     h.close();
     g.close();
+  });
+
+  it("fog of war: each player is only sent the units their country can see", async () => {
+    const host = await newUser("foghost");
+    const h = await TestClient.signedIn(server.port, host.token);
+    h.send({ t: "create", name: "Fog test" });
+    const joined = await h.next("joined");
+    // No country yet: no units at all.
+    expect(Object.keys(joined.state.units)).toHaveLength(0);
+
+    /** Every unit this client knows of must be its own, an ally's, or in sight; and foreign routes stay secret. */
+    const checkFog = (me: CountryId) => {
+      const st = h.state!;
+      const group = visionGroup(st, me);
+      const seen = visibleProvinces(st, geo, me);
+      for (const u of Object.values(st.units)) {
+        if (group.has(u.owner)) continue;
+        expect(seen.has(u.province)).toBe(true);
+        expect(u.path).toEqual([]);
+      }
+    };
+
+    h.send({ t: "claim", country: "JPN" as CountryId });
+    await h.next("patch", (m) => Object.values(m.patch.units).some((u) => u?.owner === "JPN"));
+    const units = () => Object.values(h.state!.units);
+    expect(units().some((u) => u.owner === "JPN")).toBe(true);
+    expect(units().some((u) => u.owner === "BRA")).toBe(false); // Brazil is far away
+    checkFog("JPN" as CountryId);
+
+    // Switch to Brazil: Brazil's units come into view and Japan's leave it.
+    h.send({ t: "release" });
+    await h.next("you", (m) => m.country === null);
+    h.send({ t: "claim", country: "BRA" as CountryId });
+    await h.next("patch", (m) => Object.values(m.patch.units).some((u) => u?.owner === "BRA"));
+    expect(units().some((u) => u.owner === "JPN")).toBe(false);
+    checkFog("BRA" as CountryId);
+
+    // Still true while time runs and armies move about.
+    h.send({ t: "clock", paused: false, speed: 5 });
+    for (let i = 0; i < 6; i++) await h.next("patch");
+    checkFog("BRA" as CountryId);
+    h.close();
   });
 
   it("the AI takes over a disconnected player's country, and gives it back when they return", async () => {
@@ -339,6 +384,10 @@ describe("load", () => {
     for (const c of clients.slice(1)) c.send({ t: "join", room: room.code! });
     await Promise.all(clients.slice(1).map((c) => c.next("joined")));
     const live = server.rooms.get(room.id)!;
+    // Everyone plays one of the 50 biggest countries, so fog of war is worked out for each of them.
+    const biggest = Object.values(live.state.countries).filter((c) => c.active).sort((a, b) => b.population - a.population).slice(0, 50);
+    clients.forEach((c, i) => c.send({ t: "claim", country: biggest[i]!.id }));
+    await Promise.all(clients.map((c, i) => c.next("you", (m) => m.country === biggest[i]!.id)));
     for (const speed of [2, 5] as const) {
       await new Promise((r) => setTimeout(r, 300));
       const wire0 = clients.map((c) => c.wireBytes);

@@ -40,7 +40,8 @@ What was asked for at the start, and where each item stands today.
 | Private servers for up to 50 players | ✅ Done | Invite codes, host controls time |
 | AI takes over when a player disconnects | ✅ Done | After 30 s; player gets the country back on return |
 | Modern interface with 2D map and 3D globe | ✅ Done | Flat map + WebGL globe, 2D/3D toggle |
-| Build in stages, test the work, be honest about what's unfinished | ✅ Ongoing | 7 stages, ~90 automated tests, limits listed below |
+| Fog of war (not in the brief; added in Stage 8) | ✅ Done | Players only see nearby foreign forces; the server only sends what each player can see |
+| Build in stages, test the work, be honest about what's unfinished | ✅ Ongoing | 8 stages, ~100 automated tests, limits listed below |
 
 Also agreed at the start: add useful **Claude Code skills** for the project (see §9), and later add backend, database
 and multiplayer skills.
@@ -142,11 +143,18 @@ players) and private servers (invite codes, up to 50 players, host controls time
 sender's own country; snapshot + small patches (≈0.1 KB/s per player at the global pace); AI takeover after 30 s; rooms
 saved and restored; chat; auto-reconnect.
 
-### Stage 7 — Scenarios and custom worlds ✅ (current)
+### Stage 7 — Scenarios and custom worlds ✅
 Built: scenario system; **End of the Cold War (1991)** with the Soviet Union, Yugoslavia and Czechoslovakia and World Bank
 1991 figures; **world editor** (create countries, paint provinces or whole countries, pick from map, undo, save in
 browser, export/import, play, host online); server support for scenarios and custom worlds; borders computed from the
 live map.
+
+### Stage 8 — Fog of war ✅ (current)
+Built: vision rules (your land and the next province over, around your units, further for air wings, shared with
+allies); foreign units out of sight, foreign routes and unseen sieges are hidden; the server sends each player only what
+their country can see (closing the "modified client can see everything" gap); the map and globe darken what you can't
+see; on/off switch for single player (Game → Options). Also fixed: two files the game needs (`scenarios.ts` and the 1991
+data) had never been uploaded to GitHub, so a fresh download didn't build.
 
 ---
 
@@ -170,14 +178,14 @@ Estimated or game-generated (always labelled in the game):
 
 ## 6. Testing and quality
 
-Run `npm test` (logic + server) and `npm run test:e2e` (browser). At the end of Stage 7:
+Run `npm test` (logic + server) and `npm run test:e2e` (browser). At the end of Stage 8:
 
 | Suite | Tests | Covers |
 |---|---|---|
-| Engine (`packages/sim`) | 33 | Economy rules, military, war, diplomacy, saves, network sync, custom worlds, 1991 world, 20-year world run |
+| Engine (`packages/sim`) | 36 | Economy rules, military, war, diplomacy, saves, network sync, fog of war, custom worlds, 1991 world, 20-year world run |
 | Map data (`apps/web`) | 11 | Province/country data integrity, colors, cities, search, border redraws |
-| Server (`apps/server`) | 11 | Accounts, rooms, permissions, AI takeover, persistence, scenarios, 50-player load |
-| Browser (Playwright) | 37 | Map, search, panels, time, policies, saves, war to annexation, globe, two-player online, editor |
+| Server (`apps/server`) | 12 | Accounts, rooms, permissions, fog of war, AI takeover, persistence, scenarios, 50-player load |
+| Browser (Playwright) | 38 | Map, search, panels, time, policies, saves, war to annexation, fog of war, globe, two-player online, editor |
 
 Performance measured along the way: flat map frame 1–3 ms; globe frame 3–5 ms while time runs; 20 game years of the
 whole world simulate in ~8 s; server step ≤ 60 ms with 50 players at top speed.
@@ -198,15 +206,14 @@ bandwidth 5× too high, and an editor race that wiped a newly created country.
 2. **Government types** (democracy, monarchy, one-party state…) with real effects, using an openly licensed dataset
    (e.g. V-Dem or Polity — licences to be checked) rather than invented labels.
 3. **Naval warfare**: fleet battles, blockades, AI sea invasions.
-4. **Fog of war** (players only receive what they can see) — also closes the "modified client can see everything" gap.
-5. **More historical scenarios** (e.g. 1936, 1914). These need historical borders that don't follow today's provinces and
+4. **More historical scenarios** (e.g. 1936, 1914). These need historical borders that don't follow today's provinces and
    reliable open economic data for those years; the project currently has neither.
 
 ### Gameplay ideas not yet started
 - Trade agreements and sanctions; resource-specific deals
 - Province buildings (factories, ports, fortifications) and a local economy per province
 - Events and decisions (elections, crises, disasters)
-- Smarter AI (planning, coalitions, naval invasions, adapting to the player)
+- Smarter AI (planning, coalitions, naval invasions, adapting to the player), and an AI that respects fog of war
 - Unit types beyond army/fleet/air wing (armour, artillery, missiles), supply lines, terrain effects
 - Peace deals with more options (money, puppets, partial land)
 - Editor: edit economies, alliances, armies and start date; rename/recolour existing countries
@@ -223,7 +230,7 @@ bandwidth 5× too high, and an editor race that wiped a newly created country.
 
 ### Known limits today
 - Online play only works where the game server runs (not from the static preview link).
-- Players receive the whole world (no fog of war).
+- The AI still sees everything; news items mention battles anywhere in the world.
 - The 1991 map is simplified to today's province lines.
 - Starting militaries, resource deposits and province populations are estimates or game-generated.
 - Rules are tuned game rules, not forecasts (e.g. Japan's population grows slightly).
@@ -256,4 +263,4 @@ Planned: an end-to-end test generator plugin; backend, database and hosting skil
 
 ---
 
-*Last updated at the end of Stage 7.*
+*Last updated at the end of Stage 8.*

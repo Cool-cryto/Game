@@ -1,10 +1,13 @@
 import type { CountryId, ProvinceId } from "@gs/shared";
+import type { Geography } from "./geography";
 import type { CountryState, GameEvent, GameState, ProvinceState, Unit } from "./state";
+import { fogView, visionIndex, type VisionIndex } from "./visibility";
 
 /**
  * Network sync. The server runs the real game; clients get one full snapshot
  * when they join, then small patches with only what changed. Patches are the
- * same for every player in a room, so the server builds each one once.
+ * same for every player in a room, so the server builds each one once, except
+ * for units and sieges: with fog of war those are per player (see ViewSync).
  */
 export interface Patch {
   tick: number;
@@ -39,8 +42,15 @@ export class StateDiffer {
   private units = new Map<string, string>();
   private lastEvent: GameEvent | undefined;
 
-  /** Start from a snapshot that clients already have. */
-  constructor(state: GameState) {
+  /**
+   * Start from a snapshot that clients already have. With `units: false` the
+   * patches carry no units (the server sends each player's units separately,
+   * see ViewSync, because with fog of war players see different units).
+   */
+  constructor(
+    state: GameState,
+    private opts: { units?: boolean } = {},
+  ) {
     this.remember(state);
   }
 
@@ -50,7 +60,7 @@ export class StateDiffer {
       this.history.set(c.id, historyKey(c));
     }
     for (const p of Object.values(s.provinces)) this.provinces.set(p.id, { ...p, siege: p.siege ? { ...p.siege } : null });
-    for (const u of Object.values(s.units)) this.units.set(String(u.id), JSON.stringify(u));
+    if (this.opts.units !== false) for (const u of Object.values(s.units)) this.units.set(String(u.id), JSON.stringify(u));
     this.lastEvent = s.events[s.events.length - 1];
   }
 
@@ -99,6 +109,7 @@ export class StateDiffer {
         this.provinces.set(p.id, { ...p, siege: p.siege ? { ...p.siege } : null });
       }
     }
+    if (this.opts.units === false) return patch;
     const seen = new Set<string>();
     for (const u of Object.values(s.units)) {
       const id = String(u.id);
@@ -188,4 +199,83 @@ export function applyPatch(s: GameState, p: Patch, maxEvents = 300, historyMonth
     next.units = units;
   }
   return next;
+}
+
+// ---------- Fog of war: each player's own units and sieges ----------
+
+/** The world as one country sees it, worked out once per patch and shared by everyone playing that country. */
+export interface PlayerView {
+  view: GameState;
+  /** Each visible unit as JSON, so comparing per player is cheap. */
+  unitJson: Map<string, string>;
+  /** Provinces with a visible siege. */
+  sieges: ProvinceState[];
+}
+
+/**
+ * Work out one country's view. When building several views of the same state,
+ * pass the same `index` and `jsonCache` so the shared work is done once.
+ */
+export function playerView(
+  s: GameState,
+  geo: Geography,
+  viewer: CountryId | null,
+  index: VisionIndex = visionIndex(s),
+  jsonCache: Map<Unit, string> = new Map(),
+): PlayerView {
+  const view = fogView(s, geo, viewer, index);
+  const unitJson = new Map<string, string>();
+  for (const [id, u] of Object.entries(view.units)) {
+    let json = jsonCache.get(u);
+    if (json === undefined) jsonCache.set(u, (json = JSON.stringify(u)));
+    unitJson.set(id, json);
+  }
+  const sieges = index.sieged.map((p) => view.provinces[p.id]!).filter((p) => p.siege);
+  return { view, unitJson, sieges };
+}
+
+/**
+ * Remembers which units and sieges one connection has been sent, so its patches
+ * add units that came into sight, update the ones it can see, and remove the
+ * ones that left its sight (as if they were gone).
+ */
+export class ViewSync {
+  private units = new Map<string, string>();
+  private sieges = new Map<string, { by: CountryId; progress: number }>();
+
+  /** Start from the (fogged) snapshot this connection received. */
+  constructor(view: GameState) {
+    for (const [id, u] of Object.entries(view.units)) this.units.set(id, JSON.stringify(u));
+    for (const p of Object.values(view.provinces)) if (p.siege) this.sieges.set(p.id, { ...p.siege });
+  }
+
+  diff(pv: PlayerView): { units: Record<string, Unit | null>; provinces: Record<string, ProvinceState> } {
+    const units: Record<string, Unit | null> = {};
+    for (const [id, json] of pv.unitJson) {
+      if (this.units.get(id) === json) continue;
+      units[id] = pv.view.units[id]!;
+      this.units.set(id, json);
+    }
+    for (const id of [...this.units.keys()]) {
+      if (pv.unitJson.has(id)) continue;
+      units[id] = null;
+      this.units.delete(id);
+    }
+    // Sieges that came into sight, moved on noticeably, or went out of sight / ended.
+    const provinces: Record<string, ProvinceState> = {};
+    const now = new Set<string>();
+    for (const p of pv.sieges) {
+      now.add(p.id);
+      const last = this.sieges.get(p.id);
+      if (last && last.by === p.siege!.by && Math.abs(last.progress - p.siege!.progress) < 0.05) continue;
+      provinces[p.id] = p;
+      this.sieges.set(p.id, { ...p.siege! });
+    }
+    for (const id of [...this.sieges.keys()]) {
+      if (now.has(id)) continue;
+      provinces[id] = pv.view.provinces[id as ProvinceId]!;
+      this.sieges.delete(id);
+    }
+    return { units, provinces };
+  }
 }

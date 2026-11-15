@@ -5,4 +5,5 @@ playwright-report/
 *.log
 .DS_Store
 .cache/
-data/
+# The game server's database folder (apps/web/src/data holds game data and must be kept).
+/data/

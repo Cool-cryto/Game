@@ -9,6 +9,7 @@ import { ownersRecord, playerCountry, useGame } from "../../state/gameStore";
 import { sameSelection, useUi, type CameraCommand, type Selection } from "../../state/uiStore";
 import { createEquirectFrame, type Bounds, type CountryShape, type ProvinceShape, type ProvinceTopology } from "../geo";
 import { MAP_MODES, NO_DATA } from "../mapModes";
+import { fogOf } from "../../state/fog";
 import { drawUnitsOverlay, markerAt, politicalColor, previewMove, stackLabel, stripes, type Marker } from "../overlay";
 import { GlobeRenderer, type GlobeCamera } from "./globeRenderer";
 import type { GlobeWorkerRequest, GlobeWorkerResponse } from "./globe.worker";
@@ -176,7 +177,7 @@ export function GlobeView({ active }: { active: boolean }) {
       const staticMode = mode.id === "political" || mode.id === "region";
       const month = staticMode ? 0 : Math.floor(g.tick / 30);
       const diplomacy = mode.id === "diplomacy" || mode.id === "wars" ? `${g.wars.length}|${g.alliances.length}|${Object.keys(g.relations).length}|${month}` : "";
-      return `${mode.id}|${g.ownershipVersion}|${occupied}|${hash}|${month}|${diplomacy}|${countryList.length}|${playerCountry(g)?.id ?? ""}`;
+      return `${mode.id}|${g.ownershipVersion}|${occupied}|${hash}|${month}|${diplomacy}|${countryList.length}|${playerCountry(g)?.id ?? ""}|${fogOf(g).version}`;
     }
 
     // Recolor when time passes or ownership changes (only if the picture would change).
@@ -222,6 +223,18 @@ export function GlobeView({ active }: { active: boolean }) {
         if (!ps || ps.controller === ps.owner) continue;
         ctx.fillStyle = stripes(ctx, politicalColor(ps.controller, game), 1, 6);
         ctx.fill(p.path);
+      }
+      // Fog of war: darken what you can't see (everything, minus visible provinces, filled even-odd).
+      const fog = fogOf(game);
+      if (fog.visible) {
+        const veil = new Path2D();
+        veil.rect(0, 0, texture.width, texture.height);
+        for (const id of fog.visible) {
+          const shape = provinces.get(id);
+          if (shape) veil.addPath(shape.path);
+        }
+        ctx.fillStyle = "rgba(3, 7, 12, 0.42)";
+        ctx.fill(veil, "evenodd");
       }
       ctx.lineJoin = "round";
       ctx.strokeStyle = "rgba(8, 14, 22, 0.35)";
@@ -313,7 +326,7 @@ export function GlobeView({ active }: { active: boolean }) {
         w,
         h,
         zoom: rel(),
-        game,
+        game: fogOf(game).view,
         me: playerCountry(game)?.id,
         selected,
         moveOrder,
@@ -622,8 +635,8 @@ export function GlobeView({ active }: { active: boolean }) {
 
     const unsubUi = useUi.subscribe((s, prev) => {
       if (!activeRef.current) return;
-      if (s.mapMode !== prev.mapMode) textureDirty = true;
-      if (s.hovered !== prev.hovered || s.selected !== prev.selected || s.mapMode !== prev.mapMode || s.moveOrder !== prev.moveOrder) requestDraw();
+      if (s.mapMode !== prev.mapMode || s.fog !== prev.fog) textureDirty = true;
+      if (s.hovered !== prev.hovered || s.selected !== prev.selected || s.mapMode !== prev.mapMode || s.moveOrder !== prev.moveOrder || s.fog !== prev.fog) requestDraw();
       if (s.selected !== prev.selected && !!s.selected !== !!prev.selected && !anim) animateTo({}, 400); // re-centre beside the panel
       if (s.moveOrder !== prev.moveOrder) updateHover();
       if (s.camera && s.camera !== prev.camera) runCamera(s.camera);

@@ -1136,6 +1136,23 @@ button {
   gap: 8px;
   align-items: center;
 }
+.dialog__check {
+  align-items: flex-start;
+  flex-wrap: nowrap;
+  cursor: pointer;
+}
+.dialog__check input {
+  margin-top: 3px;
+  accent-color: #ffd678;
+}
+.dialog__check > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dialog__check .dialog__hint {
+  margin: 0;
+}
 .dialog__row .btn {
   width: auto;
 }

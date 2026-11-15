@@ -23,6 +23,10 @@ import {
   type CustomWorld,
   round5,
   StateDiffer,
+  fogView,
+  playerView,
+  ViewSync,
+  visibleProvinces,
   type Command,
   type GameState,
   type GeographyData,
@@ -439,6 +443,75 @@ describe("network sync", () => {
     expect(bytes / 183).toBeLessThan(20_000); // average patch size in this tiny world
   });
 });
+
+describe("fog of war", () => {
+  const seen = (s: GameState, c: CountryId) => [...visibleProvinces(s, geo, c)].sort();
+
+  it("you see your own land and the next province over; allies share what they see", () => {
+    const s = newGame();
+    expect(seen(s, A)).toEqual([P(1), P(2), P(3), P(4)]);
+    expect(seen(s, B)).toEqual([P(3), P(4), P(5)]);
+    expect(seen(s, D)).toEqual([P(7)]);
+    s.alliances.push("AAA|DDD");
+    expect(seen(s, D)).toEqual([P(1), P(2), P(3), P(4), P(7)]);
+  });
+
+  it("hides foreign units out of sight, and where foreign units are going", () => {
+    const s = newGame();
+    invadeB(s);
+    // Dorsia, far away, sees no one's armies but its own.
+    expect(Object.values(fogView(s, geo, D).units).every((u) => u.owner === D)).toBe(true);
+    // Borduria sees the invaders on its border, but not their route.
+    run(s, 1, [{ type: "moveUnits", country: A, units: armies(s, A).map((u) => u.id), to: P(5) }]);
+    const marching = Object.values(fogView(s, geo, B).units).filter((u) => u.owner === A);
+    expect(marching.length).toBeGreaterThan(0);
+    for (const u of marching) {
+      expect(seen(s, B)).toContain(u.province);
+      expect([u.path, u.travel]).toEqual([[], null]);
+    }
+    // Avaria sees its own routes, and the real state is untouched.
+    expect(Object.values(fogView(s, geo, A).units).some((u) => u.owner === A && u.path.length)).toBe(true);
+    expect(armies(s, A).some((u) => u.path.length)).toBe(true);
+    // No country chosen: no units at all.
+    expect(Object.keys(fogView(s, geo, null).units)).toHaveLength(0);
+  });
+
+  it("each player's patches carry exactly the units and sieges they can see", () => {
+    const server = newGame(3);
+    invadeB(server);
+    const differ = new StateDiffer(server, { units: false });
+    const viewers = [A, B, D];
+    const clients = new Map(viewers.map((v) => [v, deserialize(serialize(fogView(server, geo, v)))]));
+    const syncs = new Map(viewers.map((v) => [v, new ViewSync(clients.get(v)!)]));
+    let sieges = 0;
+    run(server, 1, [{ type: "moveUnits", country: A, units: armies(server, A).map((u) => u.id), to: P(5) }]);
+    for (let day = 0; day < 300; day += 2) {
+      run(server, 2);
+      const patch = differ.diff(server);
+      if (Object.values(server.provinces).some((p) => p.siege)) sieges++;
+      for (const v of viewers) {
+        // The same steps the game server takes (apps/server/src/room.ts).
+        const pv = playerView(server, geo, v);
+        const own = syncs.get(v)!.diff(pv);
+        const provinces = { ...patch.provinces };
+        for (const id of Object.keys(provinces)) if (provinces[id]!.siege) provinces[id] = pv.view.provinces[id as ProvinceId]!;
+        const wire = JSON.stringify({ ...patch, provinces: { ...provinces, ...own.provinces }, units: own.units });
+        const client = applyPatch(clients.get(v)!, JSON.parse(wire));
+        clients.set(v, client);
+        expect(client.units).toEqual(pv.view.units);
+        for (const p of Object.values(server.provinces)) expect(client.provinces[p.id]!.siege).toEqual(pv.view.provinces[p.id]!.siege);
+      }
+    }
+    expect(sieges).toBeGreaterThan(0); // the test did cover sieges
+    expect(Object.values(clients.get(D)!.units).every((u) => u.owner === D)).toBe(true);
+  });
+});
+
+/** A declares war on B (for tests outside the war section). */
+function invadeB(s: GameState) {
+  scripted(s);
+  run(s, 1, [{ type: "declareWar", country: A, target: B }]);
+}
 
 describe("custom worlds", () => {
   const world = (over: Partial<CustomWorld> = {}): CustomWorld => ({

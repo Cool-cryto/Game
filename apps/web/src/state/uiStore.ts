@@ -27,6 +27,9 @@ interface UiState {
   /** Is the "Play online" dialog open? */
   onlineDialog: boolean;
   setOnlineDialog: (open: boolean) => void;
+  /** Fog of war in single player (online it's always on). Remembered in this browser. */
+  fog: boolean;
+  setFog: (on: boolean) => void;
   /** Flat map or 3D globe. */
   view: "flat" | "globe";
   setView: (view: "flat" | "globe") => void;
@@ -42,6 +45,15 @@ interface UiState {
 }
 
 let nonce = 0;
+
+const FOG_KEY = "wa.fog";
+function loadFog(): boolean {
+  try {
+    return localStorage.getItem(FOG_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
 
 export const sameSelection = (a: Selection, b: Selection) =>
   a === b ||
@@ -62,6 +74,15 @@ export const useUi = create<UiState>((set) => ({
   setEditor: (editor) => set({ editor }),
   setOnlineDialog: (onlineDialog) => set({ onlineDialog }),
   setView: (view) => set({ view }),
+  fog: loadFog(),
+  setFog: (fog) => {
+    try {
+      localStorage.setItem(FOG_KEY, fog ? "on" : "off");
+    } catch {
+      /* private browsing: the setting just isn't remembered */
+    }
+    set({ fog });
+  },
   zoom: 1,
   camera: null,
   hover: (hovered) => set((s) => (sameSelection(s.hovered, hovered) ? s : { hovered })),

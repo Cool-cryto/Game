@@ -502,3 +502,28 @@ test("importing a file that isn't a custom world shows a clear error", async ({ 
   await page.getByTestId("world-import").setInputFiles({ name: "notes.json", mimeType: "application/json", buffer: Buffer.from('{"hello":1}') });
   await expect(page.getByRole("status")).toContainText(/scenario this game doesn't have|isn't a custom world|different version/);
 });
+
+test("fog of war hides foreign forces far from you, and can be switched off", async ({ page }) => {
+  await openMap(page);
+  // Brazil's starting armies are in its biggest provinces, such as São Paulo.
+  const forces = panel(page).getByRole("heading", { name: "Forces here" });
+  await searchFor(page, "são paulo");
+  await expect(panel(page).getByRole("heading", { name: "São Paulo" })).toBeVisible();
+  await expect(forces).toBeVisible(); // no country chosen yet: nothing is hidden
+
+  await playAs(page, "Japan");
+  await searchFor(page, "são paulo");
+  await expect(panel(page).getByRole("heading", { name: "São Paulo" })).toBeVisible();
+  await expect(forces).toHaveCount(0); // far from Japan: hidden
+  await searchFor(page, "tokyo");
+  await expect(forces).toBeVisible(); // your own are always shown
+
+  // Switch fog off in the Game menu.
+  await page.getByRole("button", { name: "Game" }).click();
+  const fog = page.getByRole("checkbox", { name: /Fog of war/ });
+  await expect(fog).toBeChecked();
+  await fog.uncheck();
+  await page.getByRole("button", { name: "Close menu" }).click();
+  await searchFor(page, "são paulo");
+  await expect(forces).toBeVisible();
+});

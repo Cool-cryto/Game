@@ -18,6 +18,7 @@ import {
 } from "@gs/sim";
 import { citiesIn, flagUrl, GEOGRAPHY, getCountry, getProvince, landNeighbours, MODERN_SCENARIO } from "../data/countries";
 import { gdpPerCapita } from "../map/mapModes";
+import { fogOf } from "../state/fog";
 import { playerCountry, useGame } from "../state/gameStore";
 import { useOnline } from "../net/online";
 import { DiplomacySection, WarsSection } from "./DiplomacyPanel";
@@ -477,7 +478,8 @@ function ProvinceView({ id }: { id: ProvinceId }) {
   const owner = getCountry(ps?.owner);
   const select = useUi((s) => s.select);
   const me = useGame((s) => playerCountry(s.state)?.id);
-  const units = useGame((s) => s.state.units);
+  useUi((s) => s.fog); // re-render when fog is switched on or off
+  const units = useGame((s) => fogOf(s.state).view.units);
   if (!p || !ps) return null;
   const here = new Map<CountryId, number>();
   for (const u of Object.values(units)) if (u.province === id) here.set(u.owner, (here.get(u.owner) ?? 0) + 1);

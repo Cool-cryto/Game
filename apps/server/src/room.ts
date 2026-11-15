@@ -2,11 +2,15 @@ import { gzipSync } from "node:zlib";
 import type { CountryId } from "@gs/shared";
 import {
   applyCommand,
+  fogView,
   logEvent,
   MAX_PLAYERS_GLOBAL,
   MAX_PLAYERS_PER_ROOM,
+  playerView,
   StateDiffer,
   tick,
+  ViewSync,
+  visionIndex,
   validateCommand,
   type ChatMessage,
   type Clock,
@@ -14,8 +18,10 @@ import {
   type GameState,
   type Geography,
   type PlayerInfo,
+  type PlayerView,
   type RoomSummary,
   type ServerMessage,
+  type Unit,
 } from "@gs/sim";
 
 /** In-game days per real second at each speed (same as single player). */
@@ -60,7 +66,8 @@ export interface RoomOptions {
 /**
  * A multiplayer world. The room owns the only real copy of the game; players
  * send commands, which are checked (you may only command your own country)
- * and applied in order; everyone receives the same patches.
+ * and applied in order. Everyone receives the same patches, except that with
+ * fog of war each player only gets the units and sieges their country can see.
  */
 export class Room {
   readonly id: string;
@@ -72,6 +79,8 @@ export class Room {
   clock: Clock;
   private members = new Map<number, Member>();
   private differ: StateDiffer;
+  /** What each connected tab has been sent of the fogged parts (units, sieges). */
+  private views = new Map<Conn, ViewSync>();
   private queue: Command[] = [];
   private carry = 0;
   private lastStep = 0;
@@ -91,7 +100,7 @@ export class Room {
     this.isPublic = opts.isPublic;
     this.hostUserId = opts.hostUserId;
     this.state = state;
-    this.differ = new StateDiffer(state);
+    this.differ = new StateDiffer(state, { units: false });
     this.clock = { paused: true, speed: opts.fixedSpeed ?? 1, fixed: opts.fixedSpeed !== null };
   }
 
@@ -152,11 +161,14 @@ export class Room {
     // so the snapshot and the next patch don't overlap (no duplicated news).
     this.broadcastPatch(true);
     m.conns.add(conn);
+    // Fog of war: the newcomer sees only what their country can see.
+    const view = fogView(this.state, this.opts.geo, m.country);
+    this.views.set(conn, new ViewSync(view));
     if (this.clock.fixed && this.clock.paused) this.clock.paused = false; // the global world runs while anyone is online
     this.send(conn, {
       t: "joined",
       room: this.summary(m.userId),
-      state: this.state,
+      state: view,
       players: this.players(),
       clock: this.clock,
       chat: this.chat,
@@ -171,6 +183,7 @@ export class Room {
   disconnect(conn: Conn) {
     const m = this.members.get(conn.user.id);
     if (!m || !m.conns.delete(conn)) return;
+    this.views.delete(conn);
     if (m.conns.size === 0) m.offlineSince = Date.now();
     if (this.onlineCount === 0) this.clock.paused = true; // nobody here: stop the clock
     this.broadcastPlayers();
@@ -288,7 +301,35 @@ export class Room {
     const patch = this.differ.diff(this.state);
     this.lastPatch = Date.now();
     this.changed = false;
-    this.broadcast({ t: "patch", patch });
+
+    // The shared part is serialized once. Provinces under siege differ per player
+    // (sieges are hidden outside what you can see), and so do units.
+    const { provinces, units: _none, ...rest } = patch;
+    const head = JSON.stringify(rest);
+    const plain: Record<string, unknown> = {};
+    const sieged: string[] = [];
+    for (const [id, p] of Object.entries(provinces)) {
+      if (p.siege) sieged.push(id);
+      else plain[id] = p;
+    }
+    const plainJson = JSON.stringify(plain);
+    const viewsOf = new Map<string, PlayerView>();
+    const index = visionIndex(this.state);
+    const jsonCache = new Map<Unit, string>();
+    for (const m of this.members.values()) {
+      if (!m.conns.size) continue;
+      const key = m.country ?? "";
+      let pv = viewsOf.get(key);
+      if (!pv) viewsOf.set(key, (pv = playerView(this.state, this.opts.geo, m.country, index, jsonCache)));
+      for (const conn of m.conns) {
+        const sync = this.views.get(conn);
+        if (!sync) continue;
+        const own = sync.diff(pv);
+        for (const id of sieged) own.provinces[id] ??= pv.view.provinces[id as keyof GameState["provinces"]]!;
+        const provincesJson = mergeObjectJson(plainJson, JSON.stringify(own.provinces));
+        conn.send(`{"t":"patch","patch":${head.slice(0, -1)},"provinces":${provincesJson},"units":${JSON.stringify(own.units)}}}`);
+      }
+    }
   }
 
   players(): PlayerInfo[] {
@@ -321,6 +362,13 @@ export class Room {
   snapshot(): Uint8Array {
     return gzipSync(JSON.stringify(this.state));
   }
+}
+
+/** Join two JSON objects given as text (keys in the second win). */
+function mergeObjectJson(a: string, b: string): string {
+  if (a === "{}") return b;
+  if (b === "{}") return a;
+  return `${a.slice(0, -1)},${b.slice(1)}`;
 }
 
 /**
