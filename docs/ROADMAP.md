@@ -108,10 +108,10 @@ Known limits of Stage 6:
 - Running the server on the internet (so friends elsewhere can join) needs a host: see ARCHITECTURE.md → Hosting. Nothing is deployed yet.
 - One server process hosts all rooms; for many busy rooms you'd add processes (not needed yet).
 - No password reset or email; no moderation tools beyond the host owning private servers.
-- Players see everything (no fog of war), so a modified client could show other countries' units (it still can't command them).
+- ~~Players see everything (no fog of war)~~ Fixed in Stage 8.
 - Node's built-in SQLite prints an "experimental feature" warning when the server starts. It works; it's a notice from Node.
 
-## Stage 7: Scenarios and custom worlds ✅ (current)
+## Stage 7: Scenarios and custom worlds ✅
 
 - [x] Scenario system: built-in scenarios load on demand; scenario name and data note travel with the game
 - [x] End of the Cold War (1 January 1991): Soviet Union, Yugoslavia, Czechoslovakia; Eritrea in Ethiopia, South Sudan in Sudan,
@@ -129,3 +129,24 @@ Known limits of Stage 7:
 - The 1991 map is simplified to today's province lines (e.g. Walvis Bay is shown as Namibian; Berlin was already reunited).
 - The Soviet Union and Yugoslavia show a placeholder instead of a flag.
 - The editor changes who owns land and creates countries; it can't yet edit economies, alliances, armies or the start date.
+
+## Stage 8: Fog of war ✅ (current)
+
+- [x] Vision rules in the engine (`packages/sim/src/visibility.ts`): a country sees the provinces it owns or holds and the
+      ones next to them; each unit sees its province and its neighbours (air wings one ring further); allies share vision
+- [x] Hidden: foreign units out of sight, foreign units' routes (even in sight), and sieges in unseen provinces.
+      Public, as before: borders, occupation, economies, diplomacy and the news
+- [x] Server: each player's snapshot and patches carry only what their country can see (`fogView`, `ViewSync`), so a
+      modified browser can't show hidden armies; players who haven't picked a country get no units
+- [x] Map and globe darken what you can't see; unit markers and the "Forces here" list use the fogged view
+- [x] Single player: fog on by default, can be switched off under Game → Options (online it is always on)
+- [x] Shared vision work per update, so 50 players cost about as much as before (slowest step ~20 ms at the global pace)
+- [x] Fixed: `apps/web/src/data/scenarios.ts` and the 1991 scenario data had never been committed (an ignore rule for the
+      server's `data/` folder also matched `apps/web/src/data/`), so a fresh copy from GitHub didn't build
+- [x] Tests: vision rules, hidden routes, per-player sync including sieges, server fog test, 50-player load with every
+      player in a country
+
+Known limits of Stage 8:
+- The AI still sees everything (it plans with the full state). Fair, fog-aware AI is future work.
+- News items still mention battles and occupations anywhere in the world.
+- Vision is by neighbouring provinces, so it reaches further where provinces are large (e.g. Siberia, the Sahara).

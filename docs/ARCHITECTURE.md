@@ -166,6 +166,17 @@ Browser ──WebSocket /ws──▶ server.ts ──▶ Room (one per world)
   are limited per address; WebSocket messages are size- and rate-limited; commands are validated by the engine *and*
   checked to belong to the sender's country.
 
+### Fog of war (Stage 8)
+
+- `packages/sim/src/visibility.ts` – `visibleProvinces` (own/held land + 1 ring, units + 1 ring, air wings + 2, allies share),
+  `fogView` (a copy of the state with hidden units removed, foreign routes cleared, unseen sieges cleared) and `visionIndex`
+  (lookups shared by every viewer of one state).
+- Server: the shared patch from `StateDiffer` no longer carries units (`{ units: false }`). Per update the room builds one
+  `playerView` per country in play and, per connection, a `ViewSync` diff of units and sieges. The shared part of the
+  message is serialized once and the per-player parts are appended.
+- Browser: `apps/web/src/state/fog.ts` (`fogOf`) gives the map, globe and panels the fogged view and the visible provinces;
+  the map draws a veil over the rest (one even-odd fill: the whole map minus visible provinces).
+
 ### Hosting (not done yet)
 
 The server is one Node.js process with a SQLite file, so any host that runs a long-lived Node app with a persistent disk works

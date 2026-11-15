@@ -75,6 +75,7 @@ function MenuBody({ close }: { close: () => void }) {
       </p>
 
       <OnlineSection close={close} />
+      <OptionsSection />
 
       {useGame.getState().mode === "online" ? (
         <p className="dialog__hint">This is an online game: the server saves it automatically. You can still export a copy below.</p>
@@ -174,6 +175,29 @@ function MenuBody({ close }: { close: () => void }) {
         </p>
       )}
     </div>
+  );
+}
+
+/** Game options. */
+function OptionsSection() {
+  const fog = useUi((s) => s.fog);
+  const setFog = useUi((s) => s.setFog);
+  const isOnline = useOnline((s) => !!s.room);
+  return (
+    <>
+      <h3>Options</h3>
+      <label className="dialog__row dialog__check">
+        <input type="checkbox" checked={isOnline || fog} disabled={isOnline} onChange={(e) => setFog(e.target.checked)} />
+        <span>
+          <strong>Fog of war</strong>
+          <span className="dialog__hint">
+            {isOnline
+              ? "Always on when playing online: you only see foreign forces near your land, your units and your allies."
+              : "Only show foreign forces near your land, your units and your allies."}
+          </span>
+        </span>
+      </label>
+    </>
   );
 }
 

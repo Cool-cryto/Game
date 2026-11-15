@@ -10,6 +10,7 @@ import type { DetailLevel, WorkerRequest, WorkerResponse } from "./workerProtoco
 import { COUNTRIES, getCountry, getProvince, loadCities } from "../data/countries";
 import { drawUnitsOverlay, markerAt, politicalColor, previewMove, stackLabel, stripes, type Marker } from "./overlay";
 import { ownersRecord, playerCountry, useGame } from "../state/gameStore";
+import { fogOf } from "../state/fog";
 import { sameSelection, useUi, type CameraCommand, type Selection } from "../state/uiStore";
 
 /** How far in the player may zoom, relative to the whole-world view. */
@@ -54,6 +55,20 @@ export function WorldMap() {
     const graticule = new Path2D(frame.graticulePath);
     const hitCtx = document.createElement("canvas").getContext("2d")!;
     const layers: Partial<Record<DetailLevel, Layer>> = {};
+    /** Fog of war veil per detail level: the whole map minus the provinces you can see (filled even-odd). */
+    const veils = new WeakMap<Layer, { version: number; path: Path2D }>();
+    function veilFor(L: Layer, visible: Set<ProvinceId>, version: number): Path2D {
+      const cached = veils.get(L);
+      if (cached?.version === version) return cached.path;
+      const path = new Path2D();
+      path.addPath(sphere);
+      for (const id of visible) {
+        const shape = L.provinces.get(id);
+        if (shape) path.addPath(shape.path);
+      }
+      veils.set(L, { version, path });
+      return path;
+    }
     let cities: CityPoint[] = [];
     let transform = zoomIdentity;
     let fitK = 1;
@@ -199,6 +214,13 @@ export function WorldMap() {
         ctx.fill(p.path);
       }
 
+      // Fog of war: darken what you can't see.
+      const fog = fogOf(game);
+      if (fog.visible) {
+        ctx.fillStyle = "rgba(3, 7, 12, 0.42)";
+        ctx.fill(veilFor(L, fog.visible, fog.version), "evenodd");
+      }
+
       ctx.lineJoin = "round";
       if (z >= PROVINCE_ZOOM * 0.75) {
         const a = Math.min(1, (z - PROVINCE_ZOOM * 0.75) / (PROVINCE_ZOOM * 0.5));
@@ -256,7 +278,7 @@ export function WorldMap() {
         w: size.w,
         h: size.h,
         zoom: rel(),
-        game,
+        game: fogOf(game).view,
         me: playerCountry(game)?.id,
         selected,
         moveOrder,
@@ -603,7 +625,7 @@ export function WorldMap() {
       canvas.addEventListener("dblclick", onDblClick);
       canvas.addEventListener("contextmenu", onContextMenu);
       unsubUi = useUi.subscribe((s, prev) => {
-        if (s.hovered !== prev.hovered || s.selected !== prev.selected || s.mapMode !== prev.mapMode || s.moveOrder !== prev.moveOrder) requestDraw();
+        if (s.hovered !== prev.hovered || s.selected !== prev.selected || s.mapMode !== prev.mapMode || s.moveOrder !== prev.moveOrder || s.fog !== prev.fog) requestDraw();
         if (s.moveOrder !== prev.moveOrder) updateHover();
         if (s.view !== prev.view && s.view === "flat") requestDraw();
         if (s.camera && s.camera !== prev.camera && s.view === "flat") runCamera(s.camera);
