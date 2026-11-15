@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { RESOURCES, type CountryId, type CountryInfo, type ProvinceId, type ResourceId } from "@gs/shared";
 import {
   ADMIN_COST,
+  planMove,
   BUDGET_RANGE,
   budgetBalance,
   growthBreakdown,
@@ -15,9 +16,11 @@ import {
   type BudgetCategory,
   type CountryState,
 } from "@gs/sim";
-import { citiesIn, flagUrl, getCountry, getProvince, MODERN_SCENARIO } from "../data/countries";
+import { citiesIn, flagUrl, GEOGRAPHY, getCountry, getProvince, MODERN_SCENARIO } from "../data/countries";
 import { gdpPerCapita } from "../map/mapModes";
-import { useGame } from "../state/gameStore";
+import { playerCountry, useGame } from "../state/gameStore";
+import { DiplomacySection, WarsSection } from "./DiplomacyPanel";
+import { MilitarySection, ProvinceWarStatus, RecruitButtons, UnitsView } from "./MilitaryPanel";
 import { useUi } from "../state/uiStore";
 import { formatCompact, formatInt, formatMoneyMillions, formatPercent } from "./format";
 import { Sparkline } from "./Sparkline";
@@ -42,14 +45,55 @@ export function InfoPanel() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !(e.target as HTMLElement).closest("input, select, dialog")) select(null);
+      if (e.key !== "Escape" || (e.target as HTMLElement).closest("input[type=search], select, dialog")) return;
+      // Escape first cancels a pending move order, then closes the panel.
+      if (useUi.getState().moveOrder) useUi.getState().setMoveOrder(null);
+      else select(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [select]);
 
   if (!selected) return null;
+  if (selected.kind === "units") return <UnitsView province={selected.province} owner={selected.owner} />;
   return selected.kind === "country" ? <CountryView id={selected.id} /> : <ProvinceView id={selected.id} />;
+}
+
+/**
+ * While giving a move order, the selected place gets a "Send units here" button:
+ * handy for tiny provinces and islands, and for targets found with search.
+ */
+function SendHere({ province, label }: { province: ProvinceId; label: string }) {
+  const moveOrder = useUi((s) => s.moveOrder);
+  const setMoveOrder = useUi((s) => s.setMoveOrder);
+  const state = useGame((s) => s.state);
+  const send = useGame((s) => s.send);
+  const me = playerCountry(state)?.id;
+  if (!moveOrder || !me) return null;
+  const units = moveOrder.units.map((id) => state.units[id]).filter((u): u is NonNullable<typeof u> => !!u);
+  const plans = units.map((u) => planMove(state, GEOGRAPHY, u, province));
+  const ok = plans.filter((p) => !("error" in p)).length;
+  const firstError = plans.find((p): p is { error: string } => "error" in p)?.error;
+  return (
+    <div className="send-here">
+      <p>
+        Move order: {units.length} unit{units.length === 1 ? "" : "s"} waiting. {ok ? `${ok} can go to ${label}.` : firstError}
+      </p>
+      <button
+        className="btn btn--primary btn--small"
+        disabled={!ok}
+        onClick={() => {
+          send({ type: "moveUnits", country: me, units: moveOrder.units, to: province });
+          setMoveOrder(null);
+        }}
+      >
+        Send units here
+      </button>
+      <button className="btn btn--ghost btn--small" onClick={() => setMoveOrder(null)}>
+        Cancel
+      </button>
+    </div>
+  );
 }
 
 function Shell({ label, children }: { label: string; children: ReactNode }) {
@@ -85,6 +129,7 @@ function CountryView({ id }: { id: CountryId }) {
     return pop > 0 ? sum / pop : 0;
   });
   const send = useGame((s) => s.send);
+  const me = useGame((s) => playerCountry(s.state)?.id);
   const select = useUi((s) => s.select);
   if (!c || !state) return null;
   const flag = flagUrl(c);
@@ -122,6 +167,10 @@ function CountryView({ id }: { id: CountryId }) {
       </div>
 
       {c.note && <p className="panel__note">{c.note}</p>}
+      {state.capital && <SendHere province={state.capital} label={`${c.name}'s capital`} />}
+
+      {isPlayer && <WarsSection me={id} />}
+      {me && !isPlayer && state.active && <DiplomacySection me={me} them={id} />}
 
       {!state.active ? (
         <p className="panel__note">No permanent population or economy, so nothing is simulated here.</p>
@@ -211,6 +260,7 @@ function CountryView({ id }: { id: CountryId }) {
           </section>
 
           {isPlayer ? <Policies country={state} /> : <PolicySummary country={state} />}
+          {isPlayer && <MilitarySection country={id} />}
         </>
       )}
 
@@ -343,7 +393,7 @@ function PolicySummary({ country }: { country: CountryState }) {
           <Fact key={cat} label={BUDGET_LABEL[cat].label} value={`${formatPercent(country.budget[cat])} of GDP`} />
         ))}
       </dl>
-      <p className="panel__small">Computer-run countries keep their starting policies for now; AI decisions arrive in Stage 4.</p>
+      <p className="panel__small">Run by the computer: it adjusts taxes and spending when in debt, unrest or war.</p>
     </section>
   );
 }
@@ -410,7 +460,11 @@ function ProvinceView({ id }: { id: ProvinceId }) {
   const scale = useGame((s) => s.state.resourceScale);
   const owner = getCountry(ps?.owner);
   const select = useUi((s) => s.select);
+  const me = useGame((s) => playerCountry(s.state)?.id);
+  const units = useGame((s) => s.state.units);
   if (!p || !ps) return null;
+  const here = new Map<CountryId, number>();
+  for (const u of Object.values(units)) if (u.province === id) here.set(u.owner, (here.get(u.owner) ?? 0) + 1);
   const cities = citiesIn(id).slice(0, 8);
   const flag = owner ? flagUrl(owner) : null;
   const inhabited = ps.population > 0;
@@ -439,11 +493,29 @@ function ProvinceView({ id }: { id: ProvinceId }) {
         </button>
       )}
 
+      <ProvinceWarStatus province={id} />
+      <SendHere province={id} label={p.name} />
+
       <div className="panel__actions">
         <button className="btn btn--ghost" onClick={() => select({ kind: "province", id }, { focus: true })}>
           Zoom to {p.name}
         </button>
       </div>
+
+      {here.size > 0 && (
+        <section>
+          <h3>Forces here</h3>
+          <div className="chips">
+            {[...here].map(([owner, n]) => (
+              <button key={owner} className="chip" onClick={() => select({ kind: "units", province: id, owner })}>
+                {getCountry(owner)?.name ?? owner}: {n} unit{n > 1 ? "s" : ""}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {me && ps.owner === me && ps.controller === me && <RecruitButtons country={me} province={id} label="Recruit here" />}
 
       {inhabited && (
         <section>
@@ -557,8 +629,8 @@ function NotYet({ province = false }: { province?: boolean }) {
       <h3>Not in the game yet</h3>
       <p>
         {province
-          ? "Buildings, local economy and armies arrive in later stages."
-          : "Government types, diplomacy, armies and AI decisions arrive in later stages."}
+          ? "Buildings and a separate local economy aren't in the game yet."
+          : "Government types, trade agreements and naval battles aren't in the game yet."}
       </p>
     </section>
   );

@@ -1,4 +1,5 @@
 import { flagUrl, getCountry } from "../data/countries";
+import { isAtWar } from "@gs/sim";
 import { playerCountry, useGame } from "../state/gameStore";
 import { useUi } from "../state/uiStore";
 import { formatMoneyMillions, formatPercent } from "./format";
@@ -7,6 +8,7 @@ import { formatMoneyMillions, formatPercent } from "./format";
 export function PlayerCard() {
   const me = useGame((s) => playerCountry(s.state));
   const select = useUi((s) => s.select);
+  const war = useGame((s) => (me ? isAtWar(s.state, me.id) : false));
   if (!me) {
     return (
       <div className="player player--hint" data-testid="player-card">
@@ -28,6 +30,7 @@ export function PlayerCard() {
         <span className="player__label">Growth</span>
         {me.history.gdp.length > 0 ? <span className={me.gdpGrowth < 0 ? "neg" : "pos"}>{formatPercent(me.gdpGrowth, 1, true)}</span> : <span>—</span>}
       </span>
+      {war && <span className="player__war">At war</span>}
       <span className="player__stat" title="Stability (0-100)">
         <span className="player__label">Stability</span>
         <span>{Math.round(me.stability)}</span>

@@ -1,19 +1,38 @@
 import { applyCommand, type Command } from "./commands";
+import { aiDaily, aiMonthly } from "./ai";
+import { checkCapitulations, diplomacyMonthly } from "./diplomacy";
+import { countryNeighbors, type Geography } from "./geography";
+import { advanceMovement, advanceSieges, militaryMonthly, resolveBattles } from "./military";
 import { dateAt, SAVE_VERSION, type GameState } from "./state";
 import { runMonthly } from "./systems";
 
 /**
- * Advance the game by one day: apply queued commands, then run the monthly
- * systems if a new month has started. Returns any command errors.
+ * Advance the game by one day. Order:
+ *   1. apply queued commands
+ *   2. movement → battles → sieges → surrenders
+ *   3. AI war orders
+ *   4. on the 1st of a month: economy and society, military upkeep, diplomacy, AI decisions
+ * Returns any command errors.
  */
-export function tick(state: GameState, commands: Command[] = []): string[] {
+export function tick(state: GameState, geo: Geography, commands: Command[] = []): string[] {
   const errors: string[] = [];
   for (const cmd of commands) {
-    const err = applyCommand(state, cmd);
+    const err = applyCommand(state, geo, cmd);
     if (err) errors.push(err);
   }
+  advanceMovement(state, geo);
+  resolveBattles(state, geo);
+  advanceSieges(state);
+  checkCapitulations(state);
+  aiDaily(state, geo);
   state.tick += 1;
-  if (dateAt(state.startDate, state.tick).endsWith("-01")) runMonthly(state);
+  if (dateAt(state.startDate, state.tick).endsWith("-01")) {
+    runMonthly(state);
+    militaryMonthly(state);
+    const neighbors = countryNeighbors(geo, (p) => state.provinces[p]?.owner);
+    diplomacyMonthly(state, neighbors);
+    aiMonthly(state, geo, neighbors);
+  }
   return errors;
 }
 
@@ -34,7 +53,7 @@ export function deserialize(text: string): GameState {
     throw new Error("This file isn't a saved game.");
   }
   if (s.version !== SAVE_VERSION) {
-    throw new Error(`This save is from an older version of the game (save format ${String(s.version)}, need ${SAVE_VERSION}).`);
+    throw new Error(`This save is from a different version of the game (save format ${String(s.version)}, need ${SAVE_VERSION}).`);
   }
   return s as GameState;
 }

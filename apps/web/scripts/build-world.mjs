@@ -351,6 +351,7 @@ const scenario = {
     countryIds.map((id) => [
       id,
       {
+        name: countries[id].name,
         population: econ.get(id)?.population ?? null,
         gdpMillionUsd: econ.get(id)?.gdpMillionUsd ?? null,
         incomeGroup: econ.get(id)?.incomeGroup ?? null,
@@ -359,7 +360,34 @@ const scenario = {
   ),
 };
 
+// ---------- Geography: which provinces touch, which are coastal, where they are ----------
+// Arcs used by only one province are coastline (every land border is shared by two provinces).
+const arcUse = new Map();
+const arcsOf = (g) => {
+  const out = [];
+  const walk = (a) => (Array.isArray(a) ? a.forEach(walk) : out.push(a < 0 ? ~a : a));
+  walk(g.arcs);
+  return out;
+};
+for (const g of geoms) for (const a of arcsOf(g)) arcUse.set(a, (arcUse.get(a) ?? 0) + 1);
+const provinceLon = {};
+for (const f of provinceFeatures) {
+  const p = f.properties;
+  provinceLon[p.adm1_code] = Number.isFinite(p.longitude) ? p.longitude : f.bbox ? (f.bbox[0] + f.bbox[2]) / 2 : 0;
+}
+const geography = {};
+geoms.forEach((g, i) => {
+  const coastal = arcsOf(g).some((a) => arcUse.get(a) === 1);
+  geography[g.id] = [
+    +provinceLon[g.id].toFixed(2),
+    +provinceLat[g.id].toFixed(2),
+    coastal ? 1 : 0,
+    adjProv[i].map((j) => geoms[j].id).sort(),
+  ];
+});
+
 const dataDir = join(webRoot, "src", "data");
+writeFileSync(join(dataDir, "geography.json"), JSON.stringify(sortObj(geography)));
 writeFileSync(join(dataDir, "countries.json"), JSON.stringify(sortObj(countries)));
 writeFileSync(join(dataDir, "provinces.json"), JSON.stringify(sortObj(provinces)));
 writeFileSync(join(dataDir, "scenario-modern.json"), JSON.stringify(scenario));

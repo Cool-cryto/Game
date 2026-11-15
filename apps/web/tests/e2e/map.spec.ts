@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 type MapHook = {
+  markerOf: (province: string, owner: string) => [number, number] | null;
   screenPointOf: (kind: "country" | "province", id: string) => [number, number] | null;
   pick: (x: number, y: number) => { province: string; country: string } | null;
   counts: () => { provinces: number; countries: number; cities: number };
@@ -74,7 +75,7 @@ test("zoomed in, clicking picks a province, which links back to its country", as
   await expect(page.locator(".map-tooltip")).toContainText("· Germany");
   await page.mouse.click(p.x, p.y);
   await expect(panel(page).getByText("Part of")).toBeVisible();
-  await panel(page).getByRole("button", { name: /Germany/ }).click();
+  await panel(page).getByRole("button", { name: /Part of/ }).click();
   await expect(panel(page).getByRole("heading", { name: "Germany" })).toBeVisible();
 });
 
@@ -150,11 +151,13 @@ test("map modes recolor the map and show a legend", async ({ page }) => {
     ["infrastructure", "Infrastructure"],
     ["density", "People per km²"],
     ["energy", "Energy deposits"],
+    ["diplomacy", "Relations with you"],
+    ["wars", "Wars"],
   ] as const) {
     await page.getByLabel("Map mode").selectOption(mode);
     await expect(page.locator(".legend")).toContainText(title);
+    if (mode === "energy") await expect(page.locator(".legend")).toContainText("Game-generated");
   }
-  await expect(page.locator(".legend")).toContainText("Game-generated");
 });
 
 test("works on a phone-sized screen", async ({ page }) => {
@@ -215,7 +218,7 @@ test("other countries show their policies but can't be changed", async ({ page }
   await searchFor(page, "brazil");
   await expect(panel(page)).toContainText("Tax rate");
   await expect(panel(page).getByLabel("Policies")).toHaveCount(0);
-  await expect(panel(page)).toContainText("AI decisions arrive in Stage 4");
+  await expect(panel(page)).toContainText("Run by the computer");
 });
 
 test("save to a slot, keep playing, then load it back", async ({ page }) => {
@@ -254,4 +257,86 @@ test("importing a file that isn't a save shows a clear error", async ({ page }) 
   await page.getByRole("button", { name: "Game", exact: true }).click();
   await page.getByTestId("import-input").setInputFiles({ name: "notes.json", mimeType: "application/json", buffer: Buffer.from('{"hello":1}') });
   await expect(page.getByRole("status")).toContainText("isn't a saved game");
+});
+
+// ---------- Stage 4: military, war and diplomacy ----------
+
+async function playAs(page: Page, country: string) {
+  await searchFor(page, country);
+  await panel(page).getByRole("button", { name: `Play as ${country}` }).click();
+  await expect(page.getByTestId("player-card")).toContainText(country);
+}
+
+test("your country panel shows its military, and recruiting needs defense funds", async ({ page }) => {
+  await openMap(page);
+  await playAs(page, "France");
+  const military = panel(page).getByLabel("Military");
+  await expect(military).toContainText("Units (population limit)");
+  // The defense fund starts empty, so recruiting is not possible yet.
+  const army = military.getByRole("button", { name: /^Army/ });
+  await expect(army).toBeDisabled();
+  await page.getByRole("radio", { name: "Speed 5" }).click();
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(army).toBeEnabled({ timeout: 15_000 });
+  await page.getByRole("button", { name: "Pause" }).click();
+  const before = await military.locator(".stat__value").first().textContent();
+  await army.click();
+  await expect(military.locator(".stat__value").first()).not.toHaveText(before!);
+});
+
+test("select your units and march them somewhere", async ({ page }) => {
+  await openMap(page);
+  await playAs(page, "France");
+  await panel(page).getByLabel("Military").locator(".stack-list button").first().click();
+  await expect(panel(page)).toContainText("Your forces");
+  await panel(page).getByRole("button", { name: /^Move \d+ unit/ }).click();
+  // Pick the destination with search; the panel offers "Send units here".
+  await searchFor(page, "brittany");
+  await panel(page).getByRole("button", { name: "Send units here" }).click();
+  await searchFor(page, "france");
+  await expect(panel(page).getByLabel("Military")).toContainText(/Marching to .* · \d+ days/);
+});
+
+test("diplomacy: relations can be improved; alliances need good relations", async ({ page }) => {
+  await openMap(page);
+  await playAs(page, "Portugal");
+  await searchFor(page, "brazil");
+  const diplomacy = panel(page).getByLabel("Diplomacy");
+  await expect(diplomacy.getByRole("button", { name: "Propose alliance" })).toBeDisabled();
+  await expect(diplomacy).toContainText("Relations must be at least 40");
+  await expect(page.getByTestId("relation")).toContainText(/^0 /);
+  await diplomacy.getByRole("button", { name: "Improve relations" }).click();
+  await expect(page.getByTestId("relation")).toContainText(/^15 /);
+  await expect(diplomacy.getByRole("button", { name: "Improve relations" })).toBeDisabled();
+});
+
+test("war: declare, invade, occupy, and the enemy is annexed", async ({ page }) => {
+  test.setTimeout(90_000);
+  await openMap(page, { waitForDetail: true });
+  await playAs(page, "France");
+  await searchFor(page, "monaco");
+  await panel(page).getByRole("button", { name: "Declare war…" }).click();
+  await panel(page).getByRole("button", { name: "Declare war", exact: true }).click();
+  await expect(page.getByTestId("player-card")).toContainText("At war");
+
+  // Send the first French army stack to Monaco.
+  await searchFor(page, "france");
+  await panel(page).getByLabel("Military").locator(".stack-list button").first().click();
+  await panel(page).getByRole("button", { name: /^Move \d+ unit/ }).click();
+  // Monaco is tiny: target it through search and "Send units here".
+  await searchFor(page, "monaco");
+  await panel(page).getByRole("button", { name: "Send units here" }).click();
+
+  await page.getByRole("radio", { name: "Speed 5" }).click();
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(page.getByTestId("news-list")).toContainText("Monaco has been annexed", { timeout: 60_000 });
+  await page.getByRole("button", { name: "Pause" }).click();
+  await expect(page.getByTestId("player-card")).not.toContainText("At war");
+  // The province itself now belongs to France.
+  const owner = await page.evaluate(() => {
+    const m = window.__gsMap!;
+    const p = m.screenPointOf("province", "MCO+00?");
+    return p ? m.pick(p[0], p[1])?.country : null;
+  });
+  expect(owner).toBe("FRA");
 });

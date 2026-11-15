@@ -3,6 +3,7 @@ import { WorldMap } from "./map/WorldMap";
 import { startSimulation } from "./state/gameStore";
 import { GameErrors } from "./ui/GameErrors";
 import { InfoPanel } from "./ui/InfoPanel";
+import { NewsFeed } from "./ui/NewsFeed";
 import { Legend } from "./ui/Legend";
 import { PlayerCard } from "./ui/PlayerCard";
 import { TimeControls } from "./ui/TimeControls";
@@ -21,6 +22,7 @@ export function App() {
       <ZoomControls />
       <TimeControls />
       <GameErrors />
+      <NewsFeed />
       <footer className="credits">
         Map, cities, starting population &amp; GDP: Natural Earth (public domain) · Country facts: mledoze/countries (ODbL) · Flags: flag-icons (MIT)
       </footer>

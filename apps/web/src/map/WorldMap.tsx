@@ -6,8 +6,9 @@ import type { CountryId, ProvinceId } from "@gs/shared";
 import { createWorldFrame, projectCities, type Bounds, type CityPoint, type CountryShape, type ProvinceShape } from "./geo";
 import { MAP_MODES, NO_DATA } from "./mapModes";
 import type { DetailLevel, WorkerRequest, WorkerResponse } from "./workerProtocol";
-import { COUNTRIES, getCountry, getProvince, loadCities } from "../data/countries";
-import { ownersRecord, useGame } from "../state/gameStore";
+import { atWar, planMove, UNIT_STATS, type Unit } from "@gs/sim";
+import { COUNTRIES, GEOGRAPHY, getCountry, getProvince, loadCities } from "../data/countries";
+import { ownersRecord, playerCountry, useGame } from "../state/gameStore";
 import { sameSelection, useUi, type CameraCommand, type Selection } from "../state/uiStore";
 
 /** How far in the player may zoom, relative to the whole-world view. */
@@ -152,6 +153,7 @@ export function WorldMap() {
       const { hovered, selected, mapMode } = useUi.getState();
       const game = useGame.getState().state;
       const mode = MAP_MODES[mapMode];
+      const playerId = playerCountry(game)?.id;
 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.fillStyle = "#070d14";
@@ -171,7 +173,7 @@ export function WorldMap() {
 
       if (mode.level === "country") {
         for (const c of visible) {
-          ctx.fillStyle = mode.color(c.id, { info: COUNTRIES[c.id], state: game.countries[c.id] });
+          ctx.fillStyle = mode.color(c.id, { info: COUNTRIES[c.id], state: game.countries[c.id], game, me: playerId });
           ctx.fill(c.path);
         }
       } else {
@@ -187,6 +189,14 @@ export function WorldMap() {
         }
       }
 
+      // Occupied provinces: stripes in the occupier's color.
+      for (const p of L.provinceList) {
+        const ps = game.provinces[p.id];
+        if (!ps || ps.controller === ps.owner || !onScreen(p.bounds)) continue;
+        ctx.fillStyle = stripes(ctx, politicalColor(ps.controller), t.k);
+        ctx.fill(p.path);
+      }
+
       ctx.lineJoin = "round";
       if (z >= PROVINCE_ZOOM * 0.75) {
         const a = Math.min(1, (z - PROVINCE_ZOOM * 0.75) / (PROVINCE_ZOOM * 0.5));
@@ -198,7 +208,8 @@ export function WorldMap() {
       ctx.lineWidth = (z >= PROVINCE_ZOOM ? 1.4 : 0.8) / t.k;
       for (const c of visible) ctx.stroke(c.path);
 
-      const shapeOf = (s: Selection) => (!s ? undefined : s.kind === "country" ? L.countries.get(s.id) : L.provinces.get(s.id));
+      const shapeOf = (s: Selection) =>
+        !s ? undefined : s.kind === "country" ? L.countries.get(s.id) : L.provinces.get(s.kind === "units" ? s.province : s.id);
 
       const hov = !sameSelection(hovered, selected) ? shapeOf(hovered) : undefined;
       if (hov) {
@@ -223,6 +234,186 @@ export function WorldMap() {
       }
 
       drawLabels(ctx, L, visible, dpr, selected);
+      drawUnits(ctx, dpr);
+    }
+
+    // ---------- Units ----------
+    const stripeCache = new Map<string, HTMLCanvasElement>();
+    /** A diagonal-stripe fill that stays the same size on screen at any zoom. */
+    function stripes(ctx: CanvasRenderingContext2D, color: string, k: number): CanvasPattern | string {
+      let tile = stripeCache.get(color);
+      if (!tile) {
+        tile = document.createElement("canvas");
+        tile.width = tile.height = 10;
+        const c = tile.getContext("2d")!;
+        c.strokeStyle = color;
+        c.lineWidth = 3.5;
+        c.beginPath();
+        for (const o of [-10, 0, 10]) {
+          c.moveTo(o, 10);
+          c.lineTo(o + 10, 0);
+        }
+        c.stroke();
+        stripeCache.set(color, tile);
+      }
+      const pattern = ctx.createPattern(tile, "repeat");
+      if (!pattern) return color;
+      pattern.setTransform(new DOMMatrix().scale(1 / k));
+      return pattern;
+    }
+    const politicalColor = (c: CountryId) => MAP_MODES.political.level === "country" ? MAP_MODES.political.color(c, { info: COUNTRIES[c], state: undefined }) : "#888";
+
+    interface Stack {
+      province: ProvinceId;
+      owner: CountryId;
+      units: Unit[];
+      x: number;
+      y: number;
+    }
+    /** Marker boxes drawn last frame, for clicking. */
+    let markers: { x0: number; y0: number; x1: number; y1: number; stack: Stack }[] = [];
+
+    function drawUnits(ctx: CanvasRenderingContext2D, dpr: number) {
+      markers = [];
+      const low = layers.low;
+      if (!low) return;
+      const { w, h } = size;
+      const t = transform;
+      const z = rel();
+      const game = useGame.getState().state;
+      const me = playerCountry(game)?.id;
+      const { selected, moveOrder } = useUi.getState();
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      // Group into stacks: one marker per country per province.
+      const stacks = new Map<string, Stack>();
+      for (const u of Object.values(game.units)) {
+        const k = `${u.province}|${u.owner}`;
+        let st = stacks.get(k);
+        if (!st) {
+          const shape = low.provinces.get(u.province);
+          if (!shape) continue;
+          const [x, y] = t.apply(shape.labelPoint);
+          stacks.set(k, (st = { province: u.province, owner: u.owner, units: [], x, y }));
+        }
+        st.units.push(u);
+      }
+
+      // Routes of the player's moving units (the selected stack's more strongly).
+      const selectedStack = selected?.kind === "units" ? `${selected.province}|${selected.owner}` : null;
+      for (const st of stacks.values()) {
+        if (st.owner !== me) continue;
+        const emphasised = `${st.province}|${st.owner}` === selectedStack;
+        for (const u of st.units) {
+          if (!u.path.length) continue;
+          ctx.beginPath();
+          ctx.moveTo(st.x, st.y);
+          for (const p of u.path) {
+            const shape = low.provinces.get(p);
+            if (shape) ctx.lineTo(...t.apply(shape.labelPoint));
+          }
+          ctx.setLineDash([6, 5]);
+          ctx.lineWidth = emphasised ? 2.5 : 1.5;
+          ctx.strokeStyle = emphasised ? "#ffd678" : "rgba(255, 214, 120, 0.6)";
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      }
+
+      // Battles: hostile armies or fleets in the same province.
+      const byProvince = new Map<ProvinceId, Stack[]>();
+      for (const st of stacks.values()) {
+        if (!byProvince.has(st.province)) byProvince.set(st.province, []);
+        byProvince.get(st.province)!.push(st);
+      }
+
+      // Away from the action, show only your own units and battles when zoomed out.
+      for (const [province, list] of byProvince) {
+        const battle = list.some((a) => list.some((b) => a !== b && atWar(game, a.owner, b.owner)));
+        const show = z >= 2.5 || battle || list.some((st) => st.owner === me) || moveOrder != null;
+        if (!show) continue;
+        list.forEach((st, i) => {
+          const x = st.x + (i - (list.length - 1) / 2) * 30;
+          const y = st.y - 18;
+          if (x < -30 || y < -30 || x > w + 30 || y > h + 30) return;
+          drawMarker(ctx, st, x, y, st.owner === me, `${province}|${st.owner}` === selectedStack);
+          markers.push({ x0: x - 14, y0: y - 10, x1: x + 14, y1: y + 10, stack: st });
+        });
+        if (battle) drawBattle(ctx, list[0]!.x, list[0]!.y - 38);
+      }
+    }
+
+    function drawMarker(ctx: CanvasRenderingContext2D, st: Stack, x: number, y: number, mine: boolean, isSelected: boolean) {
+      const counts = { army: 0, navy: 0, air: 0 };
+      for (const u of st.units) counts[u.type]++;
+      const main = (["army", "navy", "air"] as const).reduce((a, b) => (counts[b] > counts[a] ? b : a));
+      const strength = st.units.reduce((a, u) => a + u.strength, 0) / st.units.length;
+      ctx.beginPath();
+      ctx.roundRect(x - 13, y - 9, 26, 18, 3);
+      ctx.fillStyle = politicalColor(st.owner);
+      ctx.fill();
+      ctx.lineWidth = isSelected ? 2.5 : 1.5;
+      ctx.strokeStyle = isSelected ? "#ffd678" : mine ? "#ffffff" : "rgba(5, 10, 16, 0.9)";
+      ctx.stroke();
+      // Unit symbol, in the style of military map symbols.
+      ctx.strokeStyle = "rgba(255,255,255,0.95)";
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      if (main === "army") {
+        ctx.moveTo(x - 9, y - 5);
+        ctx.lineTo(x + 3, y + 5);
+        ctx.moveTo(x - 9, y + 5);
+        ctx.lineTo(x + 3, y - 5);
+      } else if (main === "navy") {
+        ctx.moveTo(x - 9, y + 1);
+        ctx.quadraticCurveTo(x - 3, y + 7, x + 3, y + 1);
+        ctx.moveTo(x - 3, y - 5);
+        ctx.lineTo(x - 3, y + 4);
+      } else {
+        ctx.moveTo(x - 9, y + 3);
+        ctx.lineTo(x - 3, y - 4);
+        ctx.lineTo(x + 3, y + 3);
+      }
+      ctx.stroke();
+      // Count.
+      ctx.font = "700 10px Inter, system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "#fff";
+      ctx.fillText(String(st.units.length), x + 8.5, y + 0.5);
+      // Strength bar.
+      ctx.fillStyle = "rgba(5,10,16,0.85)";
+      ctx.fillRect(x - 13, y + 10, 26, 3);
+      ctx.fillStyle = strength > 60 ? "#7fd39a" : strength > 30 ? "#e8c25a" : "#f08a7a";
+      ctx.fillRect(x - 13, y + 10, (26 * strength) / 100, 3);
+    }
+
+    function drawBattle(ctx: CanvasRenderingContext2D, x: number, y: number) {
+      ctx.beginPath();
+      ctx.arc(x, y, 10, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(200, 50, 40, 0.92)";
+      ctx.fill();
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(x - 5, y - 5);
+      ctx.lineTo(x + 5, y + 5);
+      ctx.moveTo(x + 5, y - 5);
+      ctx.lineTo(x - 5, y + 5);
+      ctx.stroke();
+    }
+
+    const markerAt = (x: number, y: number) => [...markers].reverse().find((m) => x >= m.x0 && x <= m.x1 && y >= m.y0 && y <= m.y1);
+
+    /** Where would the ordered units go if sent to this province? */
+    function previewMove(province: ProvinceId | null): string | null {
+      const order = useUi.getState().moveOrder;
+      if (!order || !province) return null;
+      const game = useGame.getState().state;
+      const u = game.units[order.units[0]!];
+      if (!u) return null;
+      const plan = planMove(game, GEOGRAPHY, u, province);
+      return "error" in plan ? plan.error : `Move here (${plan.mode === "land" ? "march" : plan.mode === "sea" ? "by sea" : "fly"})`;
     }
 
     function drawLabels(ctx: CanvasRenderingContext2D, L: Layer, visible: CShape[], dpr: number, selected: Selection) {
@@ -355,7 +546,28 @@ export function WorldMap() {
     }
 
     function updateHover() {
+      const marker = pointer ? markerAt(pointer.x, pointer.y) : undefined;
+      const order = useUi.getState().moveOrder;
+      if (marker && !order) {
+        canvas.style.cursor = "pointer";
+        const tip = tooltipRef.current;
+        if (tip && pointer) tip.style.transform = `translate(${pointer.x + 14}px, ${pointer.y + 14}px)`;
+        const counts = { army: 0, navy: 0, air: 0 };
+        for (const u of marker.stack.units) counts[u.type]++;
+        const parts = (["army", "navy", "air"] as const).filter((k) => counts[k]).map((k) => `${counts[k]} ${UNIT_STATS[k].label.toLowerCase()}${counts[k] > 1 ? (k === "army" ? "ies" : "s") : ""}`.replace("armyies", "armies"));
+        setTooltip(`${parts.join(", ")} · ${getCountry(marker.stack.owner)?.name ?? marker.stack.owner}`);
+        useUi.getState().hover({ kind: "units", province: marker.stack.province, owner: marker.stack.owner });
+        return;
+      }
       const hit = pointer ? pick(pointer.x, pointer.y) : null;
+      if (order) {
+        canvas.style.cursor = "crosshair";
+        const tip = tooltipRef.current;
+        if (tip && pointer) tip.style.transform = `translate(${pointer.x + 14}px, ${pointer.y + 14}px)`;
+        useUi.getState().hover(hit ? { kind: "province", id: hit.province } : null);
+        setTooltip(hit ? `${getProvince(hit.province)?.name ?? ""}: ${previewMove(hit.province)}` : "Click a province to send your units there");
+        return;
+      }
       const s: Selection = hit ? (rel() >= PROVINCE_ZOOM ? { kind: "province", id: hit.province } : { kind: "country", id: hit.country }) : null;
       useUi.getState().hover(s);
       canvas.style.cursor = hit ? "pointer" : "grab";
@@ -457,9 +669,10 @@ export function WorldMap() {
         const target = cmd.target;
         if (target.kind === "country") {
           const c = low.countries.get(target.id);
-          if (c) zoomBehavior.transform(tr, focusTransform(c.mainBounds, MAX_ZOOM * 0.25));
+          // Big countries fit to their size; tiny ones (Monaco, islands) zoom right in.
+          if (c) zoomBehavior.transform(tr, focusTransform(c.mainBounds, MAX_ZOOM * 0.8));
         } else {
-          const p = low.provinces.get(target.id);
+          const p = low.provinces.get(target.kind === "units" ? target.province : target.id);
           // Never stop short of province zoom, so the province stays selectable.
           if (p) zoomBehavior.transform(tr, focusTransform(p.mainBounds, MAX_ZOOM * 0.4, PROVINCE_ZOOM));
         }
@@ -480,10 +693,45 @@ export function WorldMap() {
       updateHover();
     };
     const onDown = (e: PointerEvent) => (down = local(e));
+    /** Send the current move order to a province. */
+    function orderMove(units: number[], province: ProvinceId) {
+      const me = playerCountry(useGame.getState().state);
+      if (!me) return;
+      useGame.getState().send({ type: "moveUnits", country: me.id, units, to: province });
+    }
     const onUp = (e: PointerEvent) => {
       const p = local(e);
-      if (down && Math.hypot(p.x - down.x, p.y - down.y) < 5) useUi.getState().select(selectionAt(p.x, p.y));
+      const click = down && Math.hypot(p.x - down.x, p.y - down.y) < 5;
       down = null;
+      if (!click || e.button !== 0) return;
+      const ui = useUi.getState();
+      if (ui.moveOrder) {
+        const hit = pick(p.x, p.y);
+        if (hit) orderMove(ui.moveOrder.units, hit.province);
+        ui.setMoveOrder(null);
+        return;
+      }
+      const marker = markerAt(p.x, p.y);
+      if (marker) {
+        ui.select({ kind: "units", province: marker.stack.province, owner: marker.stack.owner });
+        return;
+      }
+      ui.select(selectionAt(p.x, p.y));
+    };
+    /** Right-click with your units selected: move them there. */
+    const onContextMenu = (e: MouseEvent) => {
+      const ui = useUi.getState();
+      const game = useGame.getState().state;
+      const me = playerCountry(game)?.id;
+      if (ui.selected?.kind !== "units" || ui.selected.owner !== me) return;
+      e.preventDefault();
+      const p = local(e);
+      const hit = pick(p.x, p.y);
+      const sel = ui.selected;
+      const ids = Object.values(game.units)
+        .filter((u) => u.province === sel.province && u.owner === me)
+        .map((u) => u.id);
+      if (hit && ids.length) orderMove(ids, hit.province);
     };
     const onDblClick = (e: MouseEvent) => {
       const p = local(e);
@@ -503,8 +751,10 @@ export function WorldMap() {
       canvas.addEventListener("pointerdown", onDown);
       canvas.addEventListener("pointerup", onUp);
       canvas.addEventListener("dblclick", onDblClick);
+      canvas.addEventListener("contextmenu", onContextMenu);
       unsubUi = useUi.subscribe((s, prev) => {
-        if (s.hovered !== prev.hovered || s.selected !== prev.selected || s.mapMode !== prev.mapMode) requestDraw();
+        if (s.hovered !== prev.hovered || s.selected !== prev.selected || s.mapMode !== prev.mapMode || s.moveOrder !== prev.moveOrder) requestDraw();
+        if (s.moveOrder !== prev.moveOrder) updateHover();
         if (s.camera && s.camera !== prev.camera) runCamera(s.camera);
       });
       if (import.meta.env.DEV) installTestHook();
@@ -523,6 +773,11 @@ export function WorldMap() {
         detail: () => (layer() === layers.high ? "high" : "low"),
         highLoaded: () => !!layers.high,
         lastDrawMs: () => lastDrawMs,
+        /** Screen centre of the marker for a country's units in a province. */
+        markerOf: (province: string, owner: string) => {
+          const m = markers.find((x) => x.stack.province === province && x.stack.owner === owner);
+          return m ? [(m.x0 + m.x1) / 2, (m.y0 + m.y1) / 2] : null;
+        },
       };
     }
 
@@ -538,6 +793,7 @@ export function WorldMap() {
       canvas.removeEventListener("pointerdown", onDown);
       canvas.removeEventListener("pointerup", onUp);
       canvas.removeEventListener("dblclick", onDblClick);
+      canvas.removeEventListener("contextmenu", onContextMenu);
       cancelAnimationFrame(frameId);
     };
   }, []);

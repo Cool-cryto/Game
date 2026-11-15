@@ -12,7 +12,10 @@ The simulation is the game's rules engine. It must be predictable, testable and 
 - `packages/sim/src/state.ts` – `GameState`, `createGameState(scenario, seed)`, starting values, constants.
 - `packages/sim/src/systems.ts` – monthly systems (`runMonthly`) and the growth/stability breakdowns.
 - `packages/sim/src/commands.ts` – `Command` union, `validateCommand`, `applyCommand`.
-- `packages/sim/src/engine.ts` – `tick(state, commands)`, `serialize`, `deserialize` (checks `SAVE_VERSION`).
+- `packages/sim/src/engine.ts` – `tick(state, geo, commands)`, `serialize`, `deserialize` (checks `SAVE_VERSION`).
+- `packages/sim/src/geography.ts`, `military.ts`, `diplomacy.ts`, `ai.ts` – Stage 4 systems (see docs/ARCHITECTURE.md).
+- Geography is static and passed in; never store it in `GameState`.
+- The 20-year test prints a summary line (wars, annexations, units, alliances); keep wars rare and the world stable.
 - `apps/web/src/sim/sim.worker.ts` – runs ticks in the browser; `apps/web/src/state/gameStore.ts` talks to it.
 - Tests: `packages/sim/src/sim.test.ts` (rules, determinism, saves, 20-year world run with sanity ranges).
 - When you change a rule, rerun the 20-year test and look at the numbers, not just pass/fail.

@@ -1251,3 +1251,421 @@ button {
     overflow-y: auto;
   }
 }
+
+/* ---------- Stage 4 additions ---------- */
+.player__war {
+  padding: 3px 8px;
+  border-radius: 99px;
+  background: rgba(217, 72, 59, 0.2);
+  color: #ff9c90;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.panel__flag--small {
+  width: 40px;
+  height: 30px;
+}
+.panel__note--war {
+  background: rgba(217, 72, 59, 0.12);
+  color: #ffc1b8;
+}
+.panel__note--war p {
+  margin: 0;
+}
+
+/* Units */
+.unit-list,
+.stack-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.unit-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+}
+.unit-row input {
+  accent-color: #ffd678;
+}
+.unit-row__main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.unit-row__name {
+  font-weight: 600;
+}
+.unit-row__status {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.unit-row__strength {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+.unit-row__bar {
+  width: 44px;
+  height: 5px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.unit-row__bar span {
+  display: block;
+  height: 100%;
+}
+.unit-row__bar .good { background: #7fd39a; }
+.unit-row__bar .mid { background: #e8c25a; }
+.unit-row__bar .bad { background: #f08a7a; }
+.unit-icon {
+  width: 22px;
+  height: 16px;
+  border: 1.5px solid #cfd8e3;
+  border-radius: 2px;
+  position: relative;
+  flex: none;
+}
+.unit-icon--army {
+  background:
+    linear-gradient(to top right, transparent calc(50% - 0.8px), #cfd8e3 calc(50% - 0.8px), #cfd8e3 calc(50% + 0.8px), transparent calc(50% + 0.8px)),
+    linear-gradient(to bottom right, transparent calc(50% - 0.8px), #cfd8e3 calc(50% - 0.8px), #cfd8e3 calc(50% + 0.8px), transparent calc(50% + 0.8px));
+}
+.unit-icon--navy::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 3px;
+  height: 5px;
+  border: 1.5px solid #cfd8e3;
+  border-top: 0;
+  border-radius: 0 0 6px 6px;
+}
+.unit-icon--air::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 4px;
+  width: 8px;
+  height: 8px;
+  border-left: 1.5px solid #cfd8e3;
+  border-top: 1.5px solid #cfd8e3;
+  transform: rotate(45deg);
+}
+.stack-list button {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  padding: 8px 10px;
+  text-align: left;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+}
+.stack-list button:hover {
+  border-color: rgba(255, 214, 120, 0.45);
+}
+.stack-list__name {
+  font-weight: 600;
+}
+.stack-list__units {
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: right;
+}
+.stack-list__status {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: #7d8da0;
+}
+.recruit {
+  margin-top: 10px;
+}
+.recruit__buttons {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.recruit__buttons .btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.recruit__cost {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 500;
+  opacity: 0.75;
+}
+
+/* Diplomacy & wars */
+.diplomacy__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.diplomacy__actions .btn {
+  flex: 1 1 auto;
+}
+.relation {
+  display: grid;
+  gap: 6px;
+}
+.relation__bar {
+  position: relative;
+  height: 8px;
+  border-radius: 99px;
+  background: linear-gradient(to right, #8e3b3b, #6b7480 50%, #3f9a6a);
+}
+.relation__mid {
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  bottom: -2px;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.4);
+}
+.relation__marker {
+  position: absolute;
+  top: -4px;
+  width: 4px;
+  height: 16px;
+  margin-left: -2px;
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: 0 0 0 1.5px rgba(5, 10, 16, 0.8);
+}
+.relation__label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.confirm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: rgba(217, 72, 59, 0.12);
+  font-size: 13px;
+  color: #ffc1b8;
+}
+.confirm span {
+  flex-basis: 100%;
+}
+.war {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(217, 72, 59, 0.35);
+  background: rgba(217, 72, 59, 0.06);
+}
+.war__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.war__age {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.war__score {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  font-weight: 700;
+  font-size: 13px;
+}
+.war__score-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 9px;
+  background: rgba(217, 72, 59, 0.35);
+  overflow: hidden;
+}
+.war__score-bar span {
+  display: block;
+  height: 100%;
+  background: #7fd39a;
+}
+.offer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 214, 120, 0.1);
+  font-size: 13px;
+}
+.offer span {
+  flex-basis: 100%;
+}
+
+/* News */
+.news {
+  position: absolute;
+  right: 12px;
+  bottom: 34px;
+  width: 340px;
+  max-height: 260px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: var(--shadow);
+  z-index: 4;
+}
+.news--closed {
+  width: auto;
+}
+.app:has(.panel) .news {
+  right: 384px;
+}
+.news__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 6px 12px;
+}
+.news__toggle {
+  border: 0;
+  background: transparent;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 2px 0;
+}
+.news__count {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 99px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-size: 11px;
+}
+.news__filters {
+  display: flex;
+  gap: 2px;
+}
+.news__filters button {
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+.news__filters button.is-on {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+.news__list {
+  list-style: none;
+  margin: 0;
+  padding: 0 8px 8px;
+  overflow-y: auto;
+  display: grid;
+  gap: 2px;
+}
+.news__item {
+  display: flex;
+  gap: 8px;
+  padding: 5px 4px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.news__icon {
+  width: 16px;
+  flex: none;
+  text-align: center;
+  color: var(--text-dim);
+}
+.news__item--war .news__icon,
+.news__item--battle .news__icon { color: #f08a7a; }
+.news__item--peace .news__icon { color: #7fd39a; }
+.news__item--alliance .news__icon { color: #7fb7ea; }
+.news__date {
+  display: block;
+  font-size: 11px;
+  color: #7d8da0;
+}
+.news__empty {
+  padding: 6px 4px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+.news-toast {
+  position: absolute;
+  top: 74px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(520px, calc(100vw - 32px));
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: var(--surface-solid);
+  border: 1px solid rgba(255, 214, 120, 0.4);
+  box-shadow: var(--shadow);
+  font-weight: 600;
+  z-index: 15;
+  animation: panel-in 0.2s ease-out;
+}
+.news-toast--war,
+.news-toast--battle {
+  border-color: rgba(217, 72, 59, 0.6);
+}
+
+@media (max-width: 1100px) {
+  .news {
+    display: none;
+  }
+}
+@media (max-width: 760px) {
+  .news-toast {
+    top: 214px;
+  }
+}
+
+.send-here {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 214, 120, 0.45);
+  background: rgba(255, 214, 120, 0.08);
+}
+.send-here p {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 13px;
+}

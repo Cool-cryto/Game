@@ -3,6 +3,7 @@
 // The page sends commands and speed changes; this worker sends back the game state
 // a few times a second (and right away while paused, so changes show instantly).
 import { applyCommand, tick, type Command, type GameState } from "@gs/sim";
+import { GEOGRAPHY } from "../data/countries";
 import { DAYS_PER_SECOND, type SimRequest, type SimResponse, type Speed } from "./protocol";
 
 const STEP_MS = 50;
@@ -47,7 +48,7 @@ setInterval(() => {
   if (paused) {
     // While paused, apply commands straight away so the player sees the effect.
     for (const cmd of queue.splice(0)) {
-      const err = applyCommand(state, cmd);
+      const err = applyCommand(state, GEOGRAPHY, cmd);
       if (err) errors.push(err);
       dirty = true;
     }
@@ -56,7 +57,7 @@ setInterval(() => {
     const days = Math.min(Math.floor(carry), MAX_DAYS_PER_STEP);
     carry = Math.min(carry - days, 5); // drop backlog rather than racing to catch up
     for (let i = 0; i < days; i++) {
-      errors.push(...tick(state, i === 0 ? queue.splice(0) : []));
+      errors.push(...tick(state, GEOGRAPHY, i === 0 ? queue.splice(0) : []));
       dirty = true;
     }
   }

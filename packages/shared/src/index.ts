@@ -83,5 +83,5 @@ export interface Scenario {
       deposits: Record<ResourceId, number>;
     }
   >;
-  countries: Record<CountryId, { population: number | null; gdpMillionUsd: number | null; incomeGroup: string | null }>;
+  countries: Record<CountryId, { name?: string; population: number | null; gdpMillionUsd: number | null; incomeGroup: string | null }>;
 }

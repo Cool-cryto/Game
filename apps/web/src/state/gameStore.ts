@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { CountryId, ProvinceId } from "@gs/shared";
 import { createGameState, provincesByOwner, type Command, type CountryState, type GameState } from "@gs/sim";
-import { MODERN_SCENARIO } from "../data/countries";
+import { GEOGRAPHY, MODERN_SCENARIO } from "../data/countries";
 import type { SimRequest, SimResponse, Speed } from "../sim/protocol";
 
 interface GameStore {
@@ -22,7 +22,7 @@ interface GameStore {
   replace: (state: GameState) => void;
 }
 
-export const newGameState = () => createGameState(MODERN_SCENARIO, Date.now() % 2 ** 31);
+export const newGameState = () => createGameState(MODERN_SCENARIO, GEOGRAPHY, Date.now() % 2 ** 31);
 
 const initial = newGameState();
 
@@ -80,3 +80,6 @@ export const playerCountry = (s: GameState): CountryState | undefined => Object.
 /** Owner of every province, in the plain shape the map worker needs. */
 export const ownersRecord = (s: GameState): Record<string, CountryId> =>
   Object.fromEntries(Object.values(s.provinces).map((p) => [p.id, p.owner]));
+
+// Lets automated tests read the game state. Development builds only.
+if (import.meta.env.DEV && typeof window !== "undefined") (window as unknown as { __gsGame?: unknown }).__gsGame = useGame;

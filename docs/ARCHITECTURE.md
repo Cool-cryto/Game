@@ -115,3 +115,15 @@ population, GDP) lives in `GameState`.
 - Saves are `JSON.stringify(GameState)` with a `version` number; loading an incompatible version gives a clear error.
   Browser saves use IndexedDB (saves are ~1–2 MB).
 - The same engine will run on the multiplayer server later; the browser worker is the single-player host.
+
+## Military, war and AI (Stage 4)
+
+- `packages/sim/src/geography.ts` – fixed geography (neighbours, coasts, positions), distances, Dijkstra path-finding.
+  Geography is passed to the engine (`tick(state, geo, commands)`) and is **not** part of saves.
+- `packages/sim/src/military.ts` – units, recruiting, movement, battles, sieges, upkeep.
+- `packages/sim/src/diplomacy.ts` – relations, alliances, wars, war score, peace, province transfer, surrender.
+- `packages/sim/src/ai.ts` – monthly AI decisions (budget, forces, alliances, war, peace) and daily war orders.
+- Daily order in `tick()`: commands → movement → battles → sieges → surrenders → AI war orders; monthly systems on the 1st.
+- Players and AI use the same rules; acceptance rules (`wouldAcceptPeace`, `wouldAcceptAlliance`) are also used
+  by the UI to show whether an offer would be accepted.
+- Every province has an `owner` (de jure) and a `controller` (who holds it now). Peace treaties turn control into ownership.

@@ -1,8 +1,10 @@
 import type { CountryId, ProvinceId, ResourceId, Scenario } from "@gs/shared";
 import { RESOURCES } from "@gs/shared";
+import { createStartingMilitaries } from "./military";
 import type { RngState } from "./rng";
+import type { Geography } from "./geography";
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 /** Spending categories the player controls, each as a share of GDP per year. */
 export type BudgetCategory = "infrastructure" | "research" | "welfare" | "defense";
@@ -28,6 +30,7 @@ export interface ResourceBalance {
 
 export interface CountryState {
   id: CountryId;
+  name: string;
   controller: "ai" | "human";
   /** False for places with no population or economy (e.g. Antarctica, uninhabited islands). */
   active: boolean;
@@ -49,9 +52,58 @@ export interface CountryState {
   /** Last month's population growth, as a yearly rate. */
   popGrowth: number;
   resources: Record<ResourceId, ResourceBalance>;
-  /** Total defense spending so far (millions of US$); armies use it from Stage 4. */
+  /** Defense money not yet spent (millions of US$). Pays for recruiting, upkeep and reinforcements. */
   defenseFund: number;
+  /** Seat of government: the most populous province owned. Null once a country has no provinces. */
+  capital: ProvinceId | null;
   history: { gdp: number[]; population: number[] };
+}
+
+export type UnitType = "army" | "navy" | "air";
+
+export interface Unit {
+  id: number;
+  owner: CountryId;
+  type: UnitType;
+  /** Where the unit is now. */
+  province: ProvinceId;
+  /** 0-100. Lost in battle, regained slowly at home. */
+  strength: number;
+  /** Provinces still to travel through; path[0] is the next stop. Empty when not moving. */
+  path: ProvinceId[];
+  /** How the unit is travelling to path[0], and how many days are left. */
+  travel: { mode: "land" | "sea" | "air"; daysLeft: number } | null;
+  /** Set while falling back from a lost battle; retreating units don't fight. */
+  retreating: boolean;
+}
+
+export interface War {
+  id: number;
+  name: string;
+  /** attackers[0] and defenders[0] lead their sides and negotiate peace. */
+  attackers: CountryId[];
+  defenders: CountryId[];
+  startTick: number;
+}
+
+export type PeaceTerms = "white" | "occupied";
+
+export interface PeaceOffer {
+  id: number;
+  warId: number;
+  from: CountryId;
+  to: CountryId;
+  terms: PeaceTerms;
+  expiresTick: number;
+}
+
+export type EventKind = "war" | "peace" | "battle" | "occupation" | "alliance" | "annexation" | "diplomacy" | "military";
+
+export interface GameEvent {
+  tick: number;
+  kind: EventKind;
+  text: string;
+  countries: CountryId[];
 }
 
 export interface ProvinceState {
@@ -62,6 +114,10 @@ export interface ProvinceState {
   /** 0-10. Raises resource output and growth; built up by infrastructure spending. */
   infrastructure: number;
   deposits: Record<ResourceId, number>;
+  /** Who holds the province right now. Differs from owner while occupied in a war. */
+  controller: CountryId;
+  /** Siege in progress: who is taking the province and how far along (0-1). */
+  siege: { by: CountryId; progress: number } | null;
 }
 
 /**
@@ -81,6 +137,20 @@ export interface GameState {
   resourceScale: Record<ResourceId, number>;
   countries: Record<CountryId, CountryState>;
   provinces: Record<ProvinceId, ProvinceState>;
+  units: Record<string, Unit>;
+  /** Next id for units, wars and offers. */
+  nextId: number;
+  wars: War[];
+  /** Relations between two countries, -100 to 100, keyed "AAA|BBB" (sorted). Missing means 0. */
+  relations: Record<string, number>;
+  /** Defensive alliances, as sorted "AAA|BBB" keys. */
+  alliances: string[];
+  /** Peace offers waiting for a human player's answer. */
+  offers: PeaceOffer[];
+  /** Last day each pair had a diplomatic action, keyed "FROM>TO". */
+  diplomacyCooldown: Record<string, number>;
+  /** Recent news, newest last. */
+  events: GameEvent[];
 }
 
 const DEFAULT_TAX: Record<string, number> = {
@@ -116,7 +186,7 @@ export function defaultBudget(taxRate: number): Record<BudgetCategory, number> {
 
 const round4 = (n: number) => Math.round(n * 10000) / 10000;
 
-export function createGameState(scenario: Scenario, seed: number): GameState {
+export function createGameState(scenario: Scenario, geo: Geography, seed: number): GameState {
   const countries = {} as Record<CountryId, CountryState>;
   const emptyResources = () => Object.fromEntries(RESOURCES.map((r) => [r, { production: 0, need: 0, imports: 0, exports: 0 }])) as Record<ResourceId, ResourceBalance>;
 
@@ -126,6 +196,7 @@ export function createGameState(scenario: Scenario, seed: number): GameState {
     const taxRate = DEFAULT_TAX[c.incomeGroup ?? ""] ?? 0.22;
     countries[id] = {
       id,
+      name: c.name ?? id,
       controller: "ai",
       active,
       population: 0,
@@ -140,6 +211,7 @@ export function createGameState(scenario: Scenario, seed: number): GameState {
       popGrowth: 0,
       resources: emptyResources(),
       defenseFund: 0,
+      capital: null,
       history: { gdp: [], population: [] },
     };
   }
@@ -155,6 +227,8 @@ export function createGameState(scenario: Scenario, seed: number): GameState {
       areaKm2: p.areaKm2,
       infrastructure: owner.active ? startingInfrastructure(owner.techLevel, p.population, p.areaKm2) : 0,
       deposits: { ...p.deposits },
+      controller: p.owner,
+      siege: null,
     };
     owner.population += provinces[id].population;
   }
@@ -169,10 +243,34 @@ export function createGameState(scenario: Scenario, seed: number): GameState {
     resourceScale: { food: 1, energy: 1, minerals: 1 },
     countries,
     provinces,
+    units: {},
+    nextId: 1,
+    wars: [],
+    relations: {},
+    alliances: [],
+    offers: [],
+    diplomacyCooldown: {},
+    events: [],
   };
   calibrateResources(state);
+  for (const c of Object.values(countries)) c.capital = largestProvince(state, c.id);
+  createStartingMilitaries(state, geo);
   return state;
 }
+
+/** The most populous province a country owns. */
+export function largestProvince(state: GameState, country: CountryId): ProvinceId | null {
+  let best: ProvinceState | null = null;
+  for (const p of Object.values(state.provinces)) if (p.owner === country && (!best || p.population > best.population)) best = p;
+  return best?.id ?? null;
+}
+
+export function logEvent(state: GameState, kind: EventKind, text: string, countries: CountryId[]) {
+  state.events.push({ tick: state.tick, kind, text, countries });
+  if (state.events.length > MAX_EVENTS) state.events.splice(0, state.events.length - MAX_EVENTS);
+}
+export const MAX_EVENTS = 300;
+export const nameOf = (s: GameState, c: CountryId) => s.countries[c]?.name ?? c;
 
 /** Size factor so a huge province produces more than a tiny one, without Siberia dominating. */
 export const provinceSize = (areaKm2: number) => Math.min(6, Math.max(0.3, Math.sqrt(areaKm2 / 10_000)));

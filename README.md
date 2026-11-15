@@ -2,34 +2,41 @@
 
 A grand strategy game that runs in the web browser, built in stages.
 
-**Current stage: 3 — simulation (single player).** See [docs/ROADMAP.md](docs/ROADMAP.md) for what exists and what comes next,
+**Current stage: 4 — military, war, diplomacy and AI (single player).** See [docs/ROADMAP.md](docs/ROADMAP.md) for what exists and what comes next,
 and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the project is put together.
 
 ## What works today
 
 - World map of **4,596 provinces** in 248 countries, territories and disputed regions, with **7,333 cities**
 - **Time**: starts 1 Jan 2020, paused. Play/pause (Space) and 5 speeds (keys 1–5, from 1 to 120 days per second)
-- **Economy simulation**, updated on the 1st of every month for every country: GDP growth, taxes and spending,
-  treasury and debt (with interest), stability, technology research, infrastructure, population growth,
-  and food / energy / minerals with a world market (surplus is exported, shortfalls imported)
-- **Play as any country**: set its tax rate and spending on infrastructure, research, welfare and defense,
-  see the budget surplus or deficit, and see *why* growth and stability are moving
-- **Save and load**: 3 save slots in the browser, plus export/import of save files
-- **12 map modes**: Political, Continents, Population, Wealth, Economic growth, Stability, Technology,
-  Population density, Infrastructure, Food, Energy, Minerals
+- **Economy**, monthly for every country: GDP growth, taxes and spending, treasury and debt, stability,
+  technology, infrastructure, population, and food / energy / minerals with a world market
+- **Military**: armies, fleets and air wings on the map. Recruit with your defense fund, pay upkeep,
+  march along real province borders, ship armies overseas with a fleet, air wings support nearby battles
+- **War**: declare war (the defender's allies join), battles, sieges and occupation (striped provinces),
+  peace treaties that hand over occupied land, surrender and annexation; borders really change
+- **Diplomacy**: relations from −100 to 100, improving relations, defensive alliances, peace offers
+- **AI countries**: adjust taxes and spending, recruit forces, form alliances with friendly neighbours,
+  occasionally attack much weaker rivals, fight their wars and make peace
+- **News feed** of wars, battles, treaties and alliances; pop-ups for events involving you
+- **Save and load**: 3 browser slots plus export/import of save files
+- **14 map modes** including Diplomacy (relations with you) and Wars
 - Search across countries, provinces and cities; works on desktop and phone screens
 
-Not built yet: AI decisions (other countries keep their starting policies), government types, diplomacy,
-armies/navies/air forces, war, the 3D globe, historical scenarios, multiplayer.
+Not built yet: government types, naval battles, trade deals, the 3D globe, historical scenarios, multiplayer.
 
 ## How to play
 
 1. Click a country (or search for it) and press **Play as …**.
 2. Press **Play** (or Space) to start time; pick a speed with the bars next to the date.
-3. In your country's panel, move the **Tax rate** and **Spending** sliders. Watch the surplus/deficit line.
-   Research raises technology, infrastructure raises output, welfare raises stability. Debt costs interest.
-4. Open **Why is GDP growing at this rate?** to see what helps and hurts your economy.
-5. Use **Game → Save** to keep your progress.
+3. **Economy**: in your country's panel, set the tax rate and spending. Defense spending fills your defense fund.
+4. **Military**: in the Military section, click a group of units (or click a unit marker on the map), press
+   **Move…**, then click a province, or right-click a province with your units selected. For tiny places,
+   search for them and press **Send units here**. Recruit new units with the Army / Fleet / Air wing buttons.
+5. **Diplomacy**: open another country to improve relations, propose an alliance or declare war.
+6. **War**: march armies into enemy provinces to besiege and occupy them. In your panel's **Your wars** section,
+   offer peace: demand the provinces you occupy, or a white peace. The button says whether they'd accept.
+7. Use **Game → Save** to keep your progress.
 
 ## Running it on your computer
 

@@ -33,7 +33,7 @@ Known limits of Stage 2:
 - Province detail varies by country (Natural Earth uses each country's own first-level divisions, from 1 to ~100 per country).
 - Flat map only; countries crossing the date line are split at the map edge.
 
-## Stage 3: Simulation core (single player) ✅ (current)
+## Stage 3: Simulation core (single player) ✅
 
 - [x] Game clock: daily ticks, monthly systems, pause and 5 speeds, running in a Web Worker
 - [x] Economy: GDP growth with explained causes, taxes, budget (infrastructure, research, welfare, defense, fixed admin), treasury, debt and interest
@@ -53,10 +53,25 @@ Known limits of Stage 3:
 - Rules are simple, tuned game rules, not economic forecasts. Example: Japan's population grows slowly instead of shrinking.
 - Saves are stored in this browser only (use Export to keep a copy).
 
-## Stage 4: Diplomacy, military and AI
-- Relations, alliances, treaties, war and peace
-- Armies, navies, air forces as strategic units
-- AI countries that develop and act on their own
+## Stage 4: Diplomacy, military and AI ✅ (current)
+
+- [x] Province adjacency and coastlines from the map data; distances between provinces
+- [x] Armies, fleets, air wings: recruit (defense fund), upkeep, reinforcement, population-based limit
+- [x] Movement along province borders (path-finding), sea transport with a fleet, air rebasing
+- [x] Battles (strength, technology, home ground, air support), retreats, sieges and occupation
+- [x] Wars with alliances joining, war score, peace terms (white peace / hand over occupied provinces), surrender and annexation
+- [x] Province transfers move population and GDP; the map redraws borders
+- [x] Relations, improving relations, defensive alliances, AI and player peace offers
+- [x] AI: budget adjustments, recruiting, alliances, rare wars against much weaker rivals, war movement, peace
+- [x] News feed, Diplomacy and Wars map modes, occupation stripes, unit markers, battle icons, routes
+- [x] Tests: movement, battles, sieges, surrender, peace, alliances; 20-year world run (wars happen, world stays stable)
+
+Known limits of Stage 4:
+- Starting militaries are estimates from defense budgets; countries start with no alliances (no reliable dataset in the project).
+- Fleets don't fight each other and can't blockade; the AI doesn't plan sea invasions.
+- AI wars are rule-based and fairly simple: it attacks neighbours only, and only when much stronger.
+- Units are abstract ("army" ≈ a corps), not real formations.
+- The news feed is hidden on screens narrower than 1100 px (important events still pop up).
 
 ## Stage 5: 3D globe and renderer upgrade
 - WebGL renderer, flat map / globe toggle

@@ -1,5 +1,5 @@
 import type { CountryId, CountryInfo, ResourceId } from "@gs/shared";
-import type { CountryState, ProvinceState } from "@gs/sim";
+import { allied, atWar, relation, sideOf, type CountryState, type GameState, type ProvinceState } from "@gs/sim";
 
 /**
  * A map mode decides colors from facts and game state. Country modes color whole
@@ -18,11 +18,17 @@ export type MapModeId =
   | "infrastructure"
   | "food"
   | "energy"
-  | "minerals";
+  | "minerals"
+  | "diplomacy"
+  | "wars";
 
 export interface MapModeContext {
   info: CountryInfo | undefined;
   state: CountryState | undefined;
+  /** The whole game, for modes that compare countries. */
+  game?: GameState;
+  /** The player's country, if any. */
+  me?: CountryId;
 }
 
 interface Legend {
@@ -116,6 +122,15 @@ const resourceMode = (r: ResourceId, label: string): MapMode => {
   };
 };
 
+const REL = steps([-60, -20, 20, 60], ["#8e3b3b", "#a8735a", "#6b7480", "#4f8f8a", "#3f9a6a"], (n) => String(n));
+/** Mix a #rrggbb color towards light grey (canvas doesn't reliably support CSS color-mix). */
+function tint(hex: string, amount: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const mix = (c: number) => Math.round(c + (232 - c) * amount);
+  return `rgb(${mix(n >> 16)}, ${mix((n >> 8) & 255)}, ${mix(n & 255)})`;
+}
+const WAR_COLORS = ["#c0504d", "#d08a3c", "#8e5bb5", "#3f88c5", "#c9b03e", "#4fa87a"];
+
 export const MAP_MODES: Record<MapModeId, MapMode> = {
   political: countryMode("political", "Political", "World", (_id, { info }) => (info ? (POLITICAL[info.colorSlot % POLITICAL.length] ?? NO_DATA) : NO_DATA), null),
   region: countryMode(
@@ -150,6 +165,51 @@ export const MAP_MODES: Record<MapModeId, MapMode> = {
     provinceColor: (p) => (p.population > 0 ? infra.color(p.infrastructure) : NO_DATA),
     legend: { title: "Infrastructure (0–10)", items: infra.items },
   },
+  diplomacy: countryMode(
+    "diplomacy",
+    "Diplomacy",
+    "World",
+    (id, { game, me }) => {
+      if (!game || !me || !game.countries[id]?.active) return NO_DATA;
+      if (id === me) return "#ffd678";
+      if (atWar(game, me, id)) return "#d9483b";
+      if (allied(game, me, id)) return "#5aa0e0";
+      return REL.color(relation(game, me, id));
+    },
+    {
+      title: "Relations with you",
+      note: "Play as a country to see its relations.",
+      items: [
+        { label: "You", color: "#ffd678" },
+        { label: "Allied", color: "#5aa0e0" },
+        { label: "At war", color: "#d9483b" },
+        { label: "Hostile (≤ −60)", color: "#8e3b3b" },
+        { label: "Unfriendly", color: "#a8735a" },
+        { label: "Neutral", color: "#6b7480" },
+        { label: "Cordial", color: "#4f8f8a" },
+        { label: "Friendly (≥ 60)", color: "#3f9a6a" },
+      ],
+    },
+  ),
+  wars: countryMode(
+    "wars",
+    "Wars",
+    "World",
+    (id, { game }) => {
+      if (!game) return NO_DATA;
+      const i = game.wars.findIndex((w) => sideOf(w, id));
+      if (i < 0) return "#3a4250";
+      const w = game.wars[i]!;
+      const base = WAR_COLORS[w.id % WAR_COLORS.length]!;
+      // Attackers in the war's color, defenders in a lighter tint of it.
+      return sideOf(w, id) === "attackers" ? base : tint(base, 0.55);
+    },
+    {
+      title: "Wars",
+      note: "Each war has its own color: attackers solid, defenders lighter. Striped provinces are occupied.",
+      items: [{ label: "At peace", color: "#3a4250" }],
+    },
+  ),
   food: resourceMode("food", "Food"),
   energy: resourceMode("energy", "Energy"),
   minerals: resourceMode("minerals", "Minerals"),

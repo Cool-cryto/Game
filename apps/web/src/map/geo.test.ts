@@ -4,7 +4,7 @@ import { neighbors } from "topojson-client";
 import type { City, CountryId, ProvinceId } from "@gs/shared";
 import { createGameState } from "@gs/sim";
 import { buildCountryShapes, buildProvinceShapes, createWorldFrame, type ProvinceTopology } from "./geo";
-import { COUNTRIES, MODERN_SCENARIO, PROVINCES, search, setCities } from "../data/countries";
+import { COUNTRIES, GEOGRAPHY, MODERN_SCENARIO, PROVINCES, search, setCities } from "../data/countries";
 
 const read = <T,>(p: string) => JSON.parse(readFileSync(new URL(`../../public/maps/${p}`, import.meta.url), "utf8")) as T;
 const low = read<ProvinceTopology>("provinces-low.topo.json");
@@ -85,7 +85,7 @@ describe("shapes", () => {
 
   it("redraws borders when a province changes owner", () => {
     const bavaria = Object.values(PROVINCES).find((p) => p.name === "Bavaria")!;
-    const state = createGameState(MODERN_SCENARIO, 1);
+    const state = createGameState(MODERN_SCENARIO, GEOGRAPHY, 1);
     state.provinces[bavaria.id]!.owner = "AUT" as CountryId;
     const changed = buildCountryShapes(low, frame, Object.fromEntries(Object.values(state.provinces).map((p) => [p.id, p.owner])), {
       labels: false,
