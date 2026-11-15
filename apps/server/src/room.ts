@@ -36,6 +36,8 @@ const CHAT_MAX_LENGTH = 300;
 export interface Conn {
   user: { id: number; username: string };
   send(data: string): void;
+  /** Close this tab's connection (e.g. its player lost access to the game). */
+  kick?(): void;
 }
 
 interface Member {

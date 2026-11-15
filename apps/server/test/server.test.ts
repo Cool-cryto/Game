@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 import type { CountryId, Scenario } from "@gs/shared";
@@ -423,4 +424,123 @@ describe("load", () => {
     expect(behind).toEqual([]);
     for (const c of clients) c.close();
   }, 60_000);
+});
+
+describe("paywall", () => {
+  // A second server with the paywall on, and a fake Stripe that remembers checkouts.
+  const checkouts = new Map<string, Record<string, unknown>>();
+  const fakeStripe: typeof fetch = async (input, init) => {
+    const url = String(input);
+    if (init?.method === "POST" && url.endsWith("/checkout/sessions")) {
+      const form = new URLSearchParams(String(init.body));
+      const id = `cs_test_${checkouts.size + 1}`;
+      checkouts.set(id, { id, client_reference_id: form.get("client_reference_id"), amount_total: Number(form.get("line_items[0][price_data][unit_amount]")), currency: form.get("line_items[0][price_data][currency]"), payment_status: "unpaid", success_url: form.get("success_url") });
+      return Response.json({ id, url: `https://checkout.stripe.test/${id}` });
+    }
+    const id = url.split("/").pop()!;
+    const s = checkouts.get(id);
+    return s ? Response.json(s) : Response.json({ error: { message: "No such checkout" } }, { status: 404 });
+  };
+  const webhookSecret = "whsec_test";
+  let pdb: Db;
+  let pserver: Server;
+  let pbase = "";
+  beforeAll(async () => {
+    pdb = new Db(":memory:");
+    pserver = await startServer({
+      port: 0, db: pdb, scenarios, geo, webDist: fileURLToPath(new URL("../../web/public", import.meta.url)), graceMs: 300, globalSpeed: 2, saveEveryMs: 60_000, log: () => {},
+      paywall: { priceCents: 500, currency: "usd", admins: ["Boss"], stripeSecretKey: "sk_test_x", stripeWebhookSecret: webhookSecret, stripeFetch: fakeStripe },
+    });
+    pbase = `http://localhost:${pserver.port}`;
+  });
+  afterAll(async () => {
+    await pserver.close();
+  });
+  const call = async (path: string, opts: { token?: string; body?: unknown; method?: string; headers?: Record<string, string> } = {}) => {
+    const res = await fetch(pbase + path, {
+      method: opts.method ?? (opts.body !== undefined ? "POST" : "GET"),
+      headers: { ...(opts.token ? { authorization: `Bearer ${opts.token}` } : {}), ...opts.headers },
+      body: opts.body === undefined ? undefined : typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body),
+    });
+    return { status: res.status, cookie: res.headers.get("set-cookie"), body: (await res.json().catch(() => ({}))) as Record<string, any> };
+  };
+  const signUp = async (username: string) => {
+    const r = await call("/api/register", { body: { username, password: "correct horse" } });
+    expect(r.status).toBe(200);
+    return { token: r.body.token as string, id: r.body.user.id as number, cookie: r.cookie!.split(";")[0]! };
+  };
+  const mapStatus = async (cookie?: string) => (await fetch(`${pbase}/maps/cities.json`, { headers: cookie ? { cookie } : {} })).status;
+  const wsClose = (token: string) =>
+    new Promise<number>((done) => {
+      const ws = new WebSocket(`ws://localhost:${pserver.port}/ws`);
+      ws.on("open", () => ws.send(JSON.stringify({ t: "auth", token })));
+      ws.on("close", (code) => done(code));
+      ws.on("message", (raw) => JSON.parse(String(raw)).t === "welcome" && (ws.close(), done(1000)));
+    });
+
+  it("a new player can't load the map or play online until they have access", async () => {
+    expect((await call("/api/config")).body).toEqual({ paywall: true, priceCents: 500, currency: "usd", canBuy: true });
+    const p = await signUp("newbie");
+    const me = await call("/api/me", { token: p.token });
+    expect(me.body).toMatchObject({ access: false, accessKind: null, admin: false });
+    expect(await mapStatus()).toBe(403);
+    expect(await mapStatus(p.cookie)).toBe(403);
+    expect(await wsClose(p.token)).toBe(4005);
+    // The ordinary game server (no paywall) is unaffected.
+    expect(((await (await fetch(`${base}/api/config`)).json()) as { paywall: boolean }).paywall).toBe(false);
+  });
+
+  it("buying: checkout, then the game unlocks only once Stripe says it's paid", async () => {
+    const p = await signUp("buyer");
+    const start = await call("/api/checkout", { token: p.token, body: {} });
+    expect(start.body.url).toMatch(/^https:\/\/checkout\.stripe\.test\/cs_test_/);
+    const id = start.body.url.split("/").pop();
+    expect(checkouts.get(id)!.success_url).toBe(`${pbase.replace("localhost", "localhost")}/?checkout={CHECKOUT_SESSION_ID}`);
+    // Coming back before paying unlocks nothing; nor can someone else confirm your checkout.
+    expect((await call("/api/checkout/confirm", { token: p.token, body: { id } })).body.access).toBe(false);
+    checkouts.get(id)!.payment_status = "paid";
+    const other = await signUp("sneaky");
+    expect((await call("/api/checkout/confirm", { token: other.token, body: { id } })).body.access).toBe(false);
+    expect((await call("/api/checkout/confirm", { token: p.token, body: { id } })).body).toMatchObject({ access: true, accessKind: "paid" });
+    expect(await mapStatus(p.cookie)).toBe(200);
+    expect(await wsClose(p.token)).toBe(1000);
+    expect((await call("/api/checkout", { token: p.token, body: {} })).status).toBe(400); // already bought
+  });
+
+  it("a paid Stripe webhook unlocks the game; a forged one doesn't", async () => {
+    const p = await signUp("hooked");
+    const event = JSON.stringify({ type: "checkout.session.completed", data: { object: { id: "cs_test_hook", client_reference_id: String(p.id), amount_total: 500, currency: "usd", payment_status: "paid" } } });
+    const t = Math.floor(Date.now() / 1000);
+    const { createHmac } = await import("node:crypto");
+    const sign = (secret: string) => `t=${t},v1=${createHmac("sha256", secret).update(`${t}.${event}`).digest("hex")}`;
+    expect((await call("/api/stripe/webhook", { body: event, headers: { "stripe-signature": sign("wrong") } })).status).toBe(400);
+    expect((await call("/api/me", { token: p.token })).body.access).toBe(false);
+    expect((await call("/api/stripe/webhook", { body: event, headers: { "stripe-signature": sign(webhookSecret) } })).status).toBe(200);
+    expect((await call("/api/me", { token: p.token })).body.accessKind).toBe("paid");
+    // Paying less than the price unlocks nothing.
+    const cheap = await signUp("cheapskate");
+    const cheapEvent = event.replace(String(p.id), String(cheap.id)).replace("cs_test_hook", "cs_test_cheap").replace("500", "100");
+    const sig = `t=${t},v1=${createHmac("sha256", webhookSecret).update(`${t}.${cheapEvent}`).digest("hex")}`;
+    expect((await call("/api/stripe/webhook", { body: cheapEvent, headers: { "stripe-signature": sig } })).status).toBe(200);
+    expect((await call("/api/me", { token: cheap.token })).body.access).toBe(false);
+  });
+
+  it("admins give and take away free passes; nobody else can", async () => {
+    const boss = await signUp("boss"); // admin names match regardless of case
+    const friend = await signUp("friend");
+    expect((await call("/api/me", { token: boss.token })).body).toMatchObject({ access: true, accessKind: "admin", admin: true });
+    expect((await call("/api/admin/access", { token: friend.token, body: { username: "friend", access: "granted" } })).status).toBe(403);
+    expect((await call("/api/admin/access", { token: boss.token, body: { username: "nobody-here", access: "granted" } })).status).toBe(404);
+    expect((await call("/api/admin/access", { token: boss.token, body: { username: "FRIEND", access: "granted" } })).body.access).toBe("granted");
+    expect(await mapStatus(friend.cookie)).toBe(200);
+    const list = await call("/api/admin/users?q=fri", { token: boss.token });
+    expect(list.body.users).toEqual([expect.objectContaining({ username: "friend", access: "granted" })]);
+    // Taking it away disconnects them; a bought game can't be taken away.
+    const c = await TestClient.signedIn(pserver.port, friend.token);
+    const closed = new Promise<number>((done) => c.ws.on("close", (code) => done(code)));
+    expect((await call("/api/admin/access", { token: boss.token, body: { username: "friend", access: null } })).body.access).toBe(null);
+    expect(await closed).toBe(4005);
+    expect(await mapStatus(friend.cookie)).toBe(403);
+    expect((await call("/api/admin/access", { token: boss.token, body: { username: "buyer", access: null } })).status).toBe(400);
+  });
 });

@@ -62,6 +62,8 @@ function saveSession(s: { token: string; username: string } | null) {
   }
 }
 export const hasSession = () => loadSession() !== null;
+/** The signed-in player's session token and name, if any. */
+export const currentSession = () => loadSession();
 
 const apiUrl = (path: string) => new URL(`api/${path}`, new URL(import.meta.env.BASE_URL, document.baseURI)).href;
 const wsUrl = () => {
@@ -89,7 +91,7 @@ export async function signIn(kind: "login" | "register", username: string, passw
     const body = (await res.json()) as { token?: string; error?: string; user?: { username: string } };
     if (!res.ok || !body.token) return body.error ?? "Couldn't sign in.";
     saveSession({ token: body.token, username: body.user?.username ?? username });
-    connect();
+    if ((body as { access?: boolean }).access !== false) connect();
     return null;
   } catch {
     return "Can't reach the game server.";
@@ -140,6 +142,12 @@ export function connect() {
       // Session no longer valid: sign in again.
       saveSession(null);
       useOnline.setState({ status: "offline", user: null, error: e.reason || "Please sign in again." });
+      return;
+    }
+    if (e.code === 4005) {
+      // Signed in, but the game isn't unlocked for this account (paywall).
+      wanted = false;
+      useOnline.setState({ status: "offline", error: e.reason || "Unlock the game to play online." });
       return;
     }
     if (!wanted) return useOnline.setState({ status: "offline" });
