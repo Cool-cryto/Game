@@ -221,6 +221,10 @@ bandwidth 5× too high, and an editor race that wiped a newly created country.
 - Editor: edit economies, alliances, armies and start date; rename/recolour existing countries
 - Victory conditions and score screens
 
+### Paywall (built, switched off until you turn it on)
+- A $5 one-time purchase through Stripe, or a free pass you give to a username; a welcome menu explains the game first.
+  Server-enforced (map data and online play are locked). Setup: [docs/HOSTING.md](docs/HOSTING.md) → "The $5 paywall".
+
 ### Platform and polish
 - Accounts: password reset (needs email), account deletion, moderation tools (kick/ban in private servers)
 - Several server processes for many busy rooms

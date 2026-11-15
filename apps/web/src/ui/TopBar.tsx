@@ -33,7 +33,7 @@ export function TopBar() {
           <path d="M3 12h18M12 3c2.8 3 2.8 15 0 18M12 3c-2.8 3-2.8 15 0 18" fill="none" stroke="currentColor" strokeWidth="1.2" />
         </svg>
         <span>World Ascendant</span>
-        <span className="brand__stage">Stage 7 · scenarios &amp; editor</span>
+        <span className="brand__stage">Stage 8 · fog of war &amp; online</span>
       </div>
       <SearchBox />
       <label className="mode-select">

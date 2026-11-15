@@ -7,6 +7,7 @@ import { SCENARIOS } from "../data/scenarios";
 import { listWorlds, type SavedWorld } from "../state/worlds";
 import { scenarioFromCustom } from "../data/scenarios";
 import { formatDate } from "./format";
+import { AccessAdmin } from "./AccessAdmin";
 
 /** New game, save, load, export and import. */
 export function GameMenu() {
@@ -76,6 +77,7 @@ function MenuBody({ close }: { close: () => void }) {
 
       <OnlineSection close={close} />
       <OptionsSection />
+      <AccessAdmin />
 
       {useGame.getState().mode === "online" ? (
         <p className="dialog__hint">This is an online game: the server saves it automatically. You can still export a copy below.</p>

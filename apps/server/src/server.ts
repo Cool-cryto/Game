@@ -7,6 +7,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import type { CountryId, Scenario } from "@gs/shared";
 import { applyCustomWorld, createGameState, deserialize, GLOBAL_ROOM_ID, validateCustomWorld, type ClientMessage, type Geography, type ServerMessage } from "@gs/sim";
 import { login, logout, register, userForToken } from "./auth";
+import { accessKind, completeCheckout, confirmCheckout, createCheckout, hasAccess, isAdmin, verifyStripeSignature, type PaywallConfig } from "./paywall";
 import type { Db } from "./db";
 import { Room, type Conn } from "./room";
 
@@ -30,6 +31,8 @@ export interface ServerConfig {
    * proxy in front: players could then fake their address to dodge the sign-in limit.
    */
   trustProxy?: boolean;
+  /** The $5 paywall (see paywall.ts). Null or missing: everyone can play. */
+  paywall?: PaywallConfig | null;
   log?: (msg: string) => void;
 }
 
@@ -135,15 +138,127 @@ export function startServer(cfg: ServerConfig) {
       if (tooManyAttempts(clientAddress(req, cfg.trustProxy ?? false))) return json(res, 429, { error: "Too many attempts. Try again in a few minutes." });
       const body = await readJson(req);
       const result = url.pathname === "/api/register" ? register(cfg.db, body?.username, body?.password) : login(cfg.db, body?.username, body?.password);
-      return result.ok ? json(res, 200, { token: result.token, user: result.user }) : json(res, 400, { error: result.error });
+      if (!result.ok) return json(res, 400, { error: result.error });
+      setSessionCookie(req, res, result.token);
+      return json(res, 200, { token: result.token, user: result.user, ...accessInfo(result.user) });
     }
     if (req.method === "POST" && url.pathname === "/api/logout") {
-      const token = (req.headers.authorization ?? "").replace(/^Bearer /, "");
+      const token = bearer(req);
       if (token) logout(cfg.db, token);
+      res.setHeader("set-cookie", `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
       return json(res, 200, { ok: true });
     }
+    // ----- Paywall -----
+    const pw = cfg.paywall ?? null;
+    if (req.method === "GET" && url.pathname === "/api/config") {
+      return json(res, 200, { paywall: !!pw, priceCents: pw?.priceCents ?? 0, currency: pw?.currency ?? "usd", canBuy: !!pw?.stripeSecretKey });
+    }
+    if (req.method === "GET" && url.pathname === "/api/me") {
+      const user = userForToken(cfg.db, bearer(req));
+      if (!user) return json(res, 401, { error: "Please sign in again." });
+      setSessionCookie(req, res, bearer(req)!); // lets the browser load the map files
+      return json(res, 200, { user, ...accessInfo(user) });
+    }
+    if (req.method === "POST" && url.pathname === "/api/checkout") {
+      const user = userForToken(cfg.db, bearer(req));
+      if (!user) return json(res, 401, { error: "Please sign in first." });
+      if (!pw?.stripeSecretKey) return json(res, 400, { error: "Purchases aren't open yet." });
+      if (hasAccess(pw, cfg.db, user)) return json(res, 400, { error: "You already have the full game." });
+      if (tooManyAttempts(clientAddress(req, cfg.trustProxy ?? false))) return json(res, 429, { error: "Too many attempts. Try again in a few minutes." });
+      try {
+        return json(res, 200, { url: await createCheckout(pw, user, publicBase(req)) });
+      } catch (e) {
+        log(`Stripe checkout failed: ${e instanceof Error ? e.message : String(e)}`);
+        return json(res, 502, { error: "The payment page couldn't be opened. Try again in a moment." });
+      }
+    }
+    if (req.method === "POST" && url.pathname === "/api/checkout/confirm") {
+      const user = userForToken(cfg.db, bearer(req));
+      const body = await readJson(req);
+      if (!user) return json(res, 401, { error: "Please sign in first." });
+      if (!pw?.stripeSecretKey || typeof body?.id !== "string") return json(res, 400, { error: "Bad request." });
+      try {
+        await confirmCheckout(pw, cfg.db, user.id, body.id);
+      } catch (e) {
+        log(`Stripe confirm failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+      return json(res, 200, accessInfo(user));
+    }
+    if (req.method === "POST" && url.pathname === "/api/stripe/webhook") {
+      if (!pw?.stripeWebhookSecret) return json(res, 404, { error: "Not found" });
+      const raw = await readRaw(req, 256 * 1024);
+      const sig = req.headers["stripe-signature"];
+      if (raw === null || !verifyStripeSignature(raw, Array.isArray(sig) ? sig[0] : sig, pw.stripeWebhookSecret)) return json(res, 400, { error: "Bad signature" });
+      const event = JSON.parse(raw) as { type?: string; data?: { object?: Record<string, unknown> } };
+      if ((event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") && event.data?.object) {
+        const unlocked = completeCheckout(pw, cfg.db, event.data.object);
+        if (unlocked !== null) log(`Game unlocked by payment for user ${unlocked}`);
+      }
+      return json(res, 200, { received: true });
+    }
+    if (url.pathname.startsWith("/api/admin/")) {
+      const user = userForToken(cfg.db, bearer(req));
+      if (!pw || !user || !isAdmin(pw, user.username)) return json(res, 403, { error: "Only admins can do that." });
+      if (req.method === "GET" && url.pathname === "/api/admin/users") {
+        const q = (url.searchParams.get("q") ?? "").slice(0, 40);
+        return json(res, 200, { users: cfg.db.findUsers(q).map((u) => ({ username: u.username, access: isAdmin(pw, u.username) ? "admin" : u.access, createdAt: u.created_at })) });
+      }
+      if (req.method === "POST" && url.pathname === "/api/admin/access") {
+        const body = await readJson(req);
+        const target = typeof body?.username === "string" ? cfg.db.userByName(body.username) : undefined;
+        if (!target) return json(res, 404, { error: "No player with that username. They need to create an account first." });
+        const current = cfg.db.accessOf(target.id);
+        if (body?.access === "granted") {
+          if (current === null) cfg.db.setAccess(target.id, "granted");
+        } else if (body?.access === null) {
+          if (current === "paid") return json(res, 400, { error: `${target.username} bought the game; their access can't be taken away here.` });
+          cfg.db.setAccess(target.id, null);
+          dropFromRooms(target.id);
+        } else return json(res, 400, { error: "Bad request." });
+        log(`${user.username} set access for ${target.username}: ${String(body.access)}`);
+        return json(res, 200, { username: target.username, access: cfg.db.accessOf(target.id) });
+      }
+      return json(res, 404, { error: "Not found" });
+    }
     if (url.pathname.startsWith("/api/")) return json(res, 404, { error: "Not found" });
+    // The map is what makes the game playable: only players with access get it.
+    if (pw && url.pathname.startsWith("/maps/")) {
+      const user = userForToken(cfg.db, cookie(req, COOKIE));
+      if (!user || !hasAccess(pw, cfg.db, user)) {
+        res.writeHead(403, { "content-type": "text/plain" });
+        return res.end("Unlock the game to load the map.");
+      }
+    }
     return serveStatic(url.pathname, res);
+  }
+
+  function accessInfo(user: { id: number; username: string }) {
+    const pw = cfg.paywall ?? null;
+    return { access: hasAccess(pw, cfg.db, user), accessKind: accessKind(pw, cfg.db, user), admin: !!pw && isAdmin(pw, user.username) };
+  }
+
+  /** The address players use, for Stripe's "come back here" links. */
+  function publicBase(req: IncomingMessage): string {
+    if (cfg.paywall?.publicUrl) return cfg.paywall.publicUrl;
+    const proto = cfg.trustProxy ? String(req.headers["x-forwarded-proto"] ?? "https").split(",")[0]!.trim() : "http";
+    return `${proto}://${req.headers.host ?? `localhost:${cfg.port}`}`;
+  }
+
+  /** The session also travels as a cookie, so the browser can load the (locked) map files. */
+  function setSessionCookie(req: IncomingMessage, res: ServerResponse, token: string) {
+    const secure = cfg.trustProxy ? String(req.headers["x-forwarded-proto"] ?? "").startsWith("https") : false;
+    res.setHeader("set-cookie", `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${secure ? "; Secure" : ""}`);
+  }
+
+  /** Someone lost access: take them out of every room they're in. */
+  function dropFromRooms(userId: number) {
+    for (const [conn, room] of [...roomOf]) {
+      if (conn.user.id !== userId) continue;
+      room.disconnect(conn);
+      roomOf.delete(conn);
+      conn.kick?.();
+    }
+    for (const ws of wss.clients) if (connOf.get(ws)?.user.id === userId) ws.close(4005, "Your access to the game was removed.");
   }
 
   function serveStatic(pathname: string, res: ServerResponse) {
@@ -158,8 +273,12 @@ export function startServer(cfg: ServerConfig) {
       return res.end();
     }
     if (!existsSync(file) || statSync(file).isDirectory()) file = join(root, "index.html");
+    if (!existsSync(file)) {
+      res.writeHead(404, { "content-type": "text/plain" });
+      return res.end("Not found");
+    }
     res.writeHead(200, { "content-type": MIME[extname(file)] ?? "application/octet-stream" });
-    createReadStream(file).pipe(res);
+    createReadStream(file).on("error", () => res.destroy()).pipe(res);
   }
 
   // ---------- WebSocket ----------
@@ -167,6 +286,7 @@ export function startServer(cfg: ServerConfig) {
   const wss = new WebSocketServer({ server: http, path: "/ws", maxPayload: 512 * 1024, perMessageDeflate: { threshold: 1024 } });
 
   const alive = new WeakMap<WebSocket, boolean>();
+  const connOf = new WeakMap<WebSocket, Conn>();
   wss.on("connection", (ws: WebSocket) => {
     let conn: Conn | null = null;
     alive.set(ws, true);
@@ -190,7 +310,9 @@ export function startServer(cfg: ServerConfig) {
         if (msg.t !== "auth") return ws.close(4001, "Sign in first");
         const user = userForToken(cfg.db, msg.token);
         if (!user) return ws.close(4003, "Session expired. Please sign in again.");
-        conn = { user, send: (data) => ws.readyState === ws.OPEN && ws.send(data) };
+        if (!hasAccess(cfg.paywall ?? null, cfg.db, user)) return ws.close(4005, "Unlock the game to play online.");
+        conn = { user, send: (data) => ws.readyState === ws.OPEN && ws.send(data), kick: () => ws.close(4005, "Your access to the game was removed.") };
+        connOf.set(ws, conn);
         clearTimeout(authTimer);
         send({ t: "welcome", user });
         send({ t: "rooms", rooms: listFor(user.id) });
@@ -219,6 +341,8 @@ export function startServer(cfg: ServerConfig) {
   }
 
   function handleMessage(conn: Conn, msg: ClientMessage, send: (m: ServerMessage) => void) {
+    // Access can be taken away while someone is connected.
+    if (cfg.paywall && (msg.t === "join" || msg.t === "create") && !hasAccess(cfg.paywall, cfg.db, conn.user)) return conn.kick?.();
     switch (msg.t) {
       case "list":
         return send({ t: "rooms", rooms: listFor(conn.user.id) });
@@ -322,6 +446,30 @@ export function clientAddress(req: IncomingMessage, trustProxy: boolean): string
     if (list.length) return list[list.length - 1]!;
   }
   return req.socket.remoteAddress ?? "?";
+}
+
+const COOKIE = "wa_session";
+const bearer = (req: IncomingMessage) => (req.headers.authorization ?? "").replace(/^Bearer /, "") || undefined;
+function cookie(req: IncomingMessage, name: string): string | undefined {
+  for (const part of (req.headers.cookie ?? "").split(";")) {
+    const [k, ...v] = part.trim().split("=");
+    if (k === name) return v.join("=");
+  }
+  return undefined;
+}
+
+function readRaw(req: IncomingMessage, limit: number): Promise<string | null> {
+  return new Promise((done) => {
+    let size = 0;
+    const chunks: Buffer[] = [];
+    req.on("data", (c: Buffer) => {
+      size += c.length;
+      if (size > limit) req.destroy();
+      else chunks.push(c);
+    });
+    req.on("end", () => done(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", () => done(null));
+  });
 }
 
 function json(res: ServerResponse, status: number, body: unknown) {

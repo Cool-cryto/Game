@@ -185,6 +185,18 @@ Behind a host's proxy set `TRUST_PROXY=1` so the sign-in limit sees each player'
 The server pings every WebSocket every 25 s so proxies don't close quiet connections, and closes ones that stop answering.
 Serverless platforms are not a good fit, because players keep a connection open. Step-by-step: [HOSTING.md](HOSTING.md).
 
+### Paywall
+
+- `apps/server/src/paywall.ts` – access rules (admins, `users.access` = `paid` | `granted`), Stripe Checkout through Stripe's
+  REST API (no SDK), confirming a checkout when the player returns, and webhook signature checks. Off unless `PAYWALL=1`.
+- `server.ts` – `/api/config`, `/api/me`, `/api/checkout`, `/api/checkout/confirm`, `/api/stripe/webhook`, `/api/admin/*`.
+  The session also travels as an HttpOnly cookie so the browser can load `/maps/*`, which is refused without access;
+  WebSocket sign-in is refused with code 4005; taking a pass away disconnects the player.
+- Browser: `src/net/access.ts` decides between the game and the welcome menu (`src/ui/Welcome.tsx`); admins get
+  Game menu → Free passes (`src/ui/AccessAdmin.tsx`). Without a game server (static page, development) the game simply opens.
+- Limit: the game's code itself is public (only the map data is locked), so a determined person could rebuild the map
+  from public sources to play single player. Online play can't be reached without access.
+
 ## Scenarios and custom worlds (Stage 7)
 
 - A `Scenario` (packages/shared) is the starting data: province owners and populations, country population/GDP/income group.

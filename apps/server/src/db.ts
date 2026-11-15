@@ -3,6 +3,9 @@ import { dirname } from "node:path";
 // Node's built-in SQLite (no extra dependency). It prints an "experimental" warning once.
 import { DatabaseSync } from "node:sqlite";
 
+/** Who may play when the paywall is on. */
+export type Access = "paid" | "granted" | null;
+
 /**
  * Everything the server keeps between restarts: accounts, login sessions,
  * rooms (with their saved game) and who has joined which room.
@@ -42,7 +45,39 @@ export class Db {
         country TEXT,
         PRIMARY KEY (room_id, user_id)
       );
+      CREATE TABLE IF NOT EXISTS payments (
+        checkout_id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        amount_cents INTEGER NOT NULL,
+        created_at INTEGER NOT NULL
+      );
     `);
+    // Added with the paywall: who may play. NULL = not yet, 'paid' = bought the game, 'granted' = free pass from an admin.
+    const columns = this.db.prepare("PRAGMA table_info(users)").all() as { name: string }[];
+    if (!columns.some((c) => c.name === "access")) this.db.exec("ALTER TABLE users ADD COLUMN access TEXT");
+  }
+
+  accessOf(userId: number): Access {
+    const r = this.db.prepare("SELECT access FROM users WHERE id = ?").get(userId) as { access: string | null } | undefined;
+    return (r?.access as Access) ?? null;
+  }
+  setAccess(userId: number, access: Access) {
+    this.db.prepare("UPDATE users SET access = ? WHERE id = ?").run(access, userId);
+  }
+  /** Users matching a name search (for the admin screen), newest first. */
+  findUsers(query: string, limit = 50) {
+    const like = `%${query.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
+    return this.db
+      .prepare("SELECT id, username, access, created_at FROM users WHERE username LIKE ? ESCAPE '\\' ORDER BY created_at DESC LIMIT ?")
+      .all(like, limit) as { id: number; username: string; access: Access; created_at: number }[];
+  }
+  /** Record a completed purchase. Returns false if it was already recorded (Stripe can send the same event twice). */
+  addPayment(checkoutId: string, userId: number, amountCents: number): boolean {
+    const r = this.db.prepare("INSERT OR IGNORE INTO payments (checkout_id, user_id, amount_cents, created_at) VALUES (?, ?, ?, ?)").run(checkoutId, userId, amountCents, Date.now());
+    return Number(r.changes) > 0;
+  }
+  userById(id: number) {
+    return this.db.prepare("SELECT id, username FROM users WHERE id = ?").get(id) as { id: number; username: string } | undefined;
   }
 
   createUser(username: string, passHash: string, salt: string): number {
