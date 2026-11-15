@@ -1,0 +1,14 @@
+{
+  "name": "grand-strategy",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "npm run dev -w @gs/web",
+    "build": "npm run build -w @gs/web",
+    "preview": "npm run preview -w @gs/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:e2e": "npm run test:e2e -w @gs/web"
+  }
+}
