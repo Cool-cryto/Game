@@ -23,6 +23,13 @@ export interface ServerConfig {
   /** Speed of the global world (fixed). */
   globalSpeed: 1 | 2 | 3 | 4 | 5;
   saveEveryMs: number;
+  /**
+   * True when the server runs behind a hosting provider's proxy (Railway, Fly.io,
+   * Render…). Every request then arrives from the proxy, so the player's own address
+   * is read from the X-Forwarded-For header the proxy adds. Never set it without a
+   * proxy in front: players could then fake their address to dodge the sign-in limit.
+   */
+  trustProxy?: boolean;
   log?: (msg: string) => void;
 }
 
@@ -31,6 +38,12 @@ const MAX_ROOMS_PER_USER = 5;
 /** Messages per second a single connection may send before being slowed down. */
 const MESSAGES_PER_SECOND = 30;
 const AUTH_TIMEOUT_MS = 10_000;
+/**
+ * Ping every connection this often. Hosting proxies close connections that are
+ * quiet for about a minute (e.g. a paused game); pings keep them open, and a
+ * connection that misses a ping is dead and gets closed.
+ */
+const PING_MS = 25_000;
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O, 1/I/L
 
 const MIME: Record<string, string> = {
@@ -98,6 +111,7 @@ export function startServer(cfg: ServerConfig) {
   /** At most 20 sign-in attempts per address per 10 minutes. */
   const tooManyAttempts = (ip: string) => {
     const now = Date.now();
+    if (attempts.size > 10_000) for (const [k, v] of attempts) if (now - v.since > 600_000) attempts.delete(k);
     const a = attempts.get(ip);
     if (!a || now - a.since > 600_000) {
       attempts.set(ip, { count: 1, since: now });
@@ -118,7 +132,7 @@ export function startServer(cfg: ServerConfig) {
     const url = new URL(req.url ?? "/", "http://x");
     if (url.pathname === "/api/health") return json(res, 200, { ok: true, rooms: rooms.size });
     if (req.method === "POST" && (url.pathname === "/api/register" || url.pathname === "/api/login")) {
-      if (tooManyAttempts(req.socket.remoteAddress ?? "?")) return json(res, 429, { error: "Too many attempts. Try again in a few minutes." });
+      if (tooManyAttempts(clientAddress(req, cfg.trustProxy ?? false))) return json(res, 429, { error: "Too many attempts. Try again in a few minutes." });
       const body = await readJson(req);
       const result = url.pathname === "/api/register" ? register(cfg.db, body?.username, body?.password) : login(cfg.db, body?.username, body?.password);
       return result.ok ? json(res, 200, { token: result.token, user: result.user }) : json(res, 400, { error: result.error });
@@ -152,8 +166,11 @@ export function startServer(cfg: ServerConfig) {
   // maxPayload leaves room for a custom world in the "create" message.
   const wss = new WebSocketServer({ server: http, path: "/ws", maxPayload: 512 * 1024, perMessageDeflate: { threshold: 1024 } });
 
+  const alive = new WeakMap<WebSocket, boolean>();
   wss.on("connection", (ws: WebSocket) => {
     let conn: Conn | null = null;
+    alive.set(ws, true);
+    ws.on("pong", () => alive.set(ws, true));
     let budget = MESSAGES_PER_SECOND;
     const refill = setInterval(() => (budget = MESSAGES_PER_SECOND), 1000);
     const authTimer = setTimeout(() => !conn && ws.close(4001, "Sign in first"), AUTH_TIMEOUT_MS);
@@ -264,6 +281,16 @@ export function startServer(cfg: ServerConfig) {
     for (const r of rooms.values()) r.step(now);
   }, 50);
   const saveTimer = setInterval(saveAll, cfg.saveEveryMs);
+  const pingTimer = setInterval(() => {
+    for (const ws of wss.clients) {
+      if (!alive.get(ws)) {
+        ws.terminate();
+        continue;
+      }
+      alive.set(ws, false);
+      ws.ping();
+    }
+  }, PING_MS);
 
   return new Promise<{ port: number; close: () => Promise<void>; rooms: Map<string, Room> }>((ready) => {
     http.listen(cfg.port, () => {
@@ -276,6 +303,7 @@ export function startServer(cfg: ServerConfig) {
         close: async () => {
           clearInterval(stepTimer);
           clearInterval(saveTimer);
+          clearInterval(pingTimer);
           saveAll();
           for (const c of wss.clients) c.close(1001, "Server restarting");
           await new Promise<void>((done) => wss.close(() => http.close(() => done())));
@@ -284,6 +312,16 @@ export function startServer(cfg: ServerConfig) {
       });
     });
   });
+}
+
+/** The player's network address: the socket's, or behind a trusted proxy the last address the proxy added. */
+export function clientAddress(req: IncomingMessage, trustProxy: boolean): string {
+  if (trustProxy) {
+    const header = req.headers["x-forwarded-for"];
+    const list = (Array.isArray(header) ? header.join(",") : (header ?? "")).split(",").map((x) => x.trim()).filter(Boolean);
+    if (list.length) return list[list.length - 1]!;
+  }
+  return req.socket.remoteAddress ?? "?";
 }
 
 function json(res: ServerResponse, status: number, body: unknown) {

@@ -177,12 +177,13 @@ Browser ──WebSocket /ws──▶ server.ts ──▶ Room (one per world)
 - Browser: `apps/web/src/state/fog.ts` (`fogOf`) gives the map, globe and panels the fogged view and the visible provinces;
   the map draws a veil over the rest (one even-odd fill: the whole map minus visible provinces).
 
-### Hosting (not done yet)
+### Hosting
 
-The server is one Node.js process with a SQLite file, so any host that runs a long-lived Node app with a persistent disk works
-(for example Fly.io, Railway, Render, or a small VPS). Steps: `npm install`, `npm run build`, run `npm run server` with
-`PORT` set and `DATA_DIR` on the persistent disk, and put it behind HTTPS (the browser then uses `wss://` automatically).
-Serverless platforms are not a good fit, because players keep a connection open.
+The server is one Node.js process with a SQLite file, so any host that runs a long-lived container with a persistent disk
+works. `Dockerfile` builds the client and runs the server (`DATA_DIR=/data` on a volume); `railway.json` configures Railway.
+Behind a host's proxy set `TRUST_PROXY=1` so the sign-in limit sees each player's address (`clientAddress` in server.ts).
+The server pings every WebSocket every 25 s so proxies don't close quiet connections, and closes ones that stop answering.
+Serverless platforms are not a good fit, because players keep a connection open. Step-by-step: [HOSTING.md](HOSTING.md).
 
 ## Scenarios and custom worlds (Stage 7)
 

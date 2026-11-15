@@ -9,6 +9,7 @@ still left**. It is written for a beginner: technical terms are explained the fi
 
 - Code: GitHub `Cool-cryto/Game`, branch `claude/browser-game-skills-gq45g9`
 - More detail: [README.md](README.md) (how to run and play), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (how it's built),
+  [docs/HOSTING.md](docs/HOSTING.md) (putting it online),
   [docs/ROADMAP.md](docs/ROADMAP.md) (stage checklists), [apps/web/public/maps/SOURCES.md](apps/web/public/maps/SOURCES.md) (data sources)
 
 ---
@@ -202,7 +203,8 @@ bandwidth 5× too high, and an editor race that wiped a newly created country.
 ### Next steps (recommended order)
 1. **Hosting on the internet** so friends anywhere can play online. Needs an account with a host that runs a long-lived
    Node.js app with a persistent disk (e.g. Fly.io, Railway, Render or a small VPS) and HTTPS. Steps are in
-   ARCHITECTURE.md → Hosting. *Blocked on: you creating a hosting account.*
+   [docs/HOSTING.md](docs/HOSTING.md). The project is ready to deploy (Dockerfile, Railway settings, proxy-safe sign-in
+   limit, connection keep-alive). *Waiting on: you creating a hosting account.*
 2. **Government types** (democracy, monarchy, one-party state…) with real effects, using an openly licensed dataset
    (e.g. V-Dem or Polity — licences to be checked) rather than invented labels.
 3. **Naval warfare**: fleet battles, blockades, AI sea invasions.

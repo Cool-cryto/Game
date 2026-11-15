@@ -7,7 +7,7 @@ import type { CountryId, Scenario } from "@gs/shared";
 import { applyPatch, fogView, geographyFrom, round5, visibleProvinces, visionGroup, GLOBAL_ROOM_ID, type ClientMessage, type GameState, type GeographyData, type ServerMessage } from "@gs/sim";
 import { register } from "../src/auth";
 import { Db } from "../src/db";
-import { startServer } from "../src/server";
+import { clientAddress, startServer } from "../src/server";
 
 const data = (name: string) => JSON.parse(readFileSync(new URL(`../../web/src/data/${name}`, import.meta.url), "utf8")) as unknown;
 const scenarios = { modern: data("scenario-modern.json") as Scenario, "cold-war-1991": data("scenario-cold-war-1991.json") as Scenario };
@@ -122,6 +122,16 @@ describe("accounts", () => {
     ws.send(JSON.stringify({ t: "auth", token: "made-up" }));
     const code = await new Promise<number>((ok) => ws.once("close", ok));
     expect(code).toBe(4003);
+  });
+});
+
+describe("hosting", () => {
+  it("behind a proxy, the sign-in limit counts each player's own address", () => {
+    const req = (forwarded?: string) => ({ socket: { remoteAddress: "10.0.0.1" }, headers: forwarded ? { "x-forwarded-for": forwarded } : {} }) as never;
+    expect(clientAddress(req("1.2.3.4"), false)).toBe("10.0.0.1"); // no proxy: the header is ignored (it could be faked)
+    expect(clientAddress(req("1.2.3.4"), true)).toBe("1.2.3.4");
+    expect(clientAddress(req("6.6.6.6, 1.2.3.4"), true)).toBe("1.2.3.4"); // a faked first entry doesn't count
+    expect(clientAddress(req(), true)).toBe("10.0.0.1");
   });
 });
 

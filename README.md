@@ -38,7 +38,7 @@ and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the project is put toge
 - **World editor** (**Game → New game → Create a custom world**): create countries, paint provinces onto them,
   undo, save in the browser, export/import files, play it, or host it online
 
-Not built yet: government types, naval battles, trade deals, internet hosting. See [PROJECT.md](PROJECT.md).
+Not built yet: government types, naval battles, trade deals. To put the game online, see [docs/HOSTING.md](docs/HOSTING.md). See [PROJECT.md](PROJECT.md).
 
 ## How to play
 
