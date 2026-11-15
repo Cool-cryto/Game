@@ -109,7 +109,10 @@ export function WorldMap() {
         requestDraw();
       }
     };
-    worker.postMessage({ type: "load", baseUrl: import.meta.env.BASE_URL, owners: ownersRecord(useGame.getState().state) } satisfies WorkerRequest);
+    // Resolve the base address here: inside the worker, a relative path would resolve
+    // against the worker script's folder instead of the page's.
+    const baseUrl = new URL(import.meta.env.BASE_URL, document.baseURI).href;
+    worker.postMessage({ type: "load", baseUrl, owners: ownersRecord(useGame.getState().state) } satisfies WorkerRequest);
     loadCities()
       .then((list) => {
         if (disposed) return;
