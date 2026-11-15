@@ -127,3 +127,19 @@ population, GDP) lives in `GameState`.
 - Players and AI use the same rules; acceptance rules (`wouldAcceptPeace`, `wouldAcceptAlliance`) are also used
   by the UI to show whether an offer would be accepted.
 - Every province has an `owner` (de jure) and a `controller` (who holds it now). Peace treaties turn control into ownership.
+
+## 3D globe (Stage 5)
+
+```
+globe.worker.ts ── province & country shapes in equirectangular space (4096×2048)
+        │
+GlobeView ── paints the texture (2D canvas) ──▶ GlobeRenderer (WebGL): full-screen shader,
+        │                                         inverse orthographic projection → texture lookup
+        └── 2D overlay canvas with d3.geoOrthographic (same projection): labels, units, outlines
+```
+
+- `apps/web/src/map/globe/globeRenderer.ts` – WebGL setup and the shader (no 3D library needed).
+- `apps/web/src/map/globe/GlobeView.tsx` – camera (centre lon/lat + radius), input, texture painting, overlay, picking.
+- `apps/web/src/map/overlay.ts` – unit markers, routes, battles and stripes, shared by both views.
+- Picking on the globe: screen point → longitude/latitude (inverse projection) → equirectangular point → `isPointInPath`.
+- The texture is repainted only when its content key changes (map mode, ownership, occupation, or a new month for data modes).

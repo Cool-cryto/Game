@@ -6,8 +6,8 @@ import type { CountryId, ProvinceId } from "@gs/shared";
 import { createWorldFrame, projectCities, type Bounds, type CityPoint, type CountryShape, type ProvinceShape } from "./geo";
 import { MAP_MODES, NO_DATA } from "./mapModes";
 import type { DetailLevel, WorkerRequest, WorkerResponse } from "./workerProtocol";
-import { atWar, planMove, UNIT_STATS, type Unit } from "@gs/sim";
-import { COUNTRIES, GEOGRAPHY, getCountry, getProvince, loadCities } from "../data/countries";
+import { COUNTRIES, getCountry, getProvince, loadCities } from "../data/countries";
+import { drawUnitsOverlay, markerAt, politicalColor, previewMove, stackLabel, stripes, type Marker } from "./overlay";
 import { ownersRecord, playerCountry, useGame } from "../state/gameStore";
 import { sameSelection, useUi, type CameraCommand, type Selection } from "../state/uiStore";
 
@@ -64,8 +64,9 @@ export function WorldMap() {
 
     const rel = () => transform.k / fitK;
     const layer = (): Layer | undefined => (rel() >= HIGH_DETAIL_ZOOM && layers.high) || layers.low;
+    // Only draw while the flat map is the visible view.
     const requestDraw = () => {
-      if (!frameId) frameId = requestAnimationFrame(draw);
+      if (!frameId && useUi.getState().view === "flat") frameId = requestAnimationFrame(draw);
     };
 
     // ---------- Loading ----------
@@ -237,183 +238,28 @@ export function WorldMap() {
       drawUnits(ctx, dpr);
     }
 
-    // ---------- Units ----------
-    const stripeCache = new Map<string, HTMLCanvasElement>();
-    /** A diagonal-stripe fill that stays the same size on screen at any zoom. */
-    function stripes(ctx: CanvasRenderingContext2D, color: string, k: number): CanvasPattern | string {
-      let tile = stripeCache.get(color);
-      if (!tile) {
-        tile = document.createElement("canvas");
-        tile.width = tile.height = 10;
-        const c = tile.getContext("2d")!;
-        c.strokeStyle = color;
-        c.lineWidth = 3.5;
-        c.beginPath();
-        for (const o of [-10, 0, 10]) {
-          c.moveTo(o, 10);
-          c.lineTo(o + 10, 0);
-        }
-        c.stroke();
-        stripeCache.set(color, tile);
-      }
-      const pattern = ctx.createPattern(tile, "repeat");
-      if (!pattern) return color;
-      pattern.setTransform(new DOMMatrix().scale(1 / k));
-      return pattern;
-    }
-    const politicalColor = (c: CountryId) => MAP_MODES.political.level === "country" ? MAP_MODES.political.color(c, { info: COUNTRIES[c], state: undefined }) : "#888";
-
-    interface Stack {
-      province: ProvinceId;
-      owner: CountryId;
-      units: Unit[];
-      x: number;
-      y: number;
-    }
+    // ---------- Units (drawing shared with the globe, see overlay.ts) ----------
     /** Marker boxes drawn last frame, for clicking. */
-    let markers: { x0: number; y0: number; x1: number; y1: number; stack: Stack }[] = [];
-
+    let markers: Marker[] = [];
     function drawUnits(ctx: CanvasRenderingContext2D, dpr: number) {
-      markers = [];
       const low = layers.low;
       if (!low) return;
-      const { w, h } = size;
-      const t = transform;
-      const z = rel();
       const game = useGame.getState().state;
-      const me = playerCountry(game)?.id;
       const { selected, moveOrder } = useUi.getState();
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-      // Group into stacks: one marker per country per province.
-      const stacks = new Map<string, Stack>();
-      for (const u of Object.values(game.units)) {
-        const k = `${u.province}|${u.owner}`;
-        let st = stacks.get(k);
-        if (!st) {
-          const shape = low.provinces.get(u.province);
-          if (!shape) continue;
-          const [x, y] = t.apply(shape.labelPoint);
-          stacks.set(k, (st = { province: u.province, owner: u.owner, units: [], x, y }));
-        }
-        st.units.push(u);
-      }
-
-      // Routes of the player's moving units (the selected stack's more strongly).
-      const selectedStack = selected?.kind === "units" ? `${selected.province}|${selected.owner}` : null;
-      for (const st of stacks.values()) {
-        if (st.owner !== me) continue;
-        const emphasised = `${st.province}|${st.owner}` === selectedStack;
-        for (const u of st.units) {
-          if (!u.path.length) continue;
-          ctx.beginPath();
-          ctx.moveTo(st.x, st.y);
-          for (const p of u.path) {
-            const shape = low.provinces.get(p);
-            if (shape) ctx.lineTo(...t.apply(shape.labelPoint));
-          }
-          ctx.setLineDash([6, 5]);
-          ctx.lineWidth = emphasised ? 2.5 : 1.5;
-          ctx.strokeStyle = emphasised ? "#ffd678" : "rgba(255, 214, 120, 0.6)";
-          ctx.stroke();
-          ctx.setLineDash([]);
-        }
-      }
-
-      // Battles: hostile armies or fleets in the same province.
-      const byProvince = new Map<ProvinceId, Stack[]>();
-      for (const st of stacks.values()) {
-        if (!byProvince.has(st.province)) byProvince.set(st.province, []);
-        byProvince.get(st.province)!.push(st);
-      }
-
-      // Away from the action, show only your own units and battles when zoomed out.
-      for (const [province, list] of byProvince) {
-        const battle = list.some((a) => list.some((b) => a !== b && atWar(game, a.owner, b.owner)));
-        const show = z >= 2.5 || battle || list.some((st) => st.owner === me) || moveOrder != null;
-        if (!show) continue;
-        list.forEach((st, i) => {
-          const x = st.x + (i - (list.length - 1) / 2) * 30;
-          const y = st.y - 18;
-          if (x < -30 || y < -30 || x > w + 30 || y > h + 30) return;
-          drawMarker(ctx, st, x, y, st.owner === me, `${province}|${st.owner}` === selectedStack);
-          markers.push({ x0: x - 14, y0: y - 10, x1: x + 14, y1: y + 10, stack: st });
-        });
-        if (battle) drawBattle(ctx, list[0]!.x, list[0]!.y - 38);
-      }
-    }
-
-    function drawMarker(ctx: CanvasRenderingContext2D, st: Stack, x: number, y: number, mine: boolean, isSelected: boolean) {
-      const counts = { army: 0, navy: 0, air: 0 };
-      for (const u of st.units) counts[u.type]++;
-      const main = (["army", "navy", "air"] as const).reduce((a, b) => (counts[b] > counts[a] ? b : a));
-      const strength = st.units.reduce((a, u) => a + u.strength, 0) / st.units.length;
-      ctx.beginPath();
-      ctx.roundRect(x - 13, y - 9, 26, 18, 3);
-      ctx.fillStyle = politicalColor(st.owner);
-      ctx.fill();
-      ctx.lineWidth = isSelected ? 2.5 : 1.5;
-      ctx.strokeStyle = isSelected ? "#ffd678" : mine ? "#ffffff" : "rgba(5, 10, 16, 0.9)";
-      ctx.stroke();
-      // Unit symbol, in the style of military map symbols.
-      ctx.strokeStyle = "rgba(255,255,255,0.95)";
-      ctx.lineWidth = 1.3;
-      ctx.beginPath();
-      if (main === "army") {
-        ctx.moveTo(x - 9, y - 5);
-        ctx.lineTo(x + 3, y + 5);
-        ctx.moveTo(x - 9, y + 5);
-        ctx.lineTo(x + 3, y - 5);
-      } else if (main === "navy") {
-        ctx.moveTo(x - 9, y + 1);
-        ctx.quadraticCurveTo(x - 3, y + 7, x + 3, y + 1);
-        ctx.moveTo(x - 3, y - 5);
-        ctx.lineTo(x - 3, y + 4);
-      } else {
-        ctx.moveTo(x - 9, y + 3);
-        ctx.lineTo(x - 3, y - 4);
-        ctx.lineTo(x + 3, y + 3);
-      }
-      ctx.stroke();
-      // Count.
-      ctx.font = "700 10px Inter, system-ui, sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillStyle = "#fff";
-      ctx.fillText(String(st.units.length), x + 8.5, y + 0.5);
-      // Strength bar.
-      ctx.fillStyle = "rgba(5,10,16,0.85)";
-      ctx.fillRect(x - 13, y + 10, 26, 3);
-      ctx.fillStyle = strength > 60 ? "#7fd39a" : strength > 30 ? "#e8c25a" : "#f08a7a";
-      ctx.fillRect(x - 13, y + 10, (26 * strength) / 100, 3);
-    }
-
-    function drawBattle(ctx: CanvasRenderingContext2D, x: number, y: number) {
-      ctx.beginPath();
-      ctx.arc(x, y, 10, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(200, 50, 40, 0.92)";
-      ctx.fill();
-      ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 1.8;
-      ctx.beginPath();
-      ctx.moveTo(x - 5, y - 5);
-      ctx.lineTo(x + 5, y + 5);
-      ctx.moveTo(x + 5, y - 5);
-      ctx.lineTo(x - 5, y + 5);
-      ctx.stroke();
-    }
-
-    const markerAt = (x: number, y: number) => [...markers].reverse().find((m) => x >= m.x0 && x <= m.x1 && y >= m.y0 && y <= m.y1);
-
-    /** Where would the ordered units go if sent to this province? */
-    function previewMove(province: ProvinceId | null): string | null {
-      const order = useUi.getState().moveOrder;
-      if (!order || !province) return null;
-      const game = useGame.getState().state;
-      const u = game.units[order.units[0]!];
-      if (!u) return null;
-      const plan = planMove(game, GEOGRAPHY, u, province);
-      return "error" in plan ? plan.error : `Move here (${plan.mode === "land" ? "march" : plan.mode === "sea" ? "by sea" : "fly"})`;
+      markers = drawUnitsOverlay(ctx, {
+        project: (p) => {
+          const shape = low.provinces.get(p);
+          return shape ? (transform.apply(shape.labelPoint) as [number, number]) : null;
+        },
+        w: size.w,
+        h: size.h,
+        zoom: rel(),
+        game,
+        me: playerCountry(game)?.id,
+        selected,
+        moveOrder,
+      });
     }
 
     function drawLabels(ctx: CanvasRenderingContext2D, L: Layer, visible: CShape[], dpr: number, selected: Selection) {
@@ -546,16 +392,13 @@ export function WorldMap() {
     }
 
     function updateHover() {
-      const marker = pointer ? markerAt(pointer.x, pointer.y) : undefined;
+      const marker = pointer ? markerAt(markers, pointer.x, pointer.y) : undefined;
       const order = useUi.getState().moveOrder;
       if (marker && !order) {
         canvas.style.cursor = "pointer";
         const tip = tooltipRef.current;
         if (tip && pointer) tip.style.transform = `translate(${pointer.x + 14}px, ${pointer.y + 14}px)`;
-        const counts = { army: 0, navy: 0, air: 0 };
-        for (const u of marker.stack.units) counts[u.type]++;
-        const parts = (["army", "navy", "air"] as const).filter((k) => counts[k]).map((k) => `${counts[k]} ${UNIT_STATS[k].label.toLowerCase()}${counts[k] > 1 ? (k === "army" ? "ies" : "s") : ""}`.replace("armyies", "armies"));
-        setTooltip(`${parts.join(", ")} · ${getCountry(marker.stack.owner)?.name ?? marker.stack.owner}`);
+        setTooltip(stackLabel(marker.stack));
         useUi.getState().hover({ kind: "units", province: marker.stack.province, owner: marker.stack.owner });
         return;
       }
@@ -565,7 +408,7 @@ export function WorldMap() {
         const tip = tooltipRef.current;
         if (tip && pointer) tip.style.transform = `translate(${pointer.x + 14}px, ${pointer.y + 14}px)`;
         useUi.getState().hover(hit ? { kind: "province", id: hit.province } : null);
-        setTooltip(hit ? `${getProvince(hit.province)?.name ?? ""}: ${previewMove(hit.province)}` : "Click a province to send your units there");
+        setTooltip(hit ? `${getProvince(hit.province)?.name ?? ""}: ${previewMove(useGame.getState().state, order, hit.province)}` : "Click a province to send your units there");
         return;
       }
       const s: Selection = hit ? (rel() >= PROVINCE_ZOOM ? { kind: "province", id: hit.province } : { kind: "country", id: hit.country }) : null;
@@ -711,7 +554,7 @@ export function WorldMap() {
         ui.setMoveOrder(null);
         return;
       }
-      const marker = markerAt(p.x, p.y);
+      const marker = markerAt(markers, p.x, p.y);
       if (marker) {
         ui.select({ kind: "units", province: marker.stack.province, owner: marker.stack.owner });
         return;
@@ -755,7 +598,8 @@ export function WorldMap() {
       unsubUi = useUi.subscribe((s, prev) => {
         if (s.hovered !== prev.hovered || s.selected !== prev.selected || s.mapMode !== prev.mapMode || s.moveOrder !== prev.moveOrder) requestDraw();
         if (s.moveOrder !== prev.moveOrder) updateHover();
-        if (s.camera && s.camera !== prev.camera) runCamera(s.camera);
+        if (s.view !== prev.view && s.view === "flat") requestDraw();
+        if (s.camera && s.camera !== prev.camera && s.view === "flat") runCamera(s.camera);
       });
       if (import.meta.env.DEV) installTestHook();
     }

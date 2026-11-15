@@ -1669,3 +1669,35 @@ button {
   margin: 0;
   font-size: 13px;
 }
+
+/* ---------- Stage 5: globe ---------- */
+.view {
+  position: absolute;
+  inset: 0;
+}
+/* Hidden views stay laid out (so their size is known) but invisible and not clickable. */
+.view[aria-hidden="true"] {
+  visibility: hidden;
+  pointer-events: none;
+}
+.globe {
+  background: radial-gradient(ellipse at 50% 45%, #0d1a2a 0%, #070d14 70%);
+}
+.globe__gl,
+.globe__overlay {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+.globe__overlay {
+  cursor: grab;
+  touch-action: none;
+}
+.zoom-controls__view {
+  font-size: 12px !important;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  border-bottom: 1px solid var(--border) !important;
+  border-radius: 7px 7px 0 0 !important;
+}

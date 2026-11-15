@@ -53,7 +53,7 @@ Known limits of Stage 3:
 - Rules are simple, tuned game rules, not economic forecasts. Example: Japan's population grows slowly instead of shrinking.
 - Saves are stored in this browser only (use Export to keep a copy).
 
-## Stage 4: Diplomacy, military and AI ✅ (current)
+## Stage 4: Diplomacy, military and AI ✅
 
 - [x] Province adjacency and coastlines from the map data; distances between provinces
 - [x] Armies, fleets, air wings: recruit (defense fund), upkeep, reinforcement, population-based limit
@@ -73,8 +73,24 @@ Known limits of Stage 4:
 - Units are abstract ("army" ≈ a corps), not real formations.
 - The news feed is hidden on screens narrower than 1100 px (important events still pop up).
 
-## Stage 5: 3D globe and renderer upgrade
-- WebGL renderer, flat map / globe toggle
+## Stage 5: 3D globe ✅ (current)
+
+- [x] WebGL globe: one shader draws the sphere from an equirectangular world texture, with lighting and an atmosphere glow
+- [x] Texture painted from the province geometry (in a background worker): map-mode colors, borders, occupation stripes, graticule
+- [x] 2D overlay in the same orthographic projection: labels, cities, unit markers, battles, routes, hover and selection outlines
+- [x] Drag to rotate, wheel/pinch zoom, click/double-click/right-click like the flat map; search and camera buttons fly the globe
+- [x] 2D/3D toggle (button or G); both views stay loaded so switching is instant
+- [x] Performance: the texture is repainted only when what it shows changes (frames ~3–5 ms while time runs)
+- [x] Tests for opening, switching, rotating, zooming, picking, search and phone layout
+
+Decision: the flat map stays on Canvas 2D. Measurements show it draws in 1–3 ms per frame, so moving it to WebGL would add
+complexity without a visible benefit. The globe is the part that needed WebGL.
+
+Known limits of Stage 5:
+- The globe texture is 4096×2048 (about 10 km per pixel), so it gets slightly soft at the deepest globe zoom (8×).
+  For close-up work, the flat map zooms further and has more detailed borders.
+- Province names are shown on the flat map only (the globe shows country and city names).
+- A thin seam can appear in a narrow wedge directly behind the North or South Pole when looking from far above it.
 
 ## Stage 6: Multiplayer
 - Game server, accounts, private servers (up to 50 players), AI takeover on disconnect

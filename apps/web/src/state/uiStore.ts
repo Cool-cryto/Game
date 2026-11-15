@@ -21,6 +21,9 @@ interface UiState {
   moveOrder: { units: number[] } | null;
   setMoveOrder: (m: { units: number[] } | null) => void;
   mapMode: MapModeId;
+  /** Flat map or 3D globe. */
+  view: "flat" | "globe";
+  setView: (view: "flat" | "globe") => void;
   /** Zoom relative to the whole-world view (1 = whole world). */
   zoom: number;
   /** One-shot request for the map camera; nonce makes repeated requests distinct. */
@@ -47,6 +50,8 @@ export const useUi = create<UiState>((set) => ({
   moveOrder: null,
   setMoveOrder: (moveOrder) => set({ moveOrder }),
   mapMode: "political",
+  view: "flat",
+  setView: (view) => set({ view }),
   zoom: 1,
   camera: null,
   hover: (hovered) => set((s) => (sameSelection(s.hovered, hovered) ? s : { hovered })),

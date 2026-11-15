@@ -24,6 +24,15 @@ import {
  *
  * All numbers are game rules, tuned to give believable results, not real-world forecasts.
  */
+/**
+ * Work out every country's resource production, need and trade without
+ * advancing time. Used at game start so the panels have numbers on day one.
+ */
+export function refreshResources(state: GameState): void {
+  calibrateResources(state);
+  worldMarket(state, aggregateProvinces(state));
+}
+
 export function runMonthly(state: GameState): void {
   calibrateResources(state);
   const agg = aggregateProvinces(state);

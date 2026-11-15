@@ -108,6 +108,12 @@ describe("game setup", () => {
     expect(a.some((u) => u.type === "navy")).toBe(true); // A has a coast
   });
 
+  it("has resource production and needs from day one", () => {
+    const c = newGame().countries[A]!;
+    expect(c.resources.food.production).toBeGreaterThan(0);
+    expect(c.resources.food.need).toBeGreaterThan(0);
+  });
+
   it("starts with a balanced budget", () => {
     const c = newGame().countries[A]!;
     expect(0.04 + Object.values(c.budget).reduce((a, b) => a + b, 0)).toBeCloseTo(c.taxRate, 3);

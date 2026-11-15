@@ -1,6 +1,7 @@
 import type { CountryId, ProvinceId, ResourceId, Scenario } from "@gs/shared";
 import { RESOURCES } from "@gs/shared";
 import { createStartingMilitaries } from "./military";
+import { refreshResources } from "./systems";
 import type { RngState } from "./rng";
 import type { Geography } from "./geography";
 
@@ -252,7 +253,7 @@ export function createGameState(scenario: Scenario, geo: Geography, seed: number
     diplomacyCooldown: {},
     events: [],
   };
-  calibrateResources(state);
+  refreshResources(state);
   for (const c of Object.values(countries)) c.capital = largestProvince(state, c.id);
   createStartingMilitaries(state, geo);
   return state;

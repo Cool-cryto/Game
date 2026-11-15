@@ -1,4 +1,4 @@
-import { geoEqualEarth, geoGraticule10, geoPath, type GeoPath, type GeoProjection } from "d3-geo";
+import { geoEqualEarth, geoEquirectangular, geoGraticule10, geoPath, type GeoPath, type GeoProjection } from "d3-geo";
 import { feature, merge, mesh } from "topojson-client";
 import polylabel from "polylabel";
 import type { Feature, Geometry, MultiPolygon, Polygon } from "geojson";
@@ -59,6 +59,26 @@ export function createWorldFrame(): WorldFrame {
   return {
     width: WORLD_WIDTH,
     height: Math.ceil(y1 - Math.min(0, y0)),
+    projection,
+    path,
+    spherePath: path({ type: "Sphere" }) ?? "",
+    graticulePath: path(geoGraticule10()) ?? "",
+  };
+}
+
+/**
+ * An equirectangular frame (longitude → x, latitude → y), used to paint the
+ * globe's texture. Width should be a power of two; height is half of it.
+ */
+export function createEquirectFrame(width: number): WorldFrame {
+  const height = width / 2;
+  const projection = geoEquirectangular()
+    .scale(width / (2 * Math.PI))
+    .translate([width / 2, height / 2]);
+  const path = geoPath(projection);
+  return {
+    width,
+    height,
     projection,
     path,
     spherePath: path({ type: "Sphere" }) ?? "",
@@ -139,7 +159,7 @@ function shapeOf(g: Geometry, frame: WorldFrame, labels: boolean): Shape | null 
   const main = largestPolygon(g, frame.path);
   const mainGeom = main ?? g;
   let labelPoint = frame.path.centroid(mainGeom) as [number, number];
-  const rings = main ? projectRings(main, frame.projection) : null;
+  const rings = main ? projectRings(main, frame.projection, frame.width) : null;
   if (rings) {
     const p = polylabel(rings, 0.5);
     if (Number.isFinite(p[0]) && Number.isFinite(p[1])) labelPoint = [p[0], p[1]];
@@ -173,7 +193,7 @@ function largestPolygon(g: Geometry, path: GeoPath): Polygon | null {
   return best;
 }
 
-function projectRings(poly: Polygon, projection: GeoProjection): [number, number][][] | null {
+function projectRings(poly: Polygon, projection: GeoProjection, width: number): [number, number][][] | null {
   const rings: [number, number][][] = [];
   for (const ring of poly.coordinates) {
     const out: [number, number][] = [];
@@ -187,7 +207,7 @@ function projectRings(poly: Polygon, projection: GeoProjection): [number, number
   const outer = rings[0];
   if (!outer || outer.length < 4) return null;
   for (let i = 1; i < outer.length; i++) {
-    if (Math.abs(outer[i]![0] - outer[i - 1]![0]) > WORLD_WIDTH / 2) return null;
+    if (Math.abs(outer[i]![0] - outer[i - 1]![0]) > width / 2) return null;
   }
   return rings;
 }

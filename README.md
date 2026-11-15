@@ -2,7 +2,7 @@
 
 A grand strategy game that runs in the web browser, built in stages.
 
-**Current stage: 4 — military, war, diplomacy and AI (single player).** See [docs/ROADMAP.md](docs/ROADMAP.md) for what exists and what comes next,
+**Current stage: 5 — 3D globe.** See [docs/ROADMAP.md](docs/ROADMAP.md) for what exists and what comes next,
 and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the project is put together.
 
 ## What works today
@@ -21,9 +21,12 @@ and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the project is put toge
 - **News feed** of wars, battles, treaties and alliances; pop-ups for events involving you
 - **Save and load**: 3 browser slots plus export/import of save files
 - **14 map modes** including Diplomacy (relations with you) and Wars
+- **3D globe**: switch between the flat map and a lit, rotating globe with the **2D/3D** button (or **G**).
+  Everything works on both: colors and map modes, occupation, labels, cities, units, battles, routes,
+  clicking, move orders. Drag to spin, wheel or pinch to zoom
 - Search across countries, provinces and cities; works on desktop and phone screens
 
-Not built yet: government types, naval battles, trade deals, the 3D globe, historical scenarios, multiplayer.
+Not built yet: government types, naval battles, trade deals, historical scenarios, multiplayer.
 
 ## How to play
 

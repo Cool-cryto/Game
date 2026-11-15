@@ -8,9 +8,17 @@ type MapHook = {
   detail: () => "low" | "high";
   highLoaded: () => boolean;
 };
+type GlobeHook = {
+  pick: (x: number, y: number) => { province: string; country: string } | null;
+  camera: () => { lon: number; lat: number; radius: number; zoom: number };
+  screenPointOfProvince: (id: string) => [number, number] | null;
+  lookAt: (lon: number, lat: number, zoom?: number) => void;
+};
 declare global {
   interface Window {
     __gsMap?: MapHook;
+    __gsGlobe?: GlobeHook;
+    __gsGame?: { getState: () => { state: { countries: Record<string, { capital: string | null }> } } };
   }
 }
 
@@ -339,4 +347,81 @@ test("war: declare, invade, occupy, and the enemy is annexed", async ({ page }) 
     return p ? m.pick(p[0], p[1])?.country : null;
   });
   expect(owner).toBe("FRA");
+});
+
+// ---------- Stage 5: 3D globe ----------
+
+async function openGlobe(page: Page) {
+  const errors = await openMap(page);
+  await page.getByTestId("view-toggle").click();
+  await page.waitForFunction(() => window.__gsGlobe, null, { timeout: 20_000 });
+  await expect(page.getByTestId("globe-canvas")).toBeVisible();
+  return errors;
+}
+
+test("the 3D globe opens without errors and can be switched back", async ({ page }) => {
+  const errors = await openGlobe(page);
+  await expect(page.getByTestId("view-toggle")).toHaveText("2D");
+  await expect(page.getByTestId("map-canvas")).toBeHidden();
+  await page.getByTestId("view-toggle").click();
+  await expect(page.getByTestId("map-canvas")).toBeVisible();
+  await expect(page.getByTestId("globe-canvas")).toBeHidden();
+  // The G key toggles too.
+  await page.keyboard.press("g");
+  await expect(page.getByTestId("globe-canvas")).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("dragging spins the globe; zoom buttons and wheel zoom it", async ({ page }) => {
+  await openGlobe(page);
+  const before = await page.evaluate(() => window.__gsGlobe!.camera());
+  await page.mouse.move(700, 450);
+  await page.mouse.down();
+  await page.mouse.move(520, 380, { steps: 8 });
+  await page.mouse.up();
+  const after = await page.evaluate(() => window.__gsGlobe!.camera());
+  expect(Math.abs(after.lon - before.lon)).toBeGreaterThan(10);
+  expect(after.lat).not.toBeCloseTo(before.lat, 1);
+
+  await page.getByLabel("Zoom in").click();
+  await expect.poll(() => zoomLevel(page)).toBeGreaterThan(1.4);
+  await page.mouse.move(700, 450);
+  await page.mouse.wheel(0, -400);
+  await expect.poll(() => zoomLevel(page)).toBeGreaterThan(2);
+  await page.getByLabel("Show whole world").click();
+  await expect.poll(() => zoomLevel(page)).toBeLessThan(1.05);
+});
+
+test("clicking the globe selects the country under the pointer", async ({ page }) => {
+  await openGlobe(page);
+  const capital = await page.evaluate(() => window.__gsGame!.getState().state.countries["BRA"]!.capital!);
+  await page.evaluate(() => window.__gsGlobe!.lookAt(-50, -12, 1));
+  await page.waitForTimeout(200);
+  const p = await page.evaluate((id) => window.__gsGlobe!.screenPointOfProvince(id), capital);
+  expect(p).not.toBeNull();
+  expect(await page.evaluate(([x, y]) => window.__gsGlobe!.pick(x!, y!)?.country, p!)).toBe("BRA");
+  await page.mouse.move(p![0], p![1]);
+  await expect(page.locator(".globe .map-tooltip")).toHaveText("Brazil");
+  await page.mouse.click(p![0], p![1]);
+  await expect(panel(page).getByRole("heading", { name: "Brazil" })).toBeVisible();
+});
+
+test("search flies the globe to a place, and map modes recolor it", async ({ page }) => {
+  await openGlobe(page);
+  await searchFor(page, "japan");
+  await expect.poll(() => zoomLevel(page)).toBeGreaterThan(2);
+  // Wait for the flight to finish, then check we're looking at Japan.
+  await expect.poll(() => page.evaluate(() => Math.round(window.__gsGlobe!.camera().lon))).toBeGreaterThan(125);
+  expect((await page.evaluate(() => window.__gsGlobe!.camera())).lon).toBeLessThan(150);
+  await page.getByLabel("Map mode").selectOption("wealth");
+  await expect(page.locator(".legend")).toContainText("GDP per person");
+});
+
+test("the globe works on a phone-sized screen", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openGlobe(page);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+  await searchFor(page, "egypt");
+  await expect(panel(page)).toBeVisible();
 });

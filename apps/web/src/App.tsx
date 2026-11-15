@@ -1,5 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { WorldMap } from "./map/WorldMap";
+import { GlobeView } from "./map/globe/GlobeView";
+import { useUi } from "./state/uiStore";
 import { startSimulation } from "./state/gameStore";
 import { GameErrors } from "./ui/GameErrors";
 import { InfoPanel } from "./ui/InfoPanel";
@@ -12,9 +14,30 @@ import { ZoomControls } from "./ui/ZoomControls";
 
 export function App() {
   useEffect(() => startSimulation(), []);
+  const view = useUi((s) => s.view);
+  // Build the globe the first time it's shown, then keep it (switching back is instant).
+  const [globeUsed, setGlobeUsed] = useState(false);
+  useEffect(() => {
+    if (view === "globe") setGlobeUsed(true);
+  }, [view]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement).closest("input, textarea, select, dialog")) return;
+      if (e.key === "g" || e.key === "G") useUi.getState().setView(useUi.getState().view === "flat" ? "globe" : "flat");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   return (
-    <div className="app">
-      <WorldMap />
+    <div className={`app app--${view}`}>
+      <div className="view view--flat" aria-hidden={view !== "flat"}>
+        <WorldMap />
+      </div>
+      {globeUsed && (
+        <div className="view view--globe" aria-hidden={view !== "globe"}>
+          <GlobeView active={view === "globe"} />
+        </div>
+      )}
       <TopBar />
       <PlayerCard />
       <InfoPanel />
