@@ -1,36 +1,43 @@
 import { create } from "zustand";
-import type { CountryId } from "@gs/shared";
+import type { CountryId, ProvinceId } from "@gs/shared";
 import type { MapModeId } from "../map/mapModes";
 
-export type ZoomCommand = { kind: "in" | "out" | "reset" } | { kind: "focus"; id: CountryId };
+export type Selection = { kind: "country"; id: CountryId } | { kind: "province"; id: ProvinceId } | null;
+
+export type CameraCommand =
+  | { kind: "in" | "out" | "reset" }
+  | { kind: "focus"; target: NonNullable<Selection> }
+  | { kind: "point"; lon: number; lat: number; zoom: number };
 
 interface UiState {
-  hoveredId: CountryId | null;
-  selectedId: CountryId | null;
+  hovered: Selection;
+  selected: Selection;
   mapMode: MapModeId;
   /** Zoom relative to the whole-world view (1 = whole world). */
   zoom: number;
   /** One-shot request for the map camera; nonce makes repeated requests distinct. */
-  zoomCommand: (ZoomCommand & { nonce: number }) | null;
-  hover: (id: CountryId | null) => void;
-  select: (id: CountryId | null, opts?: { focus?: boolean }) => void;
+  camera: (CameraCommand & { nonce: number }) | null;
+  hover: (s: Selection) => void;
+  select: (s: Selection, opts?: { focus?: boolean }) => void;
   setMapMode: (mode: MapModeId) => void;
   setZoom: (zoom: number) => void;
-  command: (cmd: ZoomCommand) => void;
+  command: (cmd: CameraCommand) => void;
 }
 
 let nonce = 0;
 
+export const sameSelection = (a: Selection, b: Selection) => a === b || (!!a && !!b && a.kind === b.kind && a.id === b.id);
+
 export const useUi = create<UiState>((set) => ({
-  hoveredId: null,
-  selectedId: null,
+  hovered: null,
+  selected: null,
   mapMode: "political",
   zoom: 1,
-  zoomCommand: null,
-  hover: (hoveredId) => set({ hoveredId }),
-  select: (selectedId, opts) =>
-    set(opts?.focus && selectedId ? { selectedId, zoomCommand: { kind: "focus", id: selectedId, nonce: ++nonce } } : { selectedId }),
+  camera: null,
+  hover: (hovered) => set((s) => (sameSelection(s.hovered, hovered) ? s : { hovered })),
+  select: (selected, opts) =>
+    set(opts?.focus && selected ? { selected, camera: { kind: "focus", target: selected, nonce: ++nonce } } : { selected }),
   setMapMode: (mapMode) => set({ mapMode }),
   setZoom: (zoom) => set({ zoom }),
-  command: (cmd) => set({ zoomCommand: { ...cmd, nonce: ++nonce } }),
+  command: (cmd) => set({ camera: { ...cmd, nonce: ++nonce } }),
 }));

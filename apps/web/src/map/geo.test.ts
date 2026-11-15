@@ -1,66 +1,113 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { neighbors } from "topojson-client";
-import type { Topology, GeometryCollection } from "topojson-specification";
-import { buildWorld, WORLD_WIDTH } from "./geo";
-import { COUNTRIES, searchCountries } from "../data/countries";
+import type { City, CountryId, ProvinceId } from "@gs/shared";
+import { createGameState } from "@gs/sim";
+import { buildCountryShapes, buildProvinceShapes, createWorldFrame, type ProvinceTopology } from "./geo";
+import { COUNTRIES, MODERN_SCENARIO, PROVINCES, search, setCities } from "../data/countries";
 
-const topo = JSON.parse(readFileSync(new URL("../../public/maps/world-50m.topo.json", import.meta.url), "utf8")) as Topology;
-const geoms = (topo.objects.countries as GeometryCollection).geometries;
-const world = buildWorld(topo);
+const read = <T,>(p: string) => JSON.parse(readFileSync(new URL(`../../public/maps/${p}`, import.meta.url), "utf8")) as T;
+const low = read<ProvinceTopology>("provinces-low.topo.json");
+const high = read<ProvinceTopology>("provinces-high.topo.json");
+const cities = read<City[]>("cities.json");
+const frame = createWorldFrame();
+const owners = MODERN_SCENARIO.owners;
+const ids = (t: ProvinceTopology) => t.objects.provinces.geometries.map((g) => String(g.id));
 
 describe("map data", () => {
-  it("links every map shape to country facts, and every country to a shape", () => {
-    const mapIds = geoms.map((g) => String(g.id));
-    expect(new Set(mapIds).size).toBe(mapIds.length);
-    for (const id of mapIds) expect(COUNTRIES[id as never], id).toBeDefined();
-    expect(Object.keys(COUNTRIES).sort()).toEqual([...mapIds].sort());
+  it("has the same provinces in both detail levels, each with facts and an owner", () => {
+    const lowIds = ids(low);
+    expect(lowIds.length).toBeGreaterThan(4000);
+    expect(new Set(lowIds).size).toBe(lowIds.length);
+    expect([...ids(high)].sort()).toEqual([...lowIds].sort());
+    expect(Object.keys(PROVINCES).sort()).toEqual([...lowIds].sort());
+    for (const id of lowIds) expect(COUNTRIES[owners[id as ProvinceId]!], id).toBeDefined();
   });
 
-  it("includes every UN member state", () => {
+  it("has facts for every country that owns provinces, and every UN member owns some", () => {
+    const owning = new Set(Object.values(owners));
+    expect(Object.keys(COUNTRIES).sort()).toEqual([...owning].sort());
     const un = Object.values(COUNTRIES).filter((c) => c.unMember);
-    expect(un.length).toBe(193);
+    expect(un.length).toBeGreaterThanOrEqual(193);
+  });
+
+  it("has population and GDP for nearly every sovereign state", () => {
+    const sovereign = Object.values(COUNTRIES).filter((c) => c.kind === "sovereign");
+    const missing = sovereign.filter((c) => !MODERN_SCENARIO.countries[c.id]?.population);
+    expect(missing.map((c) => c.id)).toEqual([]);
+    expect(MODERN_SCENARIO.countries["DEU" as CountryId]?.population).toBeGreaterThan(80e6);
   });
 
   it("never gives touching countries the same color", () => {
+    const geoms = low.objects.provinces.geometries;
     const adj = neighbors(geoms);
     geoms.forEach((g, i) => {
       for (const j of adj[i]!) {
-        expect(COUNTRIES[String(g.id) as never]!.colorSlot).not.toBe(COUNTRIES[String(geoms[j]!.id) as never]!.colorSlot);
+        const a = owners[String(g.id) as ProvinceId]!;
+        const b = owners[String(geoms[j]!.id) as ProvinceId]!;
+        if (a !== b) expect(COUNTRIES[a]!.colorSlot, `${a}/${b}`).not.toBe(COUNTRIES[b]!.colorSlot);
       }
     });
   });
 
-  it("only lists borders with countries that exist", () => {
-    for (const c of Object.values(COUNTRIES)) for (const b of c.borders) expect(COUNTRIES[b], `${c.id}->${b}`).toBeDefined();
+  it("places every city in a real province, capitals included", () => {
+    expect(cities.length).toBeGreaterThan(7000);
+    for (const c of cities) expect(PROVINCES[c.prov], c.name).toBeDefined();
+    const paris = cities.find((c) => c.name === "Paris" && c.cap)!;
+    expect(owners[paris.prov]).toBe("FRA");
+    expect(PROVINCES[paris.prov]!.name).toBe("Paris");
+    expect(Object.values(PROVINCES).find((p) => p.localName === "Bayern")?.name).toBe("Bavaria");
   });
 });
 
-describe("world geometry", () => {
-  it("projects every region inside the world rectangle with a usable label point", () => {
-    expect(world.regions.length).toBe(geoms.length);
-    for (const r of world.regions) {
-      const [x, y] = r.labelPoint;
-      expect(Number.isFinite(x) && Number.isFinite(y), r.id).toBe(true);
-      expect(x).toBeGreaterThanOrEqual(-1);
-      expect(x).toBeLessThanOrEqual(WORLD_WIDTH + 1);
-      expect(y).toBeGreaterThanOrEqual(-1);
-      expect(y).toBeLessThanOrEqual(world.height + 1);
-      expect(r.pathData.length).toBeGreaterThan(0);
+describe("shapes", () => {
+  const provinces = buildProvinceShapes(low, frame);
+  const countries = buildCountryShapes(low, frame, owners);
+
+  it("builds one shape per province and per country, inside the world rectangle", () => {
+    expect(provinces.length).toBe(ids(low).length);
+    expect(countries.length).toBe(Object.keys(COUNTRIES).length);
+    for (const s of [...provinces, ...countries]) {
+      const [x, y] = s.labelPoint;
+      expect(x >= -1 && x <= frame.width + 1 && y >= -1 && y <= frame.height + 1, s.id).toBe(true);
     }
   });
 
+  it("draws borders between a country's own provinces", () => {
+    expect(countries.find((c) => c.id === "DEU")!.innerBordersData.length).toBeGreaterThan(100);
+  });
+
   it("places France's label in mainland France, not French Guiana", () => {
-    const fra = world.regions.find((r) => r.id === "FRA")!;
-    const deu = world.regions.find((r) => r.id === "DEU")!;
+    const fra = countries.find((c) => c.id === "FRA")!;
+    const deu = countries.find((c) => c.id === "DEU")!;
     expect(Math.abs(fra.labelPoint[0] - deu.labelPoint[0])).toBeLessThan(60);
+  });
+
+  it("redraws borders when a province changes owner", () => {
+    const bavaria = Object.values(PROVINCES).find((p) => p.name === "Bavaria")!;
+    const state = createGameState(MODERN_SCENARIO, 1);
+    state.provinces[bavaria.id]!.owner = "AUT" as CountryId;
+    const changed = buildCountryShapes(low, frame, Object.fromEntries(Object.values(state.provinces).map((p) => [p.id, p.owner])), {
+      labels: false,
+    });
+    const before = countries.find((c) => c.id === "AUT")!;
+    const after = changed.find((c) => c.id === "AUT")!;
+    expect(after.area).toBeGreaterThan(before.area * 1.5);
   });
 });
 
 describe("search", () => {
-  it("finds countries by the start of their name first", () => {
-    expect(searchCountries("fra")[0]?.id).toBe("FRA");
-    expect(searchCountries("united").map((c) => c.id)).toEqual(expect.arrayContaining(["USA", "GBR", "ARE"]));
-    expect(searchCountries("")).toEqual([]);
+  setCities(cities);
+  const ownerOf = (p: ProvinceId) => owners[p];
+
+  it("finds countries first, then provinces, then cities", () => {
+    expect(search("fra", ownerOf)[0]).toMatchObject({ kind: "country", id: "FRA" });
+    const tokyo = search("tokyo", ownerOf);
+    expect(tokyo.some((r) => r.kind === "province")).toBe(true);
+    expect(tokyo.some((r) => r.kind === "city" && r.detail?.includes("Japan"))).toBe(true);
+  });
+
+  it("ignores accents", () => {
+    expect(search("sao paulo", ownerOf).some((r) => r.name === "São Paulo")).toBe(true);
   });
 });

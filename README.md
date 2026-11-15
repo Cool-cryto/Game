@@ -2,19 +2,22 @@
 
 A grand strategy game that runs in the web browser, built in stages.
 
-**Current stage: 1 — interactive world map.** See [docs/ROADMAP.md](docs/ROADMAP.md) for what exists and what comes next,
+**Current stage: 2 — provinces, cities and starting data.** See [docs/ROADMAP.md](docs/ROADMAP.md) for what exists and what comes next,
 and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the project is put together.
 
 ## What works today
 
-- World map with all 241 Natural Earth map regions: 193 sovereign states, 45 territories, 3 disputed regions
-- Hover to see a name; click (or double-click to also zoom) to open an info panel with real-world facts and flag
-- Zoom with the mouse wheel, pinch, the + / − buttons, or by choosing a country; drag to pan
-- Search box for any country or territory
-- Two map modes: Political and Continents
+- World map built from **4,596 provinces** (states, regions, prefectures…) grouped into 248 countries, territories and disputed regions
+- **7,333 cities**: capitals and big cities first, smaller towns appear as you zoom in
+- Zoomed out you pick **countries**; zoomed in (3× and more) you pick **provinces**. More detailed borders load automatically when you zoom in
+- Country panel: flag, real-world facts, **starting population and GDP** (Natural Earth 2019 estimates), largest cities, land borders
+- Province panel: English and local name, owning country, area, cities
+- Search across countries, provinces (English or local names) and cities
+- Map modes: Political, Continents, Population, Wealth (GDP per person)
+- Countries are drawn from the provinces they own, so when conquest arrives, borders redraw automatically
 - Works on desktop and phone screens
 
-Not built yet: provinces, cities, the 3D globe, any game simulation (economy, armies, AI), multiplayer.
+Not built yet: the game simulation itself (time passing, economy, armies, AI), province-level population, the 3D globe, multiplayer.
 
 ## Running it on your computer
 
@@ -32,9 +35,10 @@ Not built yet: provinces, cities, the 3D globe, any game simulation (economy, ar
 
 ```
 apps/web/         the game you see in the browser (React + TypeScript)
-  scripts/        turns open map data into game data (npm run data -w @gs/web)
-  public/maps/    map geometry       public/flags/  flag images
-  src/map/        map drawing, zoom, clicks       src/ui/  panels, search, buttons
+  scripts/        turns open map data into game data (npm run data -w @gs/web; downloads sources on first run)
+  public/maps/    province geometry (two detail levels) and cities    public/flags/  flag images
+  src/map/        map drawing, zoom, clicks, background map builder (world.worker.ts)
+  src/ui/         panels, search, buttons     src/data/  country/province facts, modern-world scenario
 packages/sim/     the game rules engine (no browser code, so a server can run it later)
 packages/shared/  types used by both
 docs/             architecture and roadmap
@@ -42,6 +46,6 @@ docs/             architecture and roadmap
 
 ## Credits
 
-Borders: [Natural Earth](https://www.naturalearthdata.com) (public domain) via world-atlas ·
+Provinces, cities, population and GDP: [Natural Earth](https://www.naturalearthdata.com) (public domain) ·
 Country facts: [mledoze/countries](https://github.com/mledoze/countries) (ODbL) ·
 Flags: [flag-icons](https://github.com/lipis/flag-icons) (MIT)

@@ -1,96 +1,151 @@
 import { useEffect, useRef, useState } from "react";
 import { select } from "d3-selection";
-import { zoom as d3zoom, zoomIdentity, type ZoomBehavior, type ZoomTransform } from "d3-zoom";
+import { zoom as d3zoom, zoomIdentity, type ZoomTransform } from "d3-zoom";
 import "d3-transition";
-import type { Topology } from "topojson-specification";
-import type { CountryId } from "@gs/shared";
-import { buildWorld, type Bounds, type MapRegion, type WorldGeometry } from "./geo";
+import type { CountryId, ProvinceId } from "@gs/shared";
+import { createWorldFrame, projectCities, type Bounds, type CityPoint, type CountryShape, type ProvinceShape } from "./geo";
 import { MAP_MODES } from "./mapModes";
-import { COUNTRIES, getCountry } from "../data/countries";
-import { useUi } from "../state/uiStore";
+import type { DetailLevel, WorkerRequest, WorkerResponse } from "./workerProtocol";
+import { COUNTRIES, getCountry, getProvince, loadCities } from "../data/countries";
+import { ownersRecord, useGame } from "../state/gameStore";
+import { sameSelection, useUi, type CameraCommand, type Selection } from "../state/uiStore";
 
 /** How far in the player may zoom, relative to the whole-world view. */
-const MAX_ZOOM = 64;
+const MAX_ZOOM = 96;
+/** From this zoom, the pointer picks provinces instead of countries and province borders show. */
+export const PROVINCE_ZOOM = 3;
+/** From this zoom, the detailed geometry is used (once loaded). */
+const HIGH_DETAIL_ZOOM = 4;
 /** Width of the country panel plus margins (see .panel in styles.css). */
 const PANEL_SPACE = 384;
 
-interface Region extends MapRegion {
-  path: Path2D;
-}
+type PShape = ProvinceShape & { path: Path2D };
+type CShape = CountryShape & { path: Path2D; inner: Path2D | null };
 
-interface Scene {
-  world: WorldGeometry;
-  regions: Region[];
-  byId: Map<CountryId, Region>;
-  sphere: Path2D;
-  graticule: Path2D;
+interface Layer {
+  provinces: Map<ProvinceId, PShape>;
+  provinceList: PShape[];
+  countries: Map<CountryId, CShape>;
+  countryList: CShape[];
 }
 
 type LoadState = { status: "loading" } | { status: "error"; message: string } | { status: "ready" };
+
+/** Zoom level at which a city appears: big cities early, small towns only up close. */
+function cityMinZoom(c: CityPoint): number {
+  const z = c.pop >= 10e6 ? 1.6 : c.pop >= 3e6 ? 3 : c.pop >= 1e6 ? 5 : c.pop >= 300e3 ? 8 : c.pop >= 100e3 ? 14 : 24;
+  return c.cap ? Math.min(z, 2.5) : z;
+}
 
 export function WorldMap() {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
-  const sceneRef = useRef<Scene | null>(null);
-  const transformRef = useRef<ZoomTransform>(zoomIdentity);
-  const fitRef = useRef(1);
-  const sizeRef = useRef({ w: 0, h: 0 });
-  const zoomRef = useRef<ZoomBehavior<HTMLCanvasElement, unknown> | null>(null);
-  const frameRef = useRef(0);
   const [load, setLoad] = useState<LoadState>({ status: "loading" });
   const [tooltip, setTooltip] = useState<string | null>(null);
 
-  // Load and prepare map geometry once.
   useEffect(() => {
-    let cancelled = false;
-    fetch(`${import.meta.env.BASE_URL}maps/world-50m.topo.json`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`Map data request failed (${r.status})`);
-        return r.json() as Promise<Topology>;
-      })
-      .then((topo) => {
-        if (cancelled) return;
-        const world = buildWorld(topo);
-        const regions = world.regions.map((r) => ({ ...r, path: new Path2D(r.pathData) }));
-        sceneRef.current = {
-          world,
-          regions,
-          byId: new Map(regions.map((r) => [r.id, r])),
-          sphere: new Path2D(world.spherePath),
-          graticule: new Path2D(world.graticulePath),
-        };
-        setLoad({ status: "ready" });
-      })
-      .catch((e: unknown) => !cancelled && setLoad({ status: "error", message: e instanceof Error ? e.message : String(e) }));
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Set up canvas, camera and input once the map is ready.
-  useEffect(() => {
-    if (load.status !== "ready") return;
     const canvas = canvasRef.current!;
     const wrap = wrapRef.current!;
-    const scene = sceneRef.current!;
-    const { world } = scene;
+    const frame = createWorldFrame();
+    const sphere = new Path2D(frame.spherePath);
+    const graticule = new Path2D(frame.graticulePath);
     const hitCtx = document.createElement("canvas").getContext("2d")!;
-    /** Last pointer position over the map, or null when the pointer is elsewhere. */
+    const layers: Partial<Record<DetailLevel, Layer>> = {};
+    let cities: CityPoint[] = [];
+    let transform = zoomIdentity;
+    let fitK = 1;
+    let size = { w: 0, h: 0 };
+    let frameId = 0;
     let pointer: { x: number; y: number } | null = null;
+    let down: { x: number; y: number } | null = null;
+    let disposed = false;
 
+    const rel = () => transform.k / fitK;
+    const layer = (): Layer | undefined => (rel() >= HIGH_DETAIL_ZOOM && layers.high) || layers.low;
     const requestDraw = () => {
-      if (!frameRef.current) frameRef.current = requestAnimationFrame(draw);
+      if (!frameId) frameId = requestAnimationFrame(draw);
     };
 
+    // ---------- Loading ----------
+    const worker = new Worker(new URL("./world.worker.ts", import.meta.url), { type: "module" });
+    const toCountries = (list: CountryShape[], level: DetailLevel): CShape[] =>
+      list.map((c) => {
+        const low = layers.low?.countries.get(c.id);
+        const shape = level === "high" && low ? { ...c, mainBounds: low.mainBounds, labelPoint: low.labelPoint } : c;
+        return { ...shape, path: new Path2D(c.pathData), inner: c.innerBordersData ? new Path2D(c.innerBordersData) : null };
+      });
+    worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
+      if (disposed) return;
+      const msg = e.data;
+      if (msg.type === "error") {
+        setLoad({ status: "error", message: msg.message });
+        return;
+      }
+      if (msg.type === "level") {
+        const low = layers.low;
+        const provinceList = msg.provinces.map((p) => {
+          const lp = msg.level === "high" ? low?.provinces.get(p.id) : undefined;
+          return { ...p, ...(lp ? { mainBounds: lp.mainBounds, labelPoint: lp.labelPoint } : {}), path: new Path2D(p.pathData) };
+        });
+        const countryList = toCountries(msg.countries, msg.level);
+        layers[msg.level] = {
+          provinceList,
+          provinces: new Map(provinceList.map((p) => [p.id, p])),
+          countryList,
+          countries: new Map(countryList.map((c) => [c.id, c])),
+        };
+        if (msg.level === "low") {
+          setLoad({ status: "ready" });
+          start();
+        }
+        updateHover();
+        requestDraw();
+      } else if (msg.type === "countries") {
+        const l = layers[msg.level];
+        if (!l) return;
+        l.countryList = toCountries(msg.countries, msg.level);
+        l.countries = new Map(l.countryList.map((c) => [c.id, c]));
+        requestDraw();
+      }
+    };
+    worker.postMessage({ type: "load", baseUrl: import.meta.env.BASE_URL, owners: ownersRecord(useGame.getState().state) } satisfies WorkerRequest);
+    loadCities()
+      .then((list) => {
+        if (disposed) return;
+        cities = projectCities(list, frame).sort((a, b) => b.cap - a.cap || b.pop - a.pop);
+        requestDraw();
+      })
+      .catch(() => {
+        /* The map still works without cities; the panel shows none. */
+      });
+
+    // When provinces change hands, rebuild country shapes (borders follow ownership).
+    const unsubGame = useGame.subscribe((s, prev) => {
+      if (s.state.provinces !== prev.state.provinces) {
+        worker.postMessage({ type: "owners", owners: ownersRecord(s.state) } satisfies WorkerRequest);
+      }
+    });
+
+    // ---------- Drawing ----------
+    let lastDrawMs = 0;
     function draw() {
-      frameRef.current = 0;
+      const started = performance.now();
+      frameId = 0;
+      drawFrame();
+      lastDrawMs = performance.now() - started;
+    }
+
+    function drawFrame() {
       const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      const { w, h } = sizeRef.current;
+      const L = layer();
+      if (!ctx || !L) return;
+      const { w, h } = size;
       const dpr = window.devicePixelRatio || 1;
-      const t = transformRef.current;
-      const { hoveredId, selectedId, mapMode } = useUi.getState();
+      const t = transform;
+      const z = rel();
+      const { hovered, selected, mapMode } = useUi.getState();
+      const game = useGame.getState().state;
       const mode = MAP_MODES[mapMode];
 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -99,119 +154,236 @@ export function WorldMap() {
 
       ctx.setTransform(dpr * t.k, 0, 0, dpr * t.k, dpr * t.x, dpr * t.y);
       ctx.fillStyle = "#0e1c2b";
-      ctx.fill(scene.sphere);
+      ctx.fill(sphere);
       ctx.strokeStyle = "rgba(140, 180, 220, 0.07)";
       ctx.lineWidth = 1 / t.k;
-      ctx.stroke(scene.graticule);
+      ctx.stroke(graticule);
 
-      // Only draw regions that are on screen.
-      const [[vx0, vy0], [vx1, vy1]] = [t.invert([0, 0]), t.invert([w, h])];
-      const visible = scene.regions.filter(
-        (r) => r.bounds[1][0] >= vx0 && r.bounds[0][0] <= vx1 && r.bounds[1][1] >= vy0 && r.bounds[0][1] <= vy1,
-      );
+      const [vx0, vy0] = t.invert([0, 0]);
+      const [vx1, vy1] = t.invert([w, h]);
+      const onScreen = (b: Bounds) => b[1][0] >= vx0 && b[0][0] <= vx1 && b[1][1] >= vy0 && b[0][1] <= vy1;
+      const visible = L.countryList.filter((c) => onScreen(c.bounds));
 
-      for (const r of visible) {
-        const info = COUNTRIES[r.id];
-        ctx.fillStyle = info ? mode.color(info) : "#555";
-        ctx.fill(r.path);
+      for (const c of visible) {
+        ctx.fillStyle = mode.color(c.id, { info: COUNTRIES[c.id], state: game.countries[c.id] });
+        ctx.fill(c.path);
       }
 
       ctx.lineJoin = "round";
-      ctx.strokeStyle = "rgba(6, 12, 20, 0.85)";
-      ctx.lineWidth = 0.8 / t.k;
-      for (const r of visible) ctx.stroke(r.path);
-
-      const hovered = hoveredId ? scene.byId.get(hoveredId) : undefined;
-      if (hovered && hoveredId !== selectedId) {
-        ctx.fillStyle = "rgba(255, 255, 255, 0.16)";
-        ctx.fill(hovered.path);
+      if (z >= PROVINCE_ZOOM * 0.75) {
+        const a = Math.min(1, (z - PROVINCE_ZOOM * 0.75) / (PROVINCE_ZOOM * 0.5));
+        ctx.strokeStyle = `rgba(8, 14, 22, ${0.45 * a})`;
+        ctx.lineWidth = 0.6 / t.k;
+        for (const c of visible) if (c.inner) ctx.stroke(c.inner);
       }
-      const selected = selectedId ? scene.byId.get(selectedId) : undefined;
-      if (selected) {
+      ctx.strokeStyle = "rgba(6, 12, 20, 0.9)";
+      ctx.lineWidth = (z >= PROVINCE_ZOOM ? 1.4 : 0.8) / t.k;
+      for (const c of visible) ctx.stroke(c.path);
+
+      const shapeOf = (s: Selection) => (!s ? undefined : s.kind === "country" ? L.countries.get(s.id) : L.provinces.get(s.id));
+
+      const hov = !sameSelection(hovered, selected) ? shapeOf(hovered) : undefined;
+      if (hov) {
+        ctx.fillStyle = "rgba(255, 255, 255, 0.16)";
+        ctx.fill(hov.path);
+      }
+      const sel = shapeOf(selected);
+      if (sel && selected) {
+        if (selected.kind === "province") {
+          const owner = L.countries.get(game.provinces[selected.id]?.owner as CountryId);
+          if (owner) {
+            ctx.strokeStyle = "rgba(255, 214, 120, 0.55)";
+            ctx.lineWidth = 1.2 / t.k;
+            ctx.stroke(owner.path);
+          }
+        }
         ctx.fillStyle = "rgba(255, 214, 120, 0.28)";
-        ctx.fill(selected.path);
+        ctx.fill(sel.path);
         ctx.strokeStyle = "#ffd678";
         ctx.lineWidth = 2 / t.k;
-        ctx.stroke(selected.path);
+        ctx.stroke(sel.path);
       }
 
-      drawLabels(ctx, visible, t, dpr, w, h, selectedId);
+      drawLabels(ctx, L, visible, dpr, selected);
     }
 
-    function drawLabels(
-      ctx: CanvasRenderingContext2D,
-      visible: Region[],
-      t: ZoomTransform,
-      dpr: number,
-      w: number,
-      h: number,
-      selectedId: CountryId | null,
-    ) {
+    function drawLabels(ctx: CanvasRenderingContext2D, L: Layer, visible: CShape[], dpr: number, selected: Selection) {
+      const { w, h } = size;
+      const t = transform;
+      const z = rel();
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       const placed: [number, number, number, number][] = [];
-      const ordered = [...visible].sort((a, b) => (a.id === selectedId ? -1 : b.id === selectedId ? 1 : b.area - a.area));
-      for (const r of ordered) {
-        const info = COUNTRIES[r.id];
-        if (!info) continue;
-        const [sx, sy] = t.apply(r.labelPoint);
-        if (sx < -50 || sy < -20 || sx > w + 50 || sy > h + 20) continue;
-        const landWidth = (r.mainBounds[1][0] - r.mainBounds[0][0]) * t.k;
-        const landHeight = (r.mainBounds[1][1] - r.mainBounds[0][1]) * t.k;
-        const size = Math.max(10, Math.min(16, 9 + Math.sqrt(landWidth * landHeight) / 40));
-        ctx.font = `600 ${size}px Inter, system-ui, sans-serif`;
-        const text = info.name;
-        const tw = ctx.measureText(text).width;
-        const isSelected = r.id === selectedId;
-        if (!isSelected && (tw > landWidth * 0.9 || landHeight < size * 1.2)) continue;
-        const box: [number, number, number, number] = [sx - tw / 2 - 3, sy - size / 2 - 2, sx + tw / 2 + 3, sy + size / 2 + 2];
-        if (placed.some((p) => box[0] < p[2] && box[2] > p[0] && box[1] < p[3] && box[3] > p[1])) continue;
-        placed.push(box);
+      const free = (b: [number, number, number, number]) => !placed.some((p) => b[0] < p[2] && b[2] > p[0] && b[1] < p[3] && b[3] > p[1]);
+      const inView = (x: number, y: number) => x > -40 && y > -20 && x < w + 40 && y < h + 20;
+      const halo = (text: string, x: number, y: number, fill: string) => {
         ctx.lineWidth = 3;
-        ctx.strokeStyle = "rgba(5, 10, 16, 0.75)";
-        ctx.strokeText(text, sx, sy);
-        ctx.fillStyle = isSelected ? "#ffe3a3" : "rgba(235, 242, 250, 0.92)";
-        ctx.fillText(text, sx, sy);
+        ctx.strokeStyle = "rgba(5, 10, 16, 0.78)";
+        ctx.strokeText(text, x, y);
+        ctx.fillStyle = fill;
+        ctx.fillText(text, x, y);
+      };
+      const selectedCountry = selected?.kind === "country" ? selected.id : null;
+      const lowCountries = layers.low?.countries ?? L.countries;
+
+      // Countries (biggest first; the selected one always).
+      ctx.textAlign = "center";
+      const ordered = [...visible].sort((a, b) => (a.id === selectedCountry ? -1 : b.id === selectedCountry ? 1 : b.area - a.area));
+      for (const c of ordered) {
+        const info = COUNTRIES[c.id];
+        const shape = lowCountries.get(c.id) ?? c;
+        if (!info) continue;
+        const [sx, sy] = t.apply(shape.labelPoint);
+        if (!inView(sx, sy)) continue;
+        const lw = (shape.mainBounds[1][0] - shape.mainBounds[0][0]) * t.k;
+        const lh = (shape.mainBounds[1][1] - shape.mainBounds[0][1]) * t.k;
+        const fontSize = Math.max(10, Math.min(z >= PROVINCE_ZOOM ? 20 : 16, 9 + Math.sqrt(lw * lh) / 40));
+        ctx.font = `700 ${fontSize}px Inter, system-ui, sans-serif`;
+        const tw = ctx.measureText(info.name).width;
+        const isSel = c.id === selectedCountry;
+        if (!isSel && (tw > lw * 0.9 || lh < fontSize * 1.2)) continue;
+        const box: [number, number, number, number] = [sx - tw / 2 - 3, sy - fontSize / 2 - 2, sx + tw / 2 + 3, sy + fontSize / 2 + 2];
+        if (!isSel && !free(box)) continue;
+        placed.push(box);
+        halo(info.name, sx, sy, isSel ? "#ffe3a3" : z >= PROVINCE_ZOOM ? "rgba(235, 242, 250, 0.6)" : "rgba(235, 242, 250, 0.92)");
+      }
+
+      // Cities: dot plus name to the right.
+      ctx.textAlign = "left";
+      for (const c of cities) {
+        if (z < cityMinZoom(c)) continue;
+        const [sx, sy] = t.apply([c.x, c.y]);
+        if (sx < 0 || sy < 0 || sx > w || sy > h) continue;
+        const fontSize = c.cap ? 12.5 : c.pop >= 1e6 ? 12 : 11;
+        ctx.font = `${c.cap ? 700 : 500} ${fontSize}px Inter, system-ui, sans-serif`;
+        const tw = ctx.measureText(c.name).width;
+        const box: [number, number, number, number] = [sx - 4, sy - fontSize / 2 - 1, sx + 7 + tw + 2, sy + fontSize / 2 + 1];
+        if (!free(box)) continue;
+        placed.push(box);
+        ctx.beginPath();
+        if (c.cap) {
+          ctx.rect(sx - 3.5, sy - 3.5, 7, 7);
+          ctx.fillStyle = "#ffd678";
+        } else {
+          ctx.arc(sx, sy, c.pop >= 1e6 ? 3 : 2.3, 0, Math.PI * 2);
+          ctx.fillStyle = "#f2f5f8";
+        }
+        ctx.fill();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = "rgba(5, 10, 16, 0.9)";
+        ctx.stroke();
+        halo(c.name, sx + 7, sy, c.cap ? "#ffe9b8" : "rgba(242, 245, 248, 0.95)");
+      }
+
+      // Province names, when zoomed in far enough and there's room.
+      if (z >= PROVINCE_ZOOM) {
+        ctx.textAlign = "center";
+        const fontSize = 10.5;
+        ctx.font = `600 ${fontSize}px Inter, system-ui, sans-serif`;
+        const lowProv = layers.low?.provinces ?? L.provinces;
+        const [vx0, vy0] = t.invert([0, 0]);
+        const [vx1, vy1] = t.invert([w, h]);
+        const candidates: PShape[] = [];
+        for (const p of lowProv.values()) {
+          const b = p.mainBounds;
+          if (b[1][0] < vx0 || b[0][0] > vx1 || b[1][1] < vy0 || b[0][1] > vy1) continue;
+          if ((b[1][0] - b[0][0]) * t.k < 40 || (b[1][1] - b[0][1]) * t.k < 14) continue;
+          candidates.push(p);
+        }
+        candidates.sort((a, b) => b.area - a.area);
+        for (const p of candidates) {
+          const info = getProvince(p.id);
+          if (!info) continue;
+          const [sx, sy] = t.apply(p.labelPoint);
+          if (!inView(sx, sy)) continue;
+          const text = info.name.toUpperCase();
+          const tw = ctx.measureText(text).width;
+          if (tw > (p.mainBounds[1][0] - p.mainBounds[0][0]) * t.k * 0.95) continue;
+          const box: [number, number, number, number] = [sx - tw / 2 - 2, sy - fontSize / 2 - 1, sx + tw / 2 + 2, sy + fontSize / 2 + 1];
+          if (!free(box)) continue;
+          placed.push(box);
+          ctx.lineWidth = 2.5;
+          ctx.strokeStyle = "rgba(5, 10, 16, 0.6)";
+          ctx.strokeText(text, sx, sy);
+          ctx.fillStyle = "rgba(225, 233, 242, 0.62)";
+          ctx.fillText(text, sx, sy);
+        }
       }
     }
 
-    // Camera
-    const zoomBehavior = d3zoom<HTMLCanvasElement, unknown>()
-      .on("zoom", (e: { transform: ZoomTransform }) => {
-        transformRef.current = e.transform;
-        useUi.getState().setZoom(e.transform.k / fitRef.current);
-        // The map moved under the pointer, so whatever it hovers may have changed.
-        updateHover();
-        requestDraw();
-      });
-    zoomRef.current = zoomBehavior;
+    // ---------- Picking ----------
+    /** The province under a screen point, and its owner. */
+    function pick(sx: number, sy: number): { province: ProvinceId; country: CountryId } | null {
+      const L = layer();
+      if (!L) return null;
+      const [wx, wy] = transform.invert([sx, sy]);
+      const game = useGame.getState().state;
+      for (const p of L.provinceList) {
+        const [[x0, y0], [x1, y1]] = p.bounds;
+        if (wx < x0 || wx > x1 || wy < y0 || wy > y1) continue;
+        if (hitCtx.isPointInPath(p.path, wx, wy)) {
+          const owner = game.provinces[p.id]?.owner;
+          return owner ? { province: p.id, country: owner } : null;
+        }
+      }
+      return null;
+    }
+
+    /** Zoomed out you pick countries; zoomed in you pick provinces. */
+    function selectionAt(sx: number, sy: number): Selection {
+      const hit = pick(sx, sy);
+      if (!hit) return null;
+      return rel() >= PROVINCE_ZOOM ? { kind: "province", id: hit.province } : { kind: "country", id: hit.country };
+    }
+
+    function updateHover() {
+      const hit = pointer ? pick(pointer.x, pointer.y) : null;
+      const s: Selection = hit ? (rel() >= PROVINCE_ZOOM ? { kind: "province", id: hit.province } : { kind: "country", id: hit.country }) : null;
+      useUi.getState().hover(s);
+      canvas.style.cursor = hit ? "pointer" : "grab";
+      const tip = tooltipRef.current;
+      if (tip && pointer) tip.style.transform = `translate(${pointer.x + 14}px, ${pointer.y + 14}px)`;
+      let text: string | null = null;
+      if (hit) {
+        const country = getCountry(hit.country)?.name ?? hit.country;
+        text = s?.kind === "province" ? `${getProvince(hit.province)?.name ?? hit.province} · ${country}` : country;
+      }
+      setTooltip(text);
+    }
+
+    // ---------- Camera ----------
+    const zoomBehavior = d3zoom<HTMLCanvasElement, unknown>().on("zoom", (e: { transform: ZoomTransform }) => {
+      transform = e.transform;
+      useUi.getState().setZoom(rel());
+      // The map moved under the pointer, so whatever it hovers may have changed.
+      updateHover();
+      requestDraw();
+    });
     const sel = select(canvas);
-    sel.call(zoomBehavior).on("dblclick.zoom", null);
 
     function fitTransform(): ZoomTransform {
-      const { w, h } = sizeRef.current;
-      const k = Math.min(w / world.width, h / world.height) * 0.98;
-      return zoomIdentity.translate((w - world.width * k) / 2, (h - world.height * k) / 2).scale(k);
+      const { w, h } = size;
+      const k = Math.min(w / frame.width, h / frame.height) * 0.98;
+      return zoomIdentity.translate((w - frame.width * k) / 2, (h - frame.height * k) / 2).scale(k);
     }
 
     function resize(initial: boolean) {
       const rect = wrap.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
-      sizeRef.current = { w: rect.width, h: rect.height };
+      size = { w: rect.width, h: rect.height };
       canvas.width = Math.round(rect.width * dpr);
       canvas.height = Math.round(rect.height * dpr);
       canvas.style.width = `${rect.width}px`;
       canvas.style.height = `${rect.height}px`;
       const fit = fitTransform();
-      const oldFit = fitRef.current;
-      fitRef.current = fit.k;
-      const pad = 0.5 * Math.max(rect.width, rect.height) / fit.k;
+      const oldFit = fitK;
+      fitK = fit.k;
+      const pad = (0.5 * Math.max(rect.width, rect.height)) / fit.k;
       zoomBehavior
         .scaleExtent([fit.k, fit.k * MAX_ZOOM])
         .translateExtent([
           [-pad, -pad],
-          [world.width + pad, world.height + pad],
+          [frame.width + pad, frame.height + pad],
         ])
         .extent([
           [0, 0],
@@ -219,41 +391,64 @@ export function WorldMap() {
         ]);
       if (initial) sel.call(zoomBehavior.transform, fit);
       else {
-        // Keep the same relative zoom after a window resize.
-        const t = transformRef.current;
-        const rel = t.k / oldFit;
-        const center = t.invert([rect.width / 2, rect.height / 2]);
-        const k = fit.k * rel;
+        const r = transform.k / oldFit;
+        const center = transform.invert([rect.width / 2, rect.height / 2]);
+        const k = fit.k * r;
         sel.call(zoomBehavior.transform, zoomIdentity.translate(rect.width / 2 - center[0] * k, rect.height / 2 - center[1] * k).scale(k));
       }
       requestDraw();
     }
-    resize(true);
-    const ro = new ResizeObserver(() => resize(false));
-    ro.observe(wrap);
 
-    // Hit testing: which region is under a screen point?
-    function regionAt(sx: number, sy: number): CountryId | null {
-      const [wx, wy] = transformRef.current.invert([sx, sy]);
-      let best: Region | null = null;
-      for (const r of scene.regions) {
-        const [[x0, y0], [x1, y1]] = r.bounds;
-        if (wx < x0 || wx > x1 || wy < y0 || wy > y1) continue;
-        // Smaller regions win, so enclaves (e.g. Lesotho) stay clickable.
-        if (hitCtx.isPointInPath(r.path, wx, wy) && (!best || r.area < best.area)) best = r;
+    /** The part of the screen not covered by the top bar or the info panel. */
+    function viewport() {
+      const { w, h } = size;
+      const panelOpen = !!useUi.getState().selected;
+      const wide = w > 760;
+      if (panelOpen && wide) return { x0: 0, x1: w - PANEL_SPACE, y0: 64, y1: h };
+      if (panelOpen) return { x0: 0, x1: w, y0: 140, y1: Math.max(h * 0.45, 260) };
+      return { x0: 0, x1: w, y0: wide ? 64 : 140, y1: h };
+    }
+
+    function focusTransform(b: Bounds, maxRel: number, minRel = 1): ZoomTransform {
+      const v = viewport();
+      const vw = v.x1 - v.x0;
+      const vh = v.y1 - v.y0;
+      const dx = Math.max(b[1][0] - b[0][0], 0.01);
+      const dy = Math.max(b[1][1] - b[0][1], 0.01);
+      const k = Math.max(fitK * minRel, Math.min(fitK * maxRel, 0.7 / Math.max(dx / vw, dy / vh)));
+      const cx = (b[0][0] + b[1][0]) / 2;
+      const cy = (b[0][1] + b[1][1]) / 2;
+      return zoomIdentity.translate(v.x0 + vw / 2 - cx * k, v.y0 + vh / 2 - cy * k).scale(k);
+    }
+
+    function runCamera(cmd: CameraCommand) {
+      const quick = cmd.kind === "in" || cmd.kind === "out";
+      const tr = sel.transition().duration(quick ? 250 : 750);
+      if (cmd.kind === "in") zoomBehavior.scaleBy(tr, 1.6);
+      else if (cmd.kind === "out") zoomBehavior.scaleBy(tr, 1 / 1.6);
+      else if (cmd.kind === "reset") zoomBehavior.transform(tr, fitTransform());
+      else if (cmd.kind === "point") {
+        const p = frame.projection([cmd.lon, cmd.lat]);
+        if (!p) return;
+        const v = viewport();
+        const k = fitK * cmd.zoom;
+        zoomBehavior.transform(tr, zoomIdentity.translate((v.x0 + v.x1) / 2 - p[0] * k, (v.y0 + v.y1) / 2 - p[1] * k).scale(k));
+      } else if (cmd.kind === "focus") {
+        const low = layers.low;
+        if (!low) return;
+        const target = cmd.target;
+        if (target.kind === "country") {
+          const c = low.countries.get(target.id);
+          if (c) zoomBehavior.transform(tr, focusTransform(c.mainBounds, MAX_ZOOM * 0.25));
+        } else {
+          const p = low.provinces.get(target.id);
+          // Never stop short of province zoom, so the province stays selectable.
+          if (p) zoomBehavior.transform(tr, focusTransform(p.mainBounds, MAX_ZOOM * 0.4, PROVINCE_ZOOM));
+        }
       }
-      return best?.id ?? null;
     }
 
-    let down: { x: number; y: number } | null = null;
-    function updateHover() {
-      const id = pointer ? regionAt(pointer.x, pointer.y) : null;
-      if (id !== useUi.getState().hoveredId) useUi.getState().hover(id);
-      canvas.style.cursor = id ? "pointer" : "grab";
-      const tip = tooltipRef.current;
-      if (tip && pointer) tip.style.transform = `translate(${pointer.x + 14}px, ${pointer.y + 14}px)`;
-      setTooltip(id ? (getCountry(id)?.name ?? null) : null);
-    }
+    // ---------- Input (attached once the map is ready) ----------
     const local = (e: PointerEvent | MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
       return { x: e.clientX - rect.left, y: e.clientY - rect.top };
@@ -269,81 +464,65 @@ export function WorldMap() {
     const onDown = (e: PointerEvent) => (down = local(e));
     const onUp = (e: PointerEvent) => {
       const p = local(e);
-      if (down && Math.hypot(p.x - down.x, p.y - down.y) < 5) useUi.getState().select(regionAt(p.x, p.y));
+      if (down && Math.hypot(p.x - down.x, p.y - down.y) < 5) useUi.getState().select(selectionAt(p.x, p.y));
       down = null;
     };
     const onDblClick = (e: MouseEvent) => {
       const p = local(e);
-      const id = regionAt(p.x, p.y);
-      if (id) useUi.getState().select(id, { focus: true });
+      const s = selectionAt(p.x, p.y);
+      if (s) useUi.getState().select(s, { focus: true });
     };
-    canvas.addEventListener("pointermove", onMove);
-    canvas.addEventListener("pointerleave", onLeave);
-    canvas.addEventListener("pointerdown", onDown);
-    canvas.addEventListener("pointerup", onUp);
-    canvas.addEventListener("dblclick", onDblClick);
+    let unsubUi = () => {};
+    let ro: ResizeObserver | null = null;
 
-    // Redraw when hover, selection or map mode changes; run camera commands.
-    const unsub = useUi.subscribe((s, prev) => {
-      if (s.hoveredId !== prev.hoveredId || s.selectedId !== prev.selectedId || s.mapMode !== prev.mapMode) requestDraw();
-      if (s.zoomCommand && s.zoomCommand !== prev.zoomCommand) runCommand(s.zoomCommand);
-    });
-
-    function focusTransform(b: Bounds): ZoomTransform {
-      const { w, h } = sizeRef.current;
-      const dx = Math.max(b[1][0] - b[0][0], 1);
-      const dy = Math.max(b[1][1] - b[0][1], 1);
-      // The info panel covers the right side on wide screens and the bottom ~55% on
-      // phones; fit the country into the part of the map that stays visible.
-      const panelOpen = !!useUi.getState().selectedId;
-      const wide = w > 760;
-      const visibleW = panelOpen && wide ? w - PANEL_SPACE : w;
-      // On phones the top bar takes ~140px and the bottom sheet starts at ~45% height.
-      const visibleH = panelOpen && !wide ? Math.max(h * 0.45 - 140, 120) : h;
-      const k = Math.min(fitRef.current * MAX_ZOOM * 0.25, 0.6 / Math.max(dx / visibleW, dy / visibleH));
-      const k2 = Math.max(k, fitRef.current);
-      const cx = (b[0][0] + b[1][0]) / 2;
-      const cy = (b[0][1] + b[1][1]) / 2;
-      const centerY = panelOpen && !wide ? 140 + visibleH / 2 : h / 2;
-      return zoomIdentity.translate(visibleW / 2 - cx * k2, centerY - cy * k2).scale(k2);
+    function start() {
+      sel.call(zoomBehavior).on("dblclick.zoom", null);
+      resize(true);
+      ro = new ResizeObserver(() => resize(false));
+      ro.observe(wrap);
+      canvas.addEventListener("pointermove", onMove);
+      canvas.addEventListener("pointerleave", onLeave);
+      canvas.addEventListener("pointerdown", onDown);
+      canvas.addEventListener("pointerup", onUp);
+      canvas.addEventListener("dblclick", onDblClick);
+      unsubUi = useUi.subscribe((s, prev) => {
+        if (s.hovered !== prev.hovered || s.selected !== prev.selected || s.mapMode !== prev.mapMode) requestDraw();
+        if (s.camera && s.camera !== prev.camera) runCamera(s.camera);
+      });
+      if (import.meta.env.DEV) installTestHook();
     }
 
-    function runCommand(cmd: NonNullable<ReturnType<typeof useUi.getState>["zoomCommand"]>) {
-      const tr = sel.transition().duration(cmd.kind === "focus" || cmd.kind === "reset" ? 750 : 250);
-      if (cmd.kind === "in") zoomBehavior.scaleBy(tr, 1.6);
-      else if (cmd.kind === "out") zoomBehavior.scaleBy(tr, 1 / 1.6);
-      else if (cmd.kind === "reset") zoomBehavior.transform(tr, fitTransform());
-      else if (cmd.kind === "focus") {
-        const r = scene.byId.get(cmd.id);
-        if (r) zoomBehavior.transform(tr, focusTransform(r.mainBounds));
-      }
-    }
-
-    // Small test hook so automated tests can find countries on screen.
-    if (import.meta.env.DEV) {
+    // Lets automated tests find places on screen. Development builds only.
+    function installTestHook() {
       (window as unknown as { __gsMap?: unknown }).__gsMap = {
-        screenPointOf: (id: CountryId) => {
-          const r = scene.byId.get(id);
-          return r ? transformRef.current.apply(r.labelPoint) : null;
+        screenPointOf: (kind: "country" | "province", id: string) => {
+          const low = layers.low;
+          const s = kind === "country" ? low?.countries.get(id as CountryId) : low?.provinces.get(id as ProvinceId);
+          return s ? transform.apply(s.labelPoint) : null;
         },
-        regionAt,
-        regionCount: scene.regions.length,
+        pick,
+        counts: () => ({ provinces: layers.low?.provinceList.length ?? 0, countries: layers.low?.countryList.length ?? 0, cities: cities.length }),
+        detail: () => (layer() === layers.high ? "high" : "low"),
+        highLoaded: () => !!layers.high,
+        lastDrawMs: () => lastDrawMs,
       };
     }
 
     return () => {
-      unsub();
-      ro.disconnect();
+      disposed = true;
+      worker.terminate();
+      unsubGame();
+      unsubUi();
+      ro?.disconnect();
       sel.on(".zoom", null);
       canvas.removeEventListener("pointermove", onMove);
       canvas.removeEventListener("pointerleave", onLeave);
       canvas.removeEventListener("pointerdown", onDown);
       canvas.removeEventListener("pointerup", onUp);
       canvas.removeEventListener("dblclick", onDblClick);
-      cancelAnimationFrame(frameRef.current);
-      frameRef.current = 0;
+      cancelAnimationFrame(frameId);
     };
-  }, [load.status]);
+  }, []);
 
   return (
     <div className="map" ref={wrapRef}>

@@ -1,5 +1,5 @@
 import { WorldMap } from "./map/WorldMap";
-import { CountryPanel } from "./ui/CountryPanel";
+import { InfoPanel } from "./ui/InfoPanel";
 import { Legend } from "./ui/Legend";
 import { TopBar } from "./ui/TopBar";
 import { ZoomControls } from "./ui/ZoomControls";
@@ -9,11 +9,11 @@ export function App() {
     <div className="app">
       <WorldMap />
       <TopBar />
-      <CountryPanel />
+      <InfoPanel />
       <Legend />
       <ZoomControls />
       <footer className="credits">
-        Borders: Natural Earth (public domain) · Country facts: mledoze/countries (ODbL) · Flags: flag-icons (MIT)
+        Map, cities, population &amp; GDP: Natural Earth (public domain) · Country facts: mledoze/countries (ODbL) · Flags: flag-icons (MIT)
       </footer>
     </div>
   );

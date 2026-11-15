@@ -496,3 +496,189 @@ button {
     display: none;
   }
 }
+
+/* ---------- Stage 2 additions ---------- */
+.search__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.search__name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.search__detail {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.result-icon {
+  width: 22px;
+  height: 16px;
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+.result-icon::before {
+  content: "";
+  display: block;
+}
+.result-icon--province::before {
+  width: 13px;
+  height: 11px;
+  border: 1.5px solid #8fb3d6;
+  border-radius: 3px 5px 2px 4px;
+}
+.result-icon--city::before {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f2f5f8;
+  box-shadow: 0 0 0 2px rgba(242, 245, 248, 0.2);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.stat {
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--border);
+}
+.stat__value {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.stat__value.muted {
+  font-size: 14px;
+  font-weight: 500;
+}
+.stat__label {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.panel__source {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  color: #6f7f91;
+}
+.panel__eyebrow {
+  margin: 0 0 3px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.owner-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.035);
+  text-align: left;
+}
+.owner-card:hover {
+  border-color: rgba(255, 214, 120, 0.45);
+}
+.owner-card img,
+.owner-card .flag-placeholder {
+  width: 40px;
+  height: 30px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex: none;
+}
+.owner-card > span:nth-child(2) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+.owner-card__label {
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+.owner-card__name {
+  font-weight: 700;
+  font-size: 15px;
+}
+.owner-card__arrow {
+  font-size: 22px;
+  color: var(--text-dim);
+}
+
+.city-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.city-list button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  margin: 0 -8px;
+  width: calc(100% + 16px);
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  text-align: left;
+}
+.city-list button:hover {
+  background: var(--surface-hover);
+}
+.city-list__name {
+  flex: 1;
+}
+.city-list__cap {
+  font-size: 11px;
+  color: var(--accent);
+}
+.city-list__pop {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.city-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f2f5f8;
+  flex: none;
+}
+.city-dot--cap {
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+.legend__title {
+  font-weight: 700;
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+@media (max-width: 760px) {
+  .segmented {
+    order: 4;
+    flex-basis: 100%;
+    margin-left: 0;
+    overflow-x: auto;
+  }
+  .segmented button {
+    flex: 1;
+    white-space: nowrap;
+  }
+}

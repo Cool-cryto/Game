@@ -1,11 +1,13 @@
 // Types shared by the browser client, the simulation, and (later) the game server.
 
-/** A country or map region id, e.g. "FRA". Disputed areas use "X-..." ids. */
+/** A country id, e.g. "FRA". Regions without an ISO code use "X-..." ids. */
 export type CountryId = string & { readonly __brand: "CountryId" };
+/** A province id from Natural Earth, e.g. "DEU-1591". */
+export type ProvinceId = string & { readonly __brand: "ProvinceId" };
 
 export type CountryKind = "sovereign" | "territory" | "disputed";
 
-/** Real-world reference facts about a map region. These are fixed data, not game state. */
+/** Real-world reference facts about a country. Fixed data, not game state. */
 export interface CountryInfo {
   id: CountryId;
   name: string;
@@ -24,7 +26,49 @@ export interface CountryInfo {
   /** Ids of countries sharing a land border. */
   borders: CountryId[];
   note: string | null;
+  /** Natural Earth economy category, e.g. "Developed region: G7". */
+  economy: string | null;
+  /** World Bank income group, e.g. "High income: OECD". */
+  incomeGroup: string | null;
   /** Color slot 0-7; touching countries never share a slot. */
   colorSlot: number;
   hasFlag: boolean;
+}
+
+/** Real-world reference facts about a province. Which country owns it is game state, not stored here. */
+export interface ProvinceInfo {
+  id: ProvinceId;
+  /** English name, e.g. "Bavaria". */
+  name: string;
+  /** Local name when different, e.g. "Bayern". */
+  localName: string | null;
+  /** Other spellings, used by search. */
+  altNames: string[];
+  /** e.g. "State", "Province", "Region". */
+  type: string | null;
+  /** ISO 3166-2 code, e.g. "DE-BY". */
+  iso: string | null;
+  areaKm2: number;
+  cityCount: number;
+}
+
+export interface City {
+  name: string;
+  lon: number;
+  lat: number;
+  /** Metropolitan population estimate (Natural Earth pop_max). */
+  pop: number;
+  /** 1 if a national capital. */
+  cap: 0 | 1;
+  prov: ProvinceId;
+}
+
+/** Starting data for a game: who owns what, and each country's starting numbers. */
+export interface Scenario {
+  id: string;
+  name: string;
+  startDate: string;
+  dataNote: string;
+  owners: Record<ProvinceId, CountryId>;
+  countries: Record<CountryId, { population: number | null; gdpMillionUsd: number | null }>;
 }

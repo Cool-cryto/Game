@@ -13,7 +13,7 @@ export function TopBar() {
           <path d="M3 12h18M12 3c2.8 3 2.8 15 0 18M12 3c-2.8 3-2.8 15 0 18" fill="none" stroke="currentColor" strokeWidth="1.2" />
         </svg>
         <span>World Ascendant</span>
-        <span className="brand__stage">Stage 1 · map prototype</span>
+        <span className="brand__stage">Stage 2 · provinces &amp; cities</span>
       </div>
       <SearchBox />
       <div className="segmented" role="radiogroup" aria-label="Map mode">

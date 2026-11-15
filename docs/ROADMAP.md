@@ -2,7 +2,7 @@
 
 Each stage ends with something playable or viewable, and with tests.
 
-## Stage 1: Interactive world map ✅ (current)
+## Stage 1: Interactive world map ✅
 
 - [x] Project setup: workspaces, TypeScript, React, Vite, tests
 - [x] World map with every country, territory and disputed region (241 regions, Natural Earth 1:50m)
@@ -17,11 +17,21 @@ Known limits of Stage 1:
 - Flat map only, so countries that cross the date line (Fiji, eastern Russia) are split at the map edge.
 - Panel facts are real-world reference data, not game values.
 
-## Stage 2: Provinces, cities and detail
-- Province/state geometry (Natural Earth admin-1) and major cities
-- Higher-detail coastlines when zoomed in
-- Country made of provinces; province info panel
-- Starting game data per country (population, economy) from open, licensed sources
+## Stage 2: Provinces, cities and starting data ✅ (current)
+
+- [x] 4,596 provinces (Natural Earth admin-1) as the map's building blocks; countries are drawn from the provinces they own
+- [x] Two levels of detail: simplified borders zoomed out, detailed borders zoomed in, built in a background thread
+- [x] 7,333 cities with population, capitals marked, shown progressively by zoom
+- [x] Province panel; country panel with population, GDP, GDP per person, largest cities
+- [x] Search across countries, provinces (English and local names) and cities
+- [x] Population and Wealth map modes
+- [x] Modern World scenario: province ownership + starting population/GDP, loaded into the game state
+
+Known limits of Stage 2:
+- Population and GDP are 2019 estimates (the newest in Natural Earth). Newer figures (e.g. World Bank, CC BY 4.0) can replace them later.
+- Provinces have no population or economy yet; only countries do.
+- Province detail varies by country (Natural Earth uses each country's own first-level divisions, from 1 to ~100 per country).
+- Flat map only; countries crossing the date line are split at the map edge.
 
 ## Stage 3: Simulation core (single player)
 - Game clock with pause and speed controls

@@ -73,7 +73,26 @@ with each other.
 
 See `.claude/skills/map-rendering/SKILL.md` for the detailed rules. In short:
 
-- Geometry is projected once (Equal Earth projection) into a fixed "world space"; zooming and panning are just a camera transform.
-- Each region is a cached `Path2D`; only regions on screen are drawn, and only when something changes.
-- Clicks use the canvas's exact point-in-shape test; when shapes overlap, the smallest wins (so enclaves like Lesotho can be clicked).
-- Map modes are pure functions from a country to a color, so switching mode just recolors the map.
+- **Provinces are the base geometry.** `scripts/build-world.mjs` turns Natural Earth admin-1 data into two TopoJSON
+  files (simplified and detailed) that share borders exactly.
+- **Countries are derived.** A background Web Worker (`src/map/world.worker.ts`) merges each country's provinces into one
+  shape and works out the internal province borders. When ownership in the game state changes, the worker rebuilds the
+  country shapes and the map redraws, so conquest and historical scenarios need no extra map data.
+- Geometry is projected once (Equal Earth) into a fixed "world space"; zoom and pan are a camera transform.
+- **Level of detail:** under 4× zoom the simplified layer is drawn; from 4× the detailed one (loaded in the background).
+  Province borders fade in around 2–3×; from 3× the pointer selects provinces instead of countries.
+- Only on-screen countries are drawn, and only when something changes. A frame takes about 1–3 ms to draw.
+- Clicks use the canvas's exact point-in-shape test against province shapes; the province's owner gives the country.
+- Map modes are pure functions from (country facts, country game state) to a color.
+
+## Data flow
+
+```
+Natural Earth + world-countries ──build-world.mjs──▶ topology files, cities.json   (public/maps, fetched at runtime)
+                                                  └▶ countries.json, provinces.json (reference facts, bundled)
+                                                  └▶ scenario-modern.json ──createGameState()──▶ GameState
+GameState.provinces[*].owner ──▶ map worker ──▶ country shapes ──▶ canvas
+```
+
+Reference facts (names, capitals, areas) never change during a game. Everything that can change (owners,
+population, GDP) lives in `GameState`.
