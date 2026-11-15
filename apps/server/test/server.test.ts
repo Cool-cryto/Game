@@ -10,12 +10,12 @@ import { Db } from "../src/db";
 import { startServer } from "../src/server";
 
 const data = (name: string) => JSON.parse(readFileSync(new URL(`../../web/src/data/${name}`, import.meta.url), "utf8")) as unknown;
-const scenario = data("scenario-modern.json") as Scenario;
+const scenarios = { modern: data("scenario-modern.json") as Scenario, "cold-war-1991": data("scenario-cold-war-1991.json") as Scenario };
 const geo = geographyFrom(data("geography.json") as GeographyData);
 
 type Server = Awaited<ReturnType<typeof startServer>>;
 const start = (db: Db, graceMs = 300) =>
-  startServer({ port: 0, db, scenario, geo, webDist: null, graceMs, globalSpeed: 2, saveEveryMs: 60_000, log: () => {} });
+  startServer({ port: 0, db, scenarios, geo, webDist: null, graceMs, globalSpeed: 2, saveEveryMs: 60_000, log: () => {} });
 
 let server: Server;
 let db: Db;
@@ -259,6 +259,33 @@ describe("playing together", () => {
     expect((await l.next("error")).message).toMatch(/full \(50 players\)/);
     h.close();
     l.close();
+  });
+});
+
+describe("scenarios and custom worlds", () => {
+  it("a private server can start in 1991, or from a custom world", async () => {
+    const u = await newUser("history");
+    const c = await TestClient.signedIn(server.port, u.token);
+    c.send({ t: "create", name: "Cold War game", scenario: "cold-war-1991" });
+    const cw = await c.next("joined");
+    expect(cw.state.startDate).toBe("1991-01-01");
+    expect(cw.state.countries["SUN" as CountryId]?.name).toBe("Soviet Union");
+
+    c.send({
+      t: "create",
+      name: "Custom game",
+      custom: { version: 1, name: "Bavarian independence", base: "modern", owners: { "DEU-1591": "C-1" as CountryId }, newCountries: { "C-1": { name: "Free Bavaria", color: "#3366cc" } } },
+    });
+    const cu = await c.next("joined");
+    expect(cu.state.scenarioName).toBe("Bavarian independence");
+    expect(cu.state.provinces["DEU-1591" as never]).toMatchObject({ owner: "C-1" });
+
+    // Bad worlds are refused with a reason.
+    c.send({ t: "create", name: "Broken", custom: { version: 1, name: "x", base: "modern", owners: { "DEU-1591": "NOPE" as CountryId }, newCountries: {} } });
+    expect((await c.next("error")).message).toMatch(/Unknown country/);
+    c.send({ t: "create", name: "Mystery", scenario: "atlantis" });
+    expect((await c.next("error")).message).toMatch(/Unknown scenario/);
+    c.close();
   });
 });
 

@@ -9,6 +9,7 @@ sources into `.cache/` (not committed) on first run.
 | cities.json | Natural Earth v5.1.2 populated places (simple), 1:10m; each city placed in its province by point-in-polygon | Public domain |
 | src/data/scenario-modern.json (population, GDP) | Natural Earth v5.1.2 admin-0 countries 1:50m (POP_EST, GDP_MD; 2019 estimates) | Public domain |
 | src/data/countries.json | `world-countries` npm package (mledoze/countries) | ODbL 1.0, attribution shown in the app footer |
+| src/data/scenario-cold-war-1991.json (population, GDP) | World Bank population (ODC-PDDL) and GDP in current US$ (CC BY 4.0), via github.com/datasets/population and /gdp; built by `scripts/build-scenarios.mjs` | Population public domain; GDP CC BY 4.0, credit: World Bank |
 | ../flags/*.svg | `flag-icons` npm package | MIT |
 
 Notes:
@@ -18,3 +19,5 @@ Notes:
 - Natural Earth draws de facto borders. Disputed areas are labelled as such in the info panel.
 - Antarctica has no population or GDP in the game.
 - Province ids are Natural Earth `adm1_code` values (e.g. `DEU-1591`).
+- 1991 scenario: missing World Bank figures are estimated from today's per-person values scaled by the world average's change since 1991; the scenario's data note lists how many.
+- The Soviet Union and Yugoslavia have no flag image (placeholder); Czechoslovakia uses the Czech flag, which is the same design.

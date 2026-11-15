@@ -16,7 +16,7 @@ import {
   type BudgetCategory,
   type CountryState,
 } from "@gs/sim";
-import { citiesIn, flagUrl, GEOGRAPHY, getCountry, getProvince, MODERN_SCENARIO } from "../data/countries";
+import { citiesIn, flagUrl, GEOGRAPHY, getCountry, getProvince, landNeighbours, MODERN_SCENARIO } from "../data/countries";
 import { gdpPerCapita } from "../map/mapModes";
 import { playerCountry, useGame } from "../state/gameStore";
 import { useOnline } from "../net/online";
@@ -137,6 +137,9 @@ function CountryView({ id }: { id: CountryId }) {
   const perCapita = gdpPerCapita(state);
   // "Mine" means played by me (online, other humans play other countries).
   const isPlayer = me === id;
+  const dataNote = useGame.getState().state.dataNote ?? MODERN_SCENARIO.dataNote;
+  // Borders follow who owns what now (conquests, historical and custom worlds).
+  const borders = landNeighbours(useGame.getState().state, provinceIds);
   // Growth rates are first calculated on the 1st of the next month.
   const started = state.history.gdp.length > 0;
   const topCities = provinceIds
@@ -288,7 +291,7 @@ function CountryView({ id }: { id: CountryId }) {
           <Fact label="Languages" value={c.languages.join(", ")} />
           <Fact label="Currency" value={c.currencies.map((x) => `${x.name}${x.symbol ? ` (${x.symbol})` : ""}`).join(", ")} />
         </dl>
-        <p className="panel__source">{MODERN_SCENARIO.dataNote} Everything after that is simulated by the game.</p>
+        <p className="panel__source">{dataNote} Everything after that is simulated by the game.</p>
       </section>
 
       {topCities.length > 0 && (
@@ -298,11 +301,11 @@ function CountryView({ id }: { id: CountryId }) {
         </section>
       )}
 
-      {c.borders.length > 0 && (
+      {borders.length > 0 && (
         <section>
-          <h3>Land borders ({c.borders.length})</h3>
+          <h3>Land borders ({borders.length})</h3>
           <div className="chips">
-            {c.borders.map((b) => {
+            {borders.map((b) => {
               const n = getCountry(b);
               return n ? (
                 <button key={b} className="chip" onClick={() => select({ kind: "country", id: b }, { focus: true })}>

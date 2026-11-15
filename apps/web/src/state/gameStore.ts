@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { CountryId, ProvinceId } from "@gs/shared";
 import { createGameState, provincesByOwner, type Command, type CountryState, type GameState } from "@gs/sim";
-import { GEOGRAPHY, MODERN_SCENARIO } from "../data/countries";
+import { GEOGRAPHY, MODERN_SCENARIO, registerStateCountries } from "../data/countries";
 import type { SimRequest, SimResponse, Speed } from "../sim/protocol";
 import { online, onlineCountry, setOnlineHooks, useOnline } from "../net/online";
 
@@ -25,7 +25,11 @@ interface GameStore {
   replace: (state: GameState) => void;
 }
 
-export const newGameState = () => createGameState(MODERN_SCENARIO, GEOGRAPHY, Date.now() % 2 ** 31);
+/** While the world editor is open, the map shows a preview and the local game must not overwrite it. */
+let previewMode = false;
+export const setPreviewMode = (on: boolean) => (previewMode = on);
+
+export const newGameState = (scenario = MODERN_SCENARIO) => createGameState(scenario, GEOGRAPHY, Date.now() % 2 ** 31);
 
 const initial = newGameState();
 
@@ -37,6 +41,7 @@ function sim(msg: SimRequest) {
     worker.onmessage = (e: MessageEvent<SimResponse>) => {
       const { state, errors, paused } = e.data;
       if (useGame.getState().mode === "online") return; // the server is in charge while online
+      if (previewMode) return; // the world editor is showing a preview
       // Ignore updates sent before the worker heard about the latest pause/play,
       // so the date doesn't keep moving after you press pause.
       if (paused !== useGame.getState().paused) return;
@@ -77,6 +82,7 @@ export const useGame = create<GameStore>((set, get) => ({
     sim({ type: "setPaused", paused });
   },
   replace: (state) => {
+    registerStateCountries(state);
     set((s) => ({ state, provincesOf: provincesByOwner(state), paused: true, errors: [], generation: s.generation + 1 }));
     sim({ type: "setPaused", paused: true });
     sim({ type: "start", state });
@@ -98,6 +104,7 @@ export const playerCountry = (s: GameState): CountryState | undefined => {
 // Online play feeds the server's game into this store.
 setOnlineHooks({
   enter: (state) => {
+    registerStateCountries(state);
     sim({ type: "setPaused", paused: true }); // stop the local game while online
     useGame.setState((s) => ({ state, provincesOf: provincesByOwner(state), mode: "online", errors: [], generation: s.generation + 1 }));
   },

@@ -32,6 +32,8 @@ export interface ResourceBalance {
 export interface CountryState {
   id: CountryId;
   name: string;
+  /** Map color (#rrggbb), for countries that have no standard color (made in the world editor). */
+  color?: string;
   controller: "ai" | "human";
   /** False for places with no population or economy (e.g. Antarctica, uninhabited islands). */
   active: boolean;
@@ -128,6 +130,9 @@ export interface ProvinceState {
 export interface GameState {
   version: typeof SAVE_VERSION;
   scenarioId: string;
+  /** Name of the scenario, and where its starting numbers came from (for the UI). */
+  scenarioName?: string;
+  dataNote?: string;
   /** Days since the scenario start date. */
   tick: number;
   startDate: string;
@@ -198,6 +203,7 @@ export function createGameState(scenario: Scenario, geo: Geography, seed: number
     countries[id] = {
       id,
       name: c.name ?? id,
+      ...(c.color ? { color: c.color } : {}),
       controller: "ai",
       active,
       population: 0,
@@ -237,6 +243,8 @@ export function createGameState(scenario: Scenario, geo: Geography, seed: number
   const state: GameState = {
     version: SAVE_VERSION,
     scenarioId: scenario.id,
+    scenarioName: scenario.name,
+    dataNote: scenario.dataNote,
     tick: 0,
     startDate: scenario.startDate,
     rng: { seed },

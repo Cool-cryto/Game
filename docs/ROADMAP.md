@@ -92,7 +92,7 @@ Known limits of Stage 5:
 - Province names are shown on the flat map only (the globe shows country and city names).
 - A thin seam can appear in a narrow wedge directly behind the North or South Pole when looking from far above it.
 
-## Stage 6: Multiplayer ✅ (current)
+## Stage 6: Multiplayer ✅
 
 - [x] Game server (`apps/server`): Node.js, WebSockets (`ws`), built-in SQLite database; serves the web client too
 - [x] Accounts: username + password (scrypt hashes), session tokens (stored hashed), sign-in rate limit
@@ -111,5 +111,21 @@ Known limits of Stage 6:
 - Players see everything (no fog of war), so a modified client could show other countries' units (it still can't command them).
 - Node's built-in SQLite prints an "experimental feature" warning when the server starts. It works; it's a notice from Node.
 
-## Stage 7: Worlds
-- Persistent global world, historical scenarios, custom world editor
+## Stage 7: Scenarios and custom worlds ✅ (current)
+
+- [x] Scenario system: built-in scenarios load on demand; scenario name and data note travel with the game
+- [x] End of the Cold War (1 January 1991): Soviet Union, Yugoslavia, Czechoslovakia; Eritrea in Ethiopia, South Sudan in Sudan,
+      East Timor in Indonesia; World Bank 1991 population and GDP, with labelled estimates where figures are missing
+- [x] World editor: create countries (name + color), paint one province or a whole country, pick a country from the map,
+      undo, clear; save in the browser; export/import files; play; host online
+- [x] Custom worlds are stored as changes to a base scenario; land carries its share of GDP to the new owner
+- [x] Server: private servers can start from any scenario or a custom world (checked before use)
+- [x] Land borders in country panels are worked out from the current map (follow conquests and custom worlds)
+- [x] Tests: custom-world rules and validation, the 1991 world (borders, totals, 10-year run), server creation, browser tests
+
+Known limits of Stage 7:
+- Only one historical scenario so far. Earlier dates (e.g. 1936) need historical borders that don't follow today's provinces,
+  and good open data for that period; see PROJECT.md.
+- The 1991 map is simplified to today's province lines (e.g. Walvis Bay is shown as Namibian; Berlin was already reunited).
+- The Soviet Union and Yugoslavia show a placeholder instead of a flag.
+- The editor changes who owns land and creates countries; it can't yet edit economies, alliances, armies or the start date.

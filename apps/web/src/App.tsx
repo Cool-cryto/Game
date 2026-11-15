@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { WorldMap } from "./map/WorldMap";
 import { GlobeView } from "./map/globe/GlobeView";
 import { useUi } from "./state/uiStore";
+import { useEditor } from "./state/editor";
+import { EditorPanel } from "./ui/EditorPanel";
 import { startSimulation } from "./state/gameStore";
 import { GameErrors } from "./ui/GameErrors";
 import { InfoPanel } from "./ui/InfoPanel";
@@ -23,6 +25,14 @@ import { ZoomControls } from "./ui/ZoomControls";
 export function App() {
   useEffect(() => startSimulation(), []);
   const view = useUi((s) => s.view);
+  const editorWanted = useUi((s) => s.editor);
+  const editing = useEditor((s) => s.active);
+  useEffect(() => {
+    if (!editorWanted) return;
+    useUi.getState().setEditor(false);
+    useUi.getState().select(null);
+    void useEditor.getState().open();
+  }, [editorWanted]);
   // Build the globe the first time it's shown, then keep it (switching back is instant).
   const [globeUsed, setGlobeUsed] = useState(false);
   useEffect(() => {
@@ -47,17 +57,17 @@ export function App() {
         </div>
       )}
       <TopBar />
-      <PlayerCard />
-      <InfoPanel />
+      {!editing && <PlayerCard />}
+      {editing ? <EditorPanel /> : <InfoPanel />}
       <Legend />
       <ZoomControls />
-      <TimeControls />
+      {!editing && <TimeControls />}
       <GameErrors />
       <NewsFeed />
       <OnlinePanel />
       <OnlineDialogHost />
       <footer className="credits">
-        Map, cities, starting population &amp; GDP: Natural Earth (public domain) · Country facts: mledoze/countries (ODbL) · Flags: flag-icons (MIT)
+        Map, cities, modern population &amp; GDP: Natural Earth (public domain) · 1991 figures: World Bank (CC BY 4.0) · Country facts: mledoze/countries (ODbL) · Flags: flag-icons (MIT)
       </footer>
     </div>
   );

@@ -4,7 +4,11 @@ import { neighbors } from "topojson-client";
 import type { City, CountryId, ProvinceId } from "@gs/shared";
 import { createGameState } from "@gs/sim";
 import { buildCountryShapes, buildProvinceShapes, createWorldFrame, type ProvinceTopology } from "./geo";
-import { COUNTRIES, GEOGRAPHY, MODERN_SCENARIO, PROVINCES, search, setCities } from "../data/countries";
+import { COUNTRIES as ALL_COUNTRIES, GEOGRAPHY, MODERN_SCENARIO, PROVINCES, search, setCities } from "../data/countries";
+import historical from "../data/historical-countries.json";
+
+// The modern world's countries (the list also holds the Soviet Union etc. for the 1991 scenario).
+const COUNTRIES = Object.fromEntries(Object.entries(ALL_COUNTRIES).filter(([id]) => !(id in historical))) as typeof ALL_COUNTRIES;
 
 const read = <T,>(p: string) => JSON.parse(readFileSync(new URL(`../../public/maps/${p}`, import.meta.url), "utf8")) as T;
 const low = read<ProvinceTopology>("provinces-low.topo.json");

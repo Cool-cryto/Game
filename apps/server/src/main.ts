@@ -22,7 +22,10 @@ const db = new Db(join(dataDir, "game.db"));
 const server = await startServer({
   port: Number(process.env.PORT ?? 8787),
   db,
-  scenario: dataFile("scenario-modern.json") as Scenario,
+  scenarios: {
+    modern: dataFile("scenario-modern.json") as Scenario,
+    "cold-war-1991": dataFile("scenario-cold-war-1991.json") as Scenario,
+  },
   geo: geographyFrom(dataFile("geography.json") as GeographyData),
   webDist: existsSync(join(webDist, "index.html")) ? webDist : null,
   graceMs: Number(process.env.GRACE_MS ?? 30_000),

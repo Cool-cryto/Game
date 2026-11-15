@@ -5,7 +5,7 @@ import { randomBytes } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { CountryId, Scenario } from "@gs/shared";
-import { createGameState, deserialize, GLOBAL_ROOM_ID, type ClientMessage, type Geography, type ServerMessage } from "@gs/sim";
+import { applyCustomWorld, createGameState, deserialize, GLOBAL_ROOM_ID, validateCustomWorld, type ClientMessage, type Geography, type ServerMessage } from "@gs/sim";
 import { login, logout, register, userForToken } from "./auth";
 import type { Db } from "./db";
 import { Room, type Conn } from "./room";
@@ -13,7 +13,8 @@ import { Room, type Conn } from "./room";
 export interface ServerConfig {
   port: number;
   db: Db;
-  scenario: Scenario;
+  /** Built-in starting worlds by id; "modern" is the default and the Global World's. */
+  scenarios: Record<string, Scenario>;
   geo: Geography;
   /** Built web client to serve (apps/web/dist), if any. */
   webDist: string | null;
@@ -52,7 +53,8 @@ export function startServer(cfg: ServerConfig) {
   const roomOf = new Map<Conn, Room>();
   let roomsCreatedBy = new Map<number, number>();
 
-  const makeRoom = (o: { id: string; name: string; code: string | null; isPublic: boolean; hostUserId: number | null }, state = createGameState(cfg.scenario, cfg.geo, Math.floor(Math.random() * 2 ** 31))) => {
+  const newState = (scenario: Scenario) => createGameState(scenario, cfg.geo, Math.floor(Math.random() * 2 ** 31));
+  const makeRoom = (o: { id: string; name: string; code: string | null; isPublic: boolean; hostUserId: number | null }, state = newState(cfg.scenarios.modern!)) => {
     const room = new Room(
       {
         ...o,
@@ -147,7 +149,8 @@ export function startServer(cfg: ServerConfig) {
   }
 
   // ---------- WebSocket ----------
-  const wss = new WebSocketServer({ server: http, path: "/ws", maxPayload: 64 * 1024, perMessageDeflate: { threshold: 1024 } });
+  // maxPayload leaves room for a custom world in the "create" message.
+  const wss = new WebSocketServer({ server: http, path: "/ws", maxPayload: 512 * 1024, perMessageDeflate: { threshold: 1024 } });
 
   wss.on("connection", (ws: WebSocket) => {
     let conn: Conn | null = null;
@@ -206,13 +209,25 @@ export function startServer(cfg: ServerConfig) {
         const name = typeof msg.name === "string" ? msg.name.trim().slice(0, 40) : "";
         if (!name) return send({ t: "error", message: "Give your server a name." });
         if (rooms.size >= MAX_ROOMS) return send({ t: "error", message: "This game server is full. Try again later." });
+        // Which world: a built-in scenario, or a custom world made in the editor (checked first).
+        let scenario: Scenario | undefined;
+        if (msg.custom !== undefined) {
+          const base = cfg.scenarios[(msg.custom as { base?: string })?.base ?? ""];
+          if (!base) return send({ t: "error", message: "That custom world is based on a scenario this server doesn't have." });
+          const problem = validateCustomWorld(msg.custom, base);
+          if (problem) return send({ t: "error", message: problem });
+          scenario = applyCustomWorld(base, msg.custom);
+        } else {
+          scenario = cfg.scenarios[typeof msg.scenario === "string" ? msg.scenario : "modern"];
+          if (!scenario) return send({ t: "error", message: "Unknown scenario." });
+        }
         const made = roomsCreatedBy.get(conn.user.id) ?? 0;
         if (made >= MAX_ROOMS_PER_USER) return send({ t: "error", message: `You can create up to ${MAX_ROOMS_PER_USER} servers per session.` });
         roomsCreatedBy.set(conn.user.id, made + 1);
         let code = "";
         do code = Array.from(randomBytes(6), (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
         while ([...rooms.values()].some((r) => r.code === code));
-        const room = makeRoom({ id: randomBytes(8).toString("hex"), name, code, isPublic: false, hostUserId: conn.user.id });
+        const room = makeRoom({ id: randomBytes(8).toString("hex"), name, code, isPublic: false, hostUserId: conn.user.id }, newState(scenario));
         save(room);
         log(`${conn.user.username} created room "${name}" (${code})`);
         return joinRoom(conn, room, send);

@@ -132,7 +132,13 @@ function tint(hex: string, amount: number): string {
 const WAR_COLORS = ["#c0504d", "#d08a3c", "#8e5bb5", "#3f88c5", "#c9b03e", "#4fa87a"];
 
 export const MAP_MODES: Record<MapModeId, MapMode> = {
-  political: countryMode("political", "Political", "World", (_id, { info }) => (info ? (POLITICAL[info.colorSlot % POLITICAL.length] ?? NO_DATA) : NO_DATA), null),
+  political: countryMode(
+    "political",
+    "Political",
+    "World",
+    (_id, { info, state }) => state?.color ?? (info ? (POLITICAL[info.colorSlot % POLITICAL.length] ?? NO_DATA) : NO_DATA),
+    null,
+  ),
   region: countryMode(
     "region",
     "Continents",

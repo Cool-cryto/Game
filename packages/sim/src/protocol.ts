@@ -1,5 +1,6 @@
 import type { CountryId } from "@gs/shared";
 import type { Command } from "./commands";
+import type { CustomWorld } from "./custom";
 import type { Patch } from "./net";
 import type { GameState } from "./state";
 
@@ -46,7 +47,8 @@ export interface Clock {
 export type ClientMessage =
   | { t: "auth"; token: string }
   | { t: "list" }
-  | { t: "create"; name: string }
+  /** Create a private server, from a built-in scenario (default "modern") or a custom world. */
+  | { t: "create"; name: string; scenario?: string; custom?: CustomWorld }
   | { t: "join"; room: string } // a room id or an invite code
   | { t: "leave" }
   | { t: "claim"; country: CountryId }

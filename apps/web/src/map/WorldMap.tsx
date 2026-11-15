@@ -1,3 +1,4 @@
+import { useEditor } from "../state/editor";
 import { useEffect, useRef, useState } from "react";
 import { select } from "d3-selection";
 import { zoom as d3zoom, zoomIdentity, type ZoomTransform } from "d3-zoom";
@@ -194,7 +195,7 @@ export function WorldMap() {
       for (const p of L.provinceList) {
         const ps = game.provinces[p.id];
         if (!ps || ps.controller === ps.owner || !onScreen(p.bounds)) continue;
-        ctx.fillStyle = stripes(ctx, politicalColor(ps.controller), t.k);
+        ctx.fillStyle = stripes(ctx, politicalColor(ps.controller, game), t.k);
         ctx.fill(p.path);
       }
 
@@ -548,6 +549,12 @@ export function WorldMap() {
       down = null;
       if (!click || e.button !== 0) return;
       const ui = useUi.getState();
+      // The world editor uses clicks to paint provinces.
+      if (useEditor.getState().active) {
+        const hit = pick(p.x, p.y);
+        if (hit) useEditor.getState().click(hit.province);
+        return;
+      }
       if (ui.moveOrder) {
         const hit = pick(p.x, p.y);
         if (hit) orderMove(ui.moveOrder.units, hit.province);

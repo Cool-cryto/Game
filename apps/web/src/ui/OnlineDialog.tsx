@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { checkServer, connect, hasSession, online, signIn, signOut, useOnline } from "../net/online";
+import { SCENARIOS } from "../data/scenarios";
+import { listWorlds, type SavedWorld } from "../state/worlds";
 
 /** Sign in, then pick the Global World, create a private server, or join one with a code. */
 export function OnlineDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -108,8 +110,11 @@ function Lobby() {
   const error = useOnline((s) => s.error);
   const [name, setName] = useState(`${user.username}'s world`);
   const [code, setCode] = useState("");
+  const [scenario, setScenario] = useState("modern");
+  const [worlds, setWorlds] = useState<SavedWorld[]>([]);
   useEffect(() => {
     online.list();
+    listWorlds().then(setWorlds, () => {});
   }, []);
   const world = rooms.filter((r) => r.isPublic);
   const mine = rooms.filter((r) => !r.isPublic);
@@ -139,10 +144,23 @@ function Lobby() {
         className="dialog__row"
         onSubmit={(e) => {
           e.preventDefault();
-          online.create(name);
+          const saved = worlds.find((w) => `world:${w.id}` === scenario);
+          online.create(name, saved ? { custom: saved.world } : { scenario });
         }}
       >
         <input className="input" aria-label="Server name" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} />
+        <select className="input" aria-label="World" value={scenario} onChange={(e) => setScenario(e.target.value)}>
+          {SCENARIOS.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name} ({s.year})
+            </option>
+          ))}
+          {worlds.map((w) => (
+            <option key={w.id} value={`world:${w.id}`}>
+              {w.world.name} (custom)
+            </option>
+          ))}
+        </select>
         <button className="btn btn--primary" type="submit">
           Create
         </button>

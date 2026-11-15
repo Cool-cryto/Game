@@ -2,7 +2,7 @@
 
 A grand strategy game that runs in the web browser, built in stages.
 
-**Current stage: 6 — multiplayer.** See [docs/ROADMAP.md](docs/ROADMAP.md) for what exists and what comes next,
+**Current stage: 7 — scenarios and the world editor.** The full project plan and status is in [PROJECT.md](PROJECT.md). See [docs/ROADMAP.md](docs/ROADMAP.md) for what exists and what comes next,
 and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the project is put together.
 
 ## What works today
@@ -30,7 +30,12 @@ and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the project is put toge
   The server runs the game; you can only command your own country; the host controls time; chat; if you disconnect,
   the AI runs your country after 30 seconds until you return; games are saved on the server
 
-Not built yet: government types, naval battles, trade deals, historical scenarios, custom worlds.
+- **Scenarios**: Modern World (2020) and End of the Cold War (1991, with the Soviet Union, Yugoslavia and
+  Czechoslovakia, and World Bank figures for 1991). Pick one under **Game → New game**, or when creating a private server
+- **World editor** (**Game → New game → Create a custom world**): create countries, paint provinces onto them,
+  undo, save in the browser, export/import files, play it, or host it online
+
+Not built yet: government types, naval battles, trade deals, fog of war, internet hosting. See [PROJECT.md](PROJECT.md).
 
 ## How to play
 

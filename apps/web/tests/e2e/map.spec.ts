@@ -425,3 +425,80 @@ test("the globe works on a phone-sized screen", async ({ page }) => {
   await searchFor(page, "egypt");
   await expect(panel(page)).toBeVisible();
 });
+
+// ---------- Stage 7: scenarios and the world editor ----------
+
+async function openNewGame(page: Page) {
+  await page.getByRole("button", { name: "Game", exact: true }).click();
+  await expect(page.getByLabel("Scenarios")).toBeVisible();
+}
+
+test("start the End of the Cold War scenario (1991)", async ({ page }) => {
+  await openMap(page);
+  await openNewGame(page);
+  await page.getByTestId("scenario-cold-war-1991").getByRole("button", { name: "Start…" }).click();
+  await page.getByTestId("scenario-cold-war-1991").getByRole("button", { name: "Start new game" }).click();
+  await expect(page.getByTestId("game-date")).toContainText("1 Jan 1991");
+  await searchFor(page, "soviet union");
+  await expect(panel(page).getByRole("heading", { name: "Soviet Union" })).toBeVisible();
+  await expect(panel(page)).toContainText("World Bank figures for 1991");
+  await expect(panel(page)).toContainText("Land borders"); // worked out from the 1991 map
+  await expect(panel(page)).toContainText("Poland");
+  // Ukraine is part of the Soviet Union here.
+  await searchFor(page, "kyiv");
+  await expect(panel(page)).toContainText("Soviet Union");
+});
+
+test("world editor: create a country, give it land, play it", async ({ page }) => {
+  await openMap(page, { waitForDetail: true });
+  await openNewGame(page);
+  await page.getByTestId("open-editor").click();
+  await expect(page.getByTestId("editor")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Play this world" })).toBeEnabled(); // finished loading
+  await page.getByLabel("World name").fill("Free Bavaria test");
+  await page.getByLabel("New country name").fill("Free Bavaria");
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(page.getByTestId("brush")).toContainText("Free Bavaria");
+  await searchFor(page, "bavaria");
+  await page.waitForTimeout(900);
+  const p = await pointOf(page, "province", "DEU-1591");
+  await page.mouse.click(p.x, p.y);
+  await expect(page.getByTestId("editor-stats")).toContainText("1 province changed · 1 new country");
+  // Undo and redo the change.
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(page.getByTestId("editor-stats")).toContainText("0 provinces changed");
+  await page.mouse.click(p.x, p.y);
+  await expect(page.getByTestId("editor-stats")).toContainText("1 province changed");
+
+  await page.getByRole("button", { name: "Save in browser" }).click();
+  await expect(page.getByRole("status")).toContainText("Saved");
+  await page.getByRole("button", { name: "Play this world" }).click();
+  await expect(page.getByTestId("editor")).toHaveCount(0);
+  await page.waitForTimeout(900);
+  await page.mouse.click(p.x, p.y);
+  await expect(panel(page)).toContainText("Part of");
+  await expect(panel(page)).toContainText("Free Bavaria");
+
+  // The saved world is offered as a new game.
+  await openNewGame(page);
+  await expect(page.getByTestId("world-Free Bavaria test")).toBeVisible();
+});
+
+test("closing the editor brings your game back", async ({ page }) => {
+  await openMap(page);
+  await searchFor(page, "japan");
+  await panel(page).getByRole("button", { name: "Play as Japan" }).click();
+  await openNewGame(page);
+  await page.getByTestId("open-editor").click();
+  await expect(page.getByTestId("editor")).toBeVisible();
+  await page.getByRole("button", { name: "Close editor" }).click();
+  await expect(page.getByTestId("player-card")).toContainText("Japan");
+});
+
+test("importing a file that isn't a custom world shows a clear error", async ({ page }) => {
+  await openMap(page);
+  await openNewGame(page);
+  await page.getByTestId("open-editor").click();
+  await page.getByTestId("world-import").setInputFiles({ name: "notes.json", mimeType: "application/json", buffer: Buffer.from('{"hello":1}') });
+  await expect(page.getByRole("status")).toContainText(/scenario this game doesn't have|isn't a custom world|different version/);
+});

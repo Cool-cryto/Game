@@ -166,7 +166,7 @@ function send(m: ClientMessage) {
 
 export const online = {
   list: () => send({ t: "list" }),
-  create: (name: string) => send({ t: "create", name }),
+  create: (name: string, opts: { scenario?: string; custom?: import("@gs/sim").CustomWorld } = {}) => send({ t: "create", name, ...opts }),
   join: (room: string) => send({ t: "join", room }),
   leave: () => {
     rejoin = null;

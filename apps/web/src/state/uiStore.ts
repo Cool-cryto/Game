@@ -21,6 +21,9 @@ interface UiState {
   moveOrder: { units: number[] } | null;
   setMoveOrder: (m: { units: number[] } | null) => void;
   mapMode: MapModeId;
+  /** Is the world editor open? */
+  editor: boolean;
+  setEditor: (open: boolean) => void;
   /** Is the "Play online" dialog open? */
   onlineDialog: boolean;
   setOnlineDialog: (open: boolean) => void;
@@ -55,6 +58,8 @@ export const useUi = create<UiState>((set) => ({
   mapMode: "political",
   view: "flat",
   onlineDialog: false,
+  editor: false,
+  setEditor: (editor) => set({ editor }),
   setOnlineDialog: (onlineDialog) => set({ onlineDialog }),
   setView: (view) => set({ view }),
   zoom: 1,

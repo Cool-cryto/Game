@@ -148,3 +148,14 @@ test("without a game server, online play explains what's needed", async ({ page 
   await page.getByTestId("play-online").click();
   await expect(page.getByText("No game server here")).toBeVisible();
 });
+
+test("a private server can start in 1991", async ({ browser }) => {
+  const page = await player(browser);
+  await signUp(page, `cold${unique()}`);
+  await page.getByLabel("World", { exact: true }).selectOption("cold-war-1991");
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(page.getByTestId("online-pill")).toBeVisible();
+  await expect(page.getByTestId("game-date")).toContainText("1991");
+  await searchFor(page, "soviet union");
+  await expect(page.getByTestId("info-panel")).toContainText("Soviet Union");
+});

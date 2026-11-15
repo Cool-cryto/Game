@@ -19,10 +19,13 @@ export interface SaveInfo {
 const DB = "world-ascendant";
 const STORE = "saves";
 
-function db(): Promise<IDBDatabase> {
+/** Version 2 added the "worlds" store (custom worlds from the editor). */
+export function db(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+    const req = indexedDB.open(DB, 2);
+    req.onupgradeneeded = () => {
+      for (const name of [STORE, "worlds"]) if (!req.result.objectStoreNames.contains(name)) req.result.createObjectStore(name);
+    };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error ?? new Error("Saving isn't available in this browser."));
   });

@@ -3,6 +3,9 @@ import { online, useOnline } from "../net/online";
 import { newGameState, useGame } from "../state/gameStore";
 import { deleteSlot, describe, exportSave, importSave, listSlots, loadFromSlot, saveToSlot, SLOTS, type SaveInfo, type Slot } from "../state/saves";
 import { useUi } from "../state/uiStore";
+import { SCENARIOS } from "../data/scenarios";
+import { listWorlds, type SavedWorld } from "../state/worlds";
+import { scenarioFromCustom } from "../data/scenarios";
 import { formatDate } from "./format";
 
 /** New game, save, load, export and import. */
@@ -36,7 +39,6 @@ export function GameMenu() {
 function MenuBody({ close }: { close: () => void }) {
   const [slots, setSlots] = useState<Partial<Record<Slot, SaveInfo>>>({});
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
-  const [confirmNew, setConfirmNew] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const replace = useGame((s) => s.replace);
   const select = useUi((s) => s.select);
@@ -164,28 +166,7 @@ function MenuBody({ close }: { close: () => void }) {
         />
       </div>
 
-      {useGame.getState().mode === "local" && <h3>New game</h3>}
-      {useGame.getState().mode === "online" ? null : confirmNew ? (
-        <div className="dialog__row">
-          <span className="dialog__warn">Start over? Unsaved progress will be lost.</span>
-          <button
-            className="btn btn--danger"
-            onClick={() => {
-              replace(newGameState());
-              loaded("New game started.");
-            }}
-          >
-            Start new game
-          </button>
-          <button className="btn btn--ghost" onClick={() => setConfirmNew(false)}>
-            Cancel
-          </button>
-        </div>
-      ) : (
-        <button className="btn btn--ghost" onClick={() => setConfirmNew(true)}>
-          New game (Modern World, 2020)
-        </button>
-      )}
+      {useGame.getState().mode === "local" && <NewGame onStarted={(name) => loaded(`New game started: ${name}.`)} onEditor={close} />}
 
       {message && (
         <p className={message.error ? "dialog__msg dialog__msg--error" : "dialog__msg"} role="status">
@@ -229,5 +210,94 @@ function OnlineSection({ close }: { close: () => void }) {
         </button>
       )}
     </>
+  );
+}
+
+/** Pick a world and start over. */
+function NewGame({ onStarted, onEditor }: { onStarted: (name: string) => void; onEditor: () => void }) {
+  const [choice, setChoice] = useState<string | null>(null);
+  const [worlds, setWorlds] = useState<SavedWorld[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const replace = useGame((s) => s.replace);
+  const setEditor = useUi((s) => s.setEditor);
+  useEffect(() => {
+    listWorlds().then(setWorlds, () => {});
+  }, []);
+  const start = async (id: string) => {
+    try {
+      const builtIn = SCENARIOS.find((x) => x.id === id);
+      const saved = worlds.find((w) => `world:${w.id}` === id);
+      const scenario = builtIn ? await builtIn.load() : saved ? await scenarioFromCustom(saved.world) : null;
+      if (!scenario) return;
+      replace(newGameState(scenario));
+      onStarted(scenario.name);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+  return (
+    <>
+      <h3>New game</h3>
+      <p className="dialog__hint">Starting a new game replaces the current one (save first if you want to keep it).</p>
+      <ul className="slots" aria-label="Scenarios">
+        {SCENARIOS.map((sc) => (
+          <li key={sc.id} className="slot" data-testid={`scenario-${sc.id}`}>
+            <div className="slot__info">
+              <strong>
+                {sc.name} <span className="tag">{sc.year}</span>
+              </strong>
+              <span>{sc.description}</span>
+            </div>
+            <ScenarioButton id={sc.id} choice={choice} setChoice={setChoice} start={start} />
+          </li>
+        ))}
+        {worlds.map((w) => (
+          <li key={w.id} className="slot" data-testid={`world-${w.world.name}`}>
+            <div className="slot__info">
+              <strong>
+                {w.world.name} <span className="tag">custom</span>
+              </strong>
+              <span>
+                Based on {SCENARIOS.find((s) => s.id === w.world.base)?.name ?? w.world.base} · {Object.keys(w.world.owners).length} provinces changed ·{" "}
+                {Object.keys(w.world.newCountries).length} new countries
+              </span>
+            </div>
+            <ScenarioButton id={`world:${w.id}`} choice={choice} setChoice={setChoice} start={start} />
+          </li>
+        ))}
+      </ul>
+      <div className="dialog__row">
+        <button
+          className="btn btn--ghost"
+          onClick={() => {
+            onEditor();
+            setEditor(true);
+          }}
+          data-testid="open-editor"
+        >
+          Create a custom world…
+        </button>
+      </div>
+      {error && <p className="dialog__msg dialog__msg--error">{error}</p>}
+    </>
+  );
+}
+
+function ScenarioButton({ id, choice, setChoice, start }: { id: string; choice: string | null; setChoice: (c: string | null) => void; start: (id: string) => void }) {
+  if (choice !== id)
+    return (
+      <button className="btn btn--ghost btn--small" onClick={() => setChoice(id)}>
+        Start…
+      </button>
+    );
+  return (
+    <div className="slot__actions">
+      <button className="btn btn--danger btn--small" onClick={() => start(id)}>
+        Start new game
+      </button>
+      <button className="btn btn--ghost btn--small" onClick={() => setChoice(null)}>
+        Cancel
+      </button>
+    </div>
   );
 }

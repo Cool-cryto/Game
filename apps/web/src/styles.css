@@ -1922,3 +1922,62 @@ button {
     display: none;
   }
 }
+
+/* ---------- Stage 7: world editor ---------- */
+.editor .panel__titles {
+  display: grid;
+  gap: 4px;
+}
+.editor__name {
+  font-size: 17px;
+  font-weight: 700;
+  width: 100%;
+}
+.editor__select {
+  width: 100%;
+}
+.brush {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+.brush img,
+.brush__swatch {
+  width: 28px;
+  height: 20px;
+  border-radius: 3px;
+  object-fit: cover;
+  flex: none;
+}
+.editor__new {
+  margin-top: 10px;
+}
+.editor__new input[type="color"] {
+  width: 38px;
+  height: 38px;
+  padding: 2px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+}
+.editor__mode {
+  margin-top: 10px;
+  justify-content: stretch;
+}
+.editor__mode button {
+  flex: 1;
+}
+.editor__tools {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.editor__tools:disabled {
+  opacity: 0.5;
+}

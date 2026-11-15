@@ -1,3 +1,4 @@
+import { useEditor } from "../../state/editor";
 import { useEffect, useRef, useState } from "react";
 import { geoDistance, geoOrthographic, geoPath, type GeoPermissibleObjects } from "d3-geo";
 import { feature, merge } from "topojson-client";
@@ -219,7 +220,7 @@ export function GlobeView({ active }: { active: boolean }) {
       for (const p of provinceList) {
         const ps = game.provinces[p.id];
         if (!ps || ps.controller === ps.owner) continue;
-        ctx.fillStyle = stripes(ctx, politicalColor(ps.controller), 1, 6);
+        ctx.fillStyle = stripes(ctx, politicalColor(ps.controller, game), 1, 6);
         ctx.fill(p.path);
       }
       ctx.lineJoin = "round";
@@ -566,6 +567,12 @@ export function GlobeView({ active }: { active: boolean }) {
       if (!was || was.moved || e.button !== 0) return;
       const p = local(e);
       const ui = useUi.getState();
+      // The world editor uses clicks to paint provinces.
+      if (useEditor.getState().active) {
+        const hit = pick(p.x, p.y);
+        if (hit) useEditor.getState().click(hit.province);
+        return;
+      }
       if (ui.moveOrder) {
         const hit = pick(p.x, p.y);
         if (hit) orderMove(ui.moveOrder.units, hit.province);

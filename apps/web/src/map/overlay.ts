@@ -8,8 +8,9 @@ import { COUNTRIES, GEOGRAPHY, getCountry } from "../data/countries";
 import type { Selection } from "../state/uiStore";
 import { MAP_MODES } from "./mapModes";
 
-export const politicalColor = (c: CountryId) =>
-  MAP_MODES.political.level === "country" ? MAP_MODES.political.color(c, { info: COUNTRIES[c], state: undefined }) : "#888";
+/** A country's map color (uses the game's own color for countries made in the world editor). */
+export const politicalColor = (c: CountryId, game?: GameState) =>
+  MAP_MODES.political.level === "country" ? MAP_MODES.political.color(c, { info: COUNTRIES[c], state: game?.countries[c] }) : "#888";
 
 const stripeCache = new Map<string, HTMLCanvasElement>();
 /** A diagonal-stripe fill (for occupied provinces). `k` is the current scale, so stripes keep their size on screen. */
@@ -118,7 +119,7 @@ export function drawUnitsOverlay(ctx: CanvasRenderingContext2D, o: UnitsOverlayO
       const x = st.x + (i - (list.length - 1) / 2) * 30;
       const y = st.y - 18;
       if (x < -30 || y < -30 || x > w + 30 || y > h + 30) return;
-      drawMarker(ctx, st, x, y, st.owner === me, `${province}|${st.owner}` === selectedStack);
+      drawMarker(ctx, game, st, x, y, st.owner === me, `${province}|${st.owner}` === selectedStack);
       markers.push({ x0: x - 14, y0: y - 10, x1: x + 14, y1: y + 10, stack: st });
     });
     if (battle) drawBattle(ctx, list[0]!.x, list[0]!.y - 38);
@@ -126,14 +127,14 @@ export function drawUnitsOverlay(ctx: CanvasRenderingContext2D, o: UnitsOverlayO
   return markers;
 }
 
-function drawMarker(ctx: CanvasRenderingContext2D, st: Stack, x: number, y: number, mine: boolean, isSelected: boolean) {
+function drawMarker(ctx: CanvasRenderingContext2D, game: GameState, st: Stack, x: number, y: number, mine: boolean, isSelected: boolean) {
   const counts = { army: 0, navy: 0, air: 0 };
   for (const u of st.units) counts[u.type]++;
   const main = (["army", "navy", "air"] as const).reduce((a, b) => (counts[b] > counts[a] ? b : a));
   const strength = st.units.reduce((a, u) => a + u.strength, 0) / st.units.length;
   ctx.beginPath();
   ctx.roundRect(x - 13, y - 9, 26, 18, 3);
-  ctx.fillStyle = politicalColor(st.owner);
+  ctx.fillStyle = politicalColor(st.owner, game);
   ctx.fill();
   ctx.lineWidth = isSelected ? 2.5 : 1.5;
   ctx.strokeStyle = isSelected ? "#ffd678" : mine ? "#ffffff" : "rgba(5, 10, 16, 0.9)";

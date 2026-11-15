@@ -83,5 +83,15 @@ export interface Scenario {
       deposits: Record<ResourceId, number>;
     }
   >;
-  countries: Record<CountryId, { name?: string; population: number | null; gdpMillionUsd: number | null; incomeGroup: string | null }>;
+  countries: Record<
+    CountryId,
+    {
+      name?: string;
+      population: number | null;
+      gdpMillionUsd: number | null;
+      incomeGroup: string | null;
+      /** Map color (#rrggbb) for countries made in the world editor. */
+      color?: string;
+    }
+  >;
 }

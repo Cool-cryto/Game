@@ -18,6 +18,9 @@ import {
   validateCommand,
   warScore,
   applyPatch,
+  applyCustomWorld,
+  validateCustomWorld,
+  type CustomWorld,
   round5,
   StateDiffer,
   type Command,
@@ -434,5 +437,78 @@ describe("network sync", () => {
       expect(Math.abs(q.population - p.population) / Math.max(1, p.population)).toBeLessThan(0.011);
     }
     expect(bytes / 183).toBeLessThan(20_000); // average patch size in this tiny world
+  });
+});
+
+describe("custom worlds", () => {
+  const world = (over: Partial<CustomWorld> = {}): CustomWorld => ({
+    version: 1,
+    name: "Split Avaria",
+    base: "test",
+    owners: { "P-3": "C-NEW" as CountryId },
+    newCountries: { "C-NEW": { name: "Newland", color: "#aa3366" } },
+    ...over,
+  });
+
+  it("are checked before use", () => {
+    expect(validateCustomWorld(world(), small)).toBeNull();
+    expect(validateCustomWorld(world({ base: "other" }), small)).toMatch(/based on/);
+    expect(validateCustomWorld(world({ owners: { "P-99": A } }), small)).toMatch(/Unknown province/);
+    expect(validateCustomWorld(world({ owners: { "P-1": "ZZZ" as CountryId } }), small)).toMatch(/Unknown country/);
+    expect(validateCustomWorld(world({ newCountries: { bad: { name: "x", color: "#000000" } } }), small)).toMatch(/Bad country id/);
+    expect(validateCustomWorld(world({ newCountries: { "C-NEW": { name: "x", color: "red" } } }), small)).toMatch(/Bad color/);
+    expect(validateCustomWorld({ hello: 1 }, small)).toMatch(/different version|isn't/);
+  });
+
+  it("move land, people and their share of GDP to the new owner", () => {
+    const sc = applyCustomWorld(small, world());
+    const s = createGameState(sc, geo, 1);
+    expect(s.provinces[P(3)]!.owner).toBe("C-NEW");
+    expect(s.countries["C-NEW" as CountryId]!.name).toBe("Newland");
+    expect(s.countries["C-NEW" as CountryId]!.color).toBe("#aa3366");
+    // P-3 holds 10M of Avaria's 60M people, so it takes 1/6 of Avaria's GDP.
+    expect(s.countries["C-NEW" as CountryId]!.gdp).toBeCloseTo(2_400_000 / 6, -2);
+    expect(s.countries[A]!.gdp).toBeCloseTo((2_400_000 * 5) / 6, -2);
+    expect(s.scenarioName).toBe("Split Avaria");
+    run(s, 365); // and the world runs
+    expect(s.countries["C-NEW" as CountryId]!.population).toBeGreaterThan(0);
+  });
+
+  it("a country that loses all its land is not in play", () => {
+    const sc = applyCustomWorld(small, world({ owners: { "P-6": A }, newCountries: {} }));
+    const s = createGameState(sc, geo, 1);
+    expect(s.countries[C]!.active).toBe(false);
+  });
+});
+
+describe("the End of the Cold War scenario (1991)", () => {
+  const read = (p: string) => JSON.parse(readFileSync(new URL(`../../../apps/web/src/data/${p}`, import.meta.url), "utf8"));
+  const sc = read("scenario-cold-war-1991.json") as Scenario;
+  const world = geographyFrom(read("geography.json") as GeographyData);
+  const s = createGameState(sc, world, 1);
+
+  it("has the Soviet Union, Yugoslavia and Czechoslovakia, and not their successors", () => {
+    expect(s.countries["SUN" as CountryId]!.name).toBe("Soviet Union");
+    expect(s.countries["YUG" as CountryId]!.name).toBe("Yugoslavia");
+    expect(s.countries["CSK" as CountryId]!.name).toBe("Czechoslovakia");
+    for (const gone of ["RUS", "UKR", "EST", "HRV", "SVK", "ERI", "SSD", "TLS"]) expect(sc.countries[gone as CountryId], gone).toBeUndefined();
+    const owners = new Set(Object.values(s.provinces).map((p) => p.owner));
+    expect(owners.has("RUS" as CountryId)).toBe(false);
+  });
+
+  it("starts on 1 January 1991 with believable world totals", () => {
+    expect(currentDate(s)).toBe("1991-01-01");
+    const pop = Object.values(s.countries).reduce((a, c) => a + (c.active ? c.population : 0), 0);
+    const gdp = Object.values(s.countries).reduce((a, c) => a + (c.active ? c.gdp : 0), 0);
+    expect(pop / 1e9).toBeGreaterThan(5.2);
+    expect(pop / 1e9).toBeLessThan(5.5);
+    expect(gdp / 1e6).toBeGreaterThan(20);
+    expect(gdp / 1e6).toBeLessThan(28);
+    expect(s.countries["SUN" as CountryId]!.population / 1e6).toBeGreaterThan(280);
+  });
+
+  it("runs for 10 years without broken numbers", () => {
+    for (let i = 0; i < 3650; i++) tick(s, world);
+    for (const c of Object.values(s.countries)) if (c.active) expect(Number.isFinite(c.gdp) && c.gdp > 0, c.id).toBe(true);
   });
 });
