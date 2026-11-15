@@ -3,6 +3,7 @@
 //   DATA_DIR    where the database is kept (default ./data)
 //   GRACE_MS    ms before the AI takes over a disconnected player's country (default 30000)
 //   WEB_DIST    built web client to serve (default apps/web/dist, if it exists)
+//   TRUST_PROXY set to 1 when running behind a hosting provider's proxy (see ServerConfig.trustProxy)
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,6 +32,7 @@ const server = await startServer({
   graceMs: Number(process.env.GRACE_MS ?? 30_000),
   globalSpeed: 2,
   saveEveryMs: 60_000,
+  trustProxy: process.env.TRUST_PROXY === "1",
 });
 
 // Save everything before stopping (Ctrl+C, or the host restarting the server).
