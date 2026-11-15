@@ -2,7 +2,7 @@
 
 A grand strategy game that runs in the web browser, built in stages.
 
-**Current stage: 5 — 3D globe.** See [docs/ROADMAP.md](docs/ROADMAP.md) for what exists and what comes next,
+**Current stage: 6 — multiplayer.** See [docs/ROADMAP.md](docs/ROADMAP.md) for what exists and what comes next,
 and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the project is put together.
 
 ## What works today
@@ -26,7 +26,11 @@ and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the project is put toge
   clicking, move orders. Drag to spin, wheel or pinch to zoom
 - Search across countries, provinces and cities; works on desktop and phone screens
 
-Not built yet: government types, naval battles, trade deals, historical scenarios, multiplayer.
+- **Multiplayer**: accounts, a shared **Global World**, and **private servers** for up to 50 players with invite codes.
+  The server runs the game; you can only command your own country; the host controls time; chat; if you disconnect,
+  the AI runs your country after 30 seconds until you return; games are saved on the server
+
+Not built yet: government types, naval battles, trade deals, historical scenarios, custom worlds.
 
 ## How to play
 
@@ -41,15 +45,30 @@ Not built yet: government types, naval battles, trade deals, historical scenario
    offer peace: demand the provinces you occupy, or a white peace. The button says whether they'd accept.
 7. Use **Game → Save** to keep your progress.
 
+## Playing online with friends
+
+Online play needs the **game server** (it runs the shared world and stores accounts).
+
+1. On the computer that will host: install Node.js 22+, then in this folder run `npm install` and `npm start`.
+   This builds the game and starts the server at http://localhost:8787. Open it, press **Play online**, and create an account.
+2. Choose **Global World**, or **Create** a private server and send the 6-letter invite code to friends.
+3. Friends need to reach your server's address. On the same home network they can use your computer's local IP
+   (for example http://192.168.1.20:8787). Over the internet, the server has to be hosted somewhere reachable:
+   see "Hosting" in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+The single-player game (and the shared preview link) works without a server; online play then says so.
+
 ## Running it on your computer
 
 1. Install [Node.js](https://nodejs.org) version 22 or newer.
 2. In a terminal, inside this folder, run `npm install` (downloads the libraries; first time only).
-3. Run `npm run dev` and open http://localhost:5173 in your browser.
+3. Run `npm run dev` and open http://localhost:5173 in your browser (single player).
+4. For online play while developing, also run `npm run dev:server` in a second terminal.
 
 ## Checking that everything works
 
-- `npm test` runs the fast logic tests (map data, game rules, a 20-year simulation run).
+- `npm test` runs the logic tests (map data, game rules, a 20-year simulation run) and the game server tests
+  (accounts, rooms, permissions, AI takeover, saving, a 50-player load test).
 - `npm run test:e2e` opens the game in a hidden browser and clicks through it like a player.
 - `npm run typecheck` checks the code for type mistakes.
 
@@ -62,7 +81,8 @@ apps/web/         the game you see in the browser (React + TypeScript)
   src/map/        map drawing, zoom, clicks, background map builder (world.worker.ts)
   src/ui/         panels, search, buttons     src/data/  country/province facts, modern-world scenario
   src/sim/        runs the game engine in a background thread (sim.worker.ts)
-packages/sim/     the game rules engine: state, monthly systems, commands, save format (no browser code)
+apps/server/      the multiplayer game server (accounts, rooms, live sync, saving)
+packages/sim/     the game rules engine: state, systems, commands, save format, network sync (no browser code)
 packages/shared/  types used by both
 docs/             architecture and roadmap
 ```

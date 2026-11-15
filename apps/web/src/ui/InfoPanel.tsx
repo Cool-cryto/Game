@@ -19,6 +19,7 @@ import {
 import { citiesIn, flagUrl, GEOGRAPHY, getCountry, getProvince, MODERN_SCENARIO } from "../data/countries";
 import { gdpPerCapita } from "../map/mapModes";
 import { playerCountry, useGame } from "../state/gameStore";
+import { useOnline } from "../net/online";
 import { DiplomacySection, WarsSection } from "./DiplomacyPanel";
 import { MilitarySection, ProvinceWarStatus, RecruitButtons, UnitsView } from "./MilitaryPanel";
 import { useUi } from "../state/uiStore";
@@ -134,7 +135,8 @@ function CountryView({ id }: { id: CountryId }) {
   if (!c || !state) return null;
   const flag = flagUrl(c);
   const perCapita = gdpPerCapita(state);
-  const isPlayer = state.controller === "human";
+  // "Mine" means played by me (online, other humans play other countries).
+  const isPlayer = me === id;
   // Growth rates are first calculated on the 1st of the next month.
   const started = state.history.gdp.length > 0;
   const topCities = provinceIds
@@ -156,8 +158,19 @@ function CountryView({ id }: { id: CountryId }) {
       </div>
 
       <div className="panel__actions">
-        {state.active && !isPlayer && (
-          <button className="btn btn--primary" onClick={() => send({ type: "claimCountry", country: id })}>
+        {state.active && !isPlayer && state.controller === "human" && (
+          <p className="panel__note" data-testid="played-by">
+            Played by {useOnline.getState().players.find((p) => p.country === id)?.name ?? "another player"}.
+          </p>
+        )}
+        {state.active && !isPlayer && state.controller !== "human" && (
+          <button
+            className="btn btn--primary"
+            onClick={() => {
+              if (me) send({ type: "releaseCountry", country: me });
+              send({ type: "claimCountry", country: id });
+            }}
+          >
             Play as {c.name}
           </button>
         )}

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { currentDate } from "@gs/sim";
 import { useGame } from "../state/gameStore";
+import { useOnline } from "../net/online";
 import type { Speed } from "../sim/protocol";
 import { formatDate } from "./format";
 
@@ -14,11 +15,18 @@ export function TimeControls() {
   const speed = useGame((s) => s.speed);
   const setPaused = useGame((s) => s.setPaused);
   const setSpeed = useGame((s) => s.setSpeed);
+  const mode = useGame((s) => s.mode);
+  const clock = useOnline((s) => s.clock);
+  const host = useOnline((s) => s.you.host);
+  // Online, only the host of a private server controls time; the global world runs at a fixed pace.
+  const locked = mode === "online" && (!!clock?.fixed || !host);
+  const lockedReason = clock?.fixed ? "The global world runs at a fixed speed" : "Only the host controls time";
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
       if (el.closest("input, textarea, select, [contenteditable], dialog")) return;
+      if (useGame.getState().mode === "online" && (useOnline.getState().clock?.fixed || !useOnline.getState().you.host)) return;
       if (e.code === "Space") {
         e.preventDefault();
         setPaused(!useGame.getState().paused);
@@ -34,7 +42,8 @@ export function TimeControls() {
         className={paused ? "time__play" : "time__play is-running"}
         onClick={() => setPaused(!paused)}
         aria-label={paused ? "Play" : "Pause"}
-        title={paused ? "Play (Space)" : "Pause (Space)"}
+        title={locked ? lockedReason : paused ? "Play (Space)" : "Pause (Space)"}
+        disabled={locked}
       >
         {paused ? (
           <svg viewBox="0 0 24 24" aria-hidden>
@@ -49,6 +58,7 @@ export function TimeControls() {
       <div className="time__date" data-testid="game-date">
         {formatDate(date)}
         {paused && <span className="time__paused">Paused</span>}
+        {locked && <span className="time__note">{clock?.fixed ? "Fixed speed" : "Host's clock"}</span>}
       </div>
       <div className="time__speeds" role="radiogroup" aria-label="Game speed">
         {SPEEDS.map((s) => (
@@ -57,7 +67,8 @@ export function TimeControls() {
             role="radio"
             aria-checked={speed === s}
             aria-label={`Speed ${s}`}
-            title={`Speed ${s}: ${SPEED_LABEL[s]} (key ${s})`}
+            title={locked ? lockedReason : `Speed ${s}: ${SPEED_LABEL[s]} (key ${s})`}
+            disabled={locked}
             className={s <= speed ? "is-on" : undefined}
             onClick={() => setSpeed(s)}
           />

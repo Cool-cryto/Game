@@ -73,7 +73,7 @@ Known limits of Stage 4:
 - Units are abstract ("army" ≈ a corps), not real formations.
 - The news feed is hidden on screens narrower than 1100 px (important events still pop up).
 
-## Stage 5: 3D globe ✅ (current)
+## Stage 5: 3D globe ✅
 
 - [x] WebGL globe: one shader draws the sphere from an equirectangular world texture, with lighting and an atmosphere glow
 - [x] Texture painted from the province geometry (in a background worker): map-mode colors, borders, occupation stripes, graticule
@@ -92,8 +92,24 @@ Known limits of Stage 5:
 - Province names are shown on the flat map only (the globe shows country and city names).
 - A thin seam can appear in a narrow wedge directly behind the North or South Pole when looking from far above it.
 
-## Stage 6: Multiplayer
-- Game server, accounts, private servers (up to 50 players), AI takeover on disconnect
+## Stage 6: Multiplayer ✅ (current)
+
+- [x] Game server (`apps/server`): Node.js, WebSockets (`ws`), built-in SQLite database; serves the web client too
+- [x] Accounts: username + password (scrypt hashes), session tokens (stored hashed), sign-in rate limit
+- [x] Rooms: one Global World (fixed speed, up to 200 players) and private servers (invite codes, up to 50 players, host controls time)
+- [x] Server-authoritative: the server runs the engine; players send commands; every command is checked to be for the sender's own country
+- [x] Sync: a full snapshot on join, then patches with only what changed (rounded numbers); ~0.1 KB/s per player at the global world's pace
+- [x] AI takeover after 30 s offline; the player gets their country back on return
+- [x] Rooms and players' countries saved to the database (every minute and on shutdown) and restored on restart
+- [x] Chat, player list, invite codes, reconnecting automatically after a dropped connection
+- [x] Tests: server integration tests (accounts, permissions, takeover, persistence, 50-player load) and two-browser end-to-end tests
+
+Known limits of Stage 6:
+- Running the server on the internet (so friends elsewhere can join) needs a host: see ARCHITECTURE.md → Hosting. Nothing is deployed yet.
+- One server process hosts all rooms; for many busy rooms you'd add processes (not needed yet).
+- No password reset or email; no moderation tools beyond the host owning private servers.
+- Players see everything (no fog of war), so a modified client could show other countries' units (it still can't command them).
+- Node's built-in SQLite prints an "experimental feature" warning when the server starts. It works; it's a notice from Node.
 
 ## Stage 7: Worlds
 - Persistent global world, historical scenarios, custom world editor

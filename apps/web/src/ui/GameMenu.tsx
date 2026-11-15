@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { online, useOnline } from "../net/online";
 import { newGameState, useGame } from "../state/gameStore";
 import { deleteSlot, describe, exportSave, importSave, listSlots, loadFromSlot, saveToSlot, SLOTS, type SaveInfo, type Slot } from "../state/saves";
 import { useUi } from "../state/uiStore";
@@ -71,6 +72,12 @@ function MenuBody({ close }: { close: () => void }) {
         {formatDate(current.gameDate)} · {current.country ? `Playing as ${current.country}` : "No country chosen yet"}
       </p>
 
+      <OnlineSection close={close} />
+
+      {useGame.getState().mode === "online" ? (
+        <p className="dialog__hint">This is an online game: the server saves it automatically. You can still export a copy below.</p>
+      ) : (
+        <>
       <h3>Save slots</h3>
       <p className="dialog__hint">Saves are kept in this browser on this device. Use Export to keep a copy elsewhere.</p>
       <ul className="slots">
@@ -128,6 +135,9 @@ function MenuBody({ close }: { close: () => void }) {
         })}
       </ul>
 
+        </>
+      )}
+
       <h3>Files</h3>
       <div className="dialog__row">
         <button className="btn btn--ghost" onClick={() => exportSave(useGame.getState().state)}>
@@ -154,8 +164,8 @@ function MenuBody({ close }: { close: () => void }) {
         />
       </div>
 
-      <h3>New game</h3>
-      {confirmNew ? (
+      {useGame.getState().mode === "local" && <h3>New game</h3>}
+      {useGame.getState().mode === "online" ? null : confirmNew ? (
         <div className="dialog__row">
           <span className="dialog__warn">Start over? Unsaved progress will be lost.</span>
           <button
@@ -183,5 +193,41 @@ function MenuBody({ close }: { close: () => void }) {
         </p>
       )}
     </div>
+  );
+}
+
+function OnlineSection({ close }: { close: () => void }) {
+  const room = useOnline((s) => s.room);
+  const setOnlineDialog = useUi((s) => s.setOnlineDialog);
+  return (
+    <>
+      <h3>Online</h3>
+      {room ? (
+        <div className="dialog__row">
+          <span>
+            Playing on <strong>{room.name}</strong>
+          </span>
+          <button
+            className="btn btn--ghost btn--small"
+            onClick={() => {
+              online.leave();
+              close();
+            }}
+          >
+            Leave server
+          </button>
+        </div>
+      ) : (
+        <button
+          className="btn btn--primary"
+          onClick={() => {
+            close();
+            setOnlineDialog(true);
+          }}
+        >
+          Play online…
+        </button>
+      )}
+    </>
   );
 }

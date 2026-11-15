@@ -3,6 +3,14 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
-  server: { port: 5173, strictPort: true },
+  server: {
+    port: 5173,
+    strictPort: true,
+    // During development, pass account and live-game traffic to the game server (npm run dev:server).
+    proxy: {
+      "/api": "http://localhost:8787",
+      "/ws": { target: "ws://localhost:8787", ws: true },
+    },
+  },
   test: { include: ["src/**/*.test.ts"], environment: "node" },
 });

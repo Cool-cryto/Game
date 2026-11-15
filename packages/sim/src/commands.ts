@@ -58,6 +58,9 @@ export function validateCommand(s: GameState, geo: Geography, cmd: Command): str
   }
   switch (cmd.type) {
     case "claimCountry":
+      // In multiplayer, each country has at most one human player.
+      if (c.controller === "human") return `${c.name} is already played by someone.`;
+      return null;
     case "releaseCountry":
       return null;
     case "setTaxRate":
@@ -130,8 +133,7 @@ export function applyCommand(s: GameState, geo: Geography, cmd: Command): string
   const c = s.countries[cmd.country]!;
   switch (cmd.type) {
     case "claimCountry":
-      // Single player: one human country at a time.
-      for (const other of Object.values(s.countries)) if (other.controller === "human") other.controller = "ai";
+      // The caller releases the player's previous country first (see the client and server).
       c.controller = "human";
       break;
     case "releaseCountry":

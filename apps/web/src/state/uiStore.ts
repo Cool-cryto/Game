@@ -21,6 +21,9 @@ interface UiState {
   moveOrder: { units: number[] } | null;
   setMoveOrder: (m: { units: number[] } | null) => void;
   mapMode: MapModeId;
+  /** Is the "Play online" dialog open? */
+  onlineDialog: boolean;
+  setOnlineDialog: (open: boolean) => void;
   /** Flat map or 3D globe. */
   view: "flat" | "globe";
   setView: (view: "flat" | "globe") => void;
@@ -51,6 +54,8 @@ export const useUi = create<UiState>((set) => ({
   setMoveOrder: (moveOrder) => set({ moveOrder }),
   mapMode: "political",
   view: "flat",
+  onlineDialog: false,
+  setOnlineDialog: (onlineDialog) => set({ onlineDialog }),
   setView: (view) => set({ view }),
   zoom: 1,
   camera: null,

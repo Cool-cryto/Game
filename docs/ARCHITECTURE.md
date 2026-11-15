@@ -143,3 +143,32 @@ GlobeView ── paints the texture (2D canvas) ──▶ GlobeRenderer (WebGL):
 - `apps/web/src/map/overlay.ts` – unit markers, routes, battles and stripes, shared by both views.
 - Picking on the globe: screen point → longitude/latitude (inverse projection) → equirectangular point → `isPointInPath`.
 - The texture is repainted only when its content key changes (map mode, ownership, occupation, or a new month for data modes).
+
+## Multiplayer server (Stage 6)
+
+```
+Browser ──HTTPS── /api/register, /api/login ──▶ auth.ts ──▶ SQLite (users, sessions)
+Browser ──WebSocket /ws──▶ server.ts ──▶ Room (one per world)
+   {auth}                                 ├─ runs @gs/sim: tick(state, geo, commands)
+   {join, claim, cmd, clock, chat}        ├─ checks each command: right shape, sender's own country
+   ◀── joined (snapshot), patch, players, ├─ hands offline players' countries to the AI after GRACE_MS
+       clock, chat, error                 └─ StateDiffer → one patch per 250 ms for everyone
+                                       SQLite (rooms: gzip'd GameState; members: who plays which country)
+```
+
+- `apps/server/src/server.ts` – HTTP (static client, account API, health), WebSocket routing, rate limits, room list, loops.
+- `apps/server/src/room.ts` – one world: membership, claiming countries, command checks, host-only clock, AI takeover, chat.
+- `packages/sim/src/net.ts` – `StateDiffer` and `applyPatch`: only changed countries' fields (rounded to 5 significant digits),
+  provinces that changed noticeably (owner, controller, siege, infrastructure, >1% population), changed units, new events.
+- `packages/sim/src/protocol.ts` – the message types, shared by client and server.
+- `apps/web/src/net/online.ts` – the browser side: sign-in, reconnects, feeding snapshots/patches into the game store.
+- Security: passwords hashed with scrypt; session tokens are random and stored only as SHA-256 hashes; sign-in attempts
+  are limited per address; WebSocket messages are size- and rate-limited; commands are validated by the engine *and*
+  checked to belong to the sender's country.
+
+### Hosting (not done yet)
+
+The server is one Node.js process with a SQLite file, so any host that runs a long-lived Node app with a persistent disk works
+(for example Fly.io, Railway, Render, or a small VPS). Steps: `npm install`, `npm run build`, run `npm run server` with
+`PORT` set and `DATA_DIR` on the persistent disk, and put it behind HTTPS (the browser then uses `wss://` automatically).
+Serverless platforms are not a good fit, because players keep a connection open.

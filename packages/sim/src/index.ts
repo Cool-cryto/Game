@@ -7,3 +7,5 @@ export * from "./diplomacy";
 export * from "./ai";
 export * from "./commands";
 export * from "./engine";
+export * from "./net";
+export * from "./protocol";

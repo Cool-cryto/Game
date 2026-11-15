@@ -6,6 +6,14 @@ import { startSimulation } from "./state/gameStore";
 import { GameErrors } from "./ui/GameErrors";
 import { InfoPanel } from "./ui/InfoPanel";
 import { NewsFeed } from "./ui/NewsFeed";
+import { OnlineDialog } from "./ui/OnlineDialog";
+import { OnlinePanel } from "./ui/OnlinePanel";
+
+function OnlineDialogHost() {
+  const open = useUi((s) => s.onlineDialog);
+  const setOpen = useUi((s) => s.setOnlineDialog);
+  return <OnlineDialog open={open} onClose={() => setOpen(false)} />;
+}
 import { Legend } from "./ui/Legend";
 import { PlayerCard } from "./ui/PlayerCard";
 import { TimeControls } from "./ui/TimeControls";
@@ -46,6 +54,8 @@ export function App() {
       <TimeControls />
       <GameErrors />
       <NewsFeed />
+      <OnlinePanel />
+      <OnlineDialogHost />
       <footer className="credits">
         Map, cities, starting population &amp; GDP: Natural Earth (public domain) · Country facts: mledoze/countries (ODbL) · Flags: flag-icons (MIT)
       </footer>

@@ -17,6 +17,9 @@ import {
   unitsOf,
   validateCommand,
   warScore,
+  applyPatch,
+  round5,
+  StateDiffer,
   type Command,
   type GameState,
   type GeographyData,
@@ -173,12 +176,15 @@ describe("commands", () => {
     expect(s.countries[A]!.taxRate).toBeLessThan(1);
   });
 
-  it("let one human player claim a country at a time", () => {
+  it("allow one human per country; releasing hands it back to the AI", () => {
     const s = newGame();
     run(s, 1, [{ type: "claimCountry", country: A }]);
+    expect(validateCommand(s, geo, { type: "claimCountry", country: A })).toMatch(/already played/);
     run(s, 1, [{ type: "claimCountry", country: B }]);
-    expect(s.countries[A]!.controller).toBe("ai");
+    expect(s.countries[A]!.controller).toBe("human");
     expect(s.countries[B]!.controller).toBe("human");
+    run(s, 1, [{ type: "releaseCountry", country: A }]);
+    expect(s.countries[A]!.controller).toBe("ai");
   });
 });
 
@@ -391,5 +397,42 @@ describe("the modern world over 20 years", () => {
         `${countries0 - Object.values(s.countries).filter((c) => c.active).length} countries annexed, ${Object.keys(s.units).length} units, ` +
         `${s.alliances.length} alliances, ownership changes ${s.ownershipVersion}`,
     );
+  });
+});
+
+describe("network sync", () => {
+  it("a client that starts from a snapshot and applies patches stays in sync with the server", () => {
+    const server = newGame(3);
+    scripted(server);
+    const differ = new StateDiffer(server);
+    let client = deserialize(serialize(server));
+    let bytes = 0;
+    // A year with a war, sending a patch every 2 days (like ~4 patches/s at 4 days/s).
+    run(server, 1, [{ type: "declareWar", country: A, target: B }]);
+    run(server, 1, [{ type: "moveUnits", country: A, units: unitsOf(server, A).filter((u) => u.type === "army").map((u) => u.id), to: P(4) }]);
+    for (let day = 0; day < 365; day += 2) {
+      run(server, 2);
+      const patch = differ.diff(server);
+      const wire = JSON.stringify(patch);
+      bytes += wire.length;
+      client = applyPatch(client, JSON.parse(wire));
+    }
+    expect(client.tick).toBe(server.tick);
+    expect(client.units).toEqual(server.units);
+    expect(client.wars).toEqual(server.wars);
+    expect(client.events).toEqual(server.events);
+    // Countries match to 5 significant digits (numbers are rounded on the wire to save bandwidth).
+    for (const c of Object.values(server.countries)) {
+      const { history, ...rest } = c;
+      const { history: clientHistory, ...clientRest } = client.countries[c.id]!;
+      expect(clientRest).toEqual(round5(rest));
+      expect(clientHistory).toEqual(history);
+    }
+    for (const p of Object.values(server.provinces)) {
+      const q = client.provinces[p.id]!;
+      expect([q.owner, q.controller]).toEqual([p.owner, p.controller]);
+      expect(Math.abs(q.population - p.population) / Math.max(1, p.population)).toBeLessThan(0.011);
+    }
+    expect(bytes / 183).toBeLessThan(20_000); // average patch size in this tiny world
   });
 });
