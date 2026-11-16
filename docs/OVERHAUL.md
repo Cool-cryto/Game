@@ -41,7 +41,7 @@ passing, and no type errors.
   before the message was written). Fixed in Stage A.
 - An army took an undefended enemy province the moment it walked in, so territory could fall with no
   military process. Fixed in Stage A.
-- Treasury stuck at exactly $0 under default policies. Planned for Stage C.
+- Treasury stuck at exactly $0 under default policies. Fixed in Stage C.
 - Refreshing the page loses an unsaved game. Fixed in Stage B.
 
 **Data honesty.** The project never invents real-world facts: where open data doesn't exist, values are game-generated
@@ -91,10 +91,27 @@ resources (oil, steel…) would be game-generated deposits like the existing one
 - Tests: difficulty (starting money, locking, AI hostility towards humans, save upgrade from version 8) and browser
   tests for the selection screen and for autosave and restore.
 
-### Stage C — Economy depth
-An income and expense ledger (taxes, trade, upkeep, construction, research, interest) so the treasury moves; new
-game-generated resources (oil, steel, aluminium, coal, iron, electricity, rare materials) that units and buildings
-consume; more building types (farms, refineries, power plants, airports, bases, depots, research labs).
+### Stage C — Economy depth ✅
+- **Monthly ledger** (`CountryState.ledger`): taxes, trade, running the state, welfare, infrastructure, research,
+  defense, interest and construction, plus the net change in the treasury. It is shown line by line on the Economy
+  screen.
+- **The treasury moves.** Sensible budgets (the default, and every national focus) keep 5% of the tax take as a
+  reserve, so a country at peace slowly saves money. Trade now moves money too: resources have world prices, and the
+  state keeps 30% of its trade balance (taxes on exporters, subsidies for importers), capped at ±2% of GDP a year so
+  small countries with rich game-generated deposits can't get absurdly rich. The Resources & trade tab shows each
+  resource's monthly value.
+- **AI finances:** when savings pass 25% of GDP, the AI cuts taxes and invests more in infrastructure and research.
+  In a 20-year world run, treasuries end between −34% and +25% of GDP (median +16%), and no country is below −50%.
+- **Six new buildings, each changing an existing rule:**
+  - Farms, power plants and mines (+15% food, energy or minerals per level).
+  - Research facilities (+4% research speed per level, up to +40%).
+  - Military bases (+50% recovery per level, and new armies start at full strength).
+  - Airbases (+40% air-support range per level).
+  The AI builds farms, power plants and mines when short of a resource, and research facilities now and then.
+- Tests: the ledger adds up to the treasury change, the world market balances, the trade cap holds, every new
+  building's effect, sane public finances over 20 years, and a browser check of the ledger.
+- Not done in this stage (planned with Stage D, since they matter once units need equipment): oil, steel,
+  aluminium and the other named resources.
 
 ### Stage D — Military depth
 Unit types (infantry, motorised, mechanised, tanks, artillery, AA, AT, special forces; fighters, bombers;

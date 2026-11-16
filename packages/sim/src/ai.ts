@@ -71,7 +71,12 @@ function economyPolicy(s: GameState, c: CountryState) {
   if (budgetBalance(c) < -0.01 && (debt || budgetBalance(c) < -0.03)) {
     if (c.taxRate < 0.45) c.taxRate = Math.min(0.45, c.taxRate + 0.01);
     else c.budget.welfare = Math.max(0.02, c.budget.welfare - 0.005);
-  } else if (budgetBalance(c) > 0.03 && c.treasury > 0.2 * c.gdp && c.taxRate > 0.1) c.taxRate -= 0.01;
+  } else if (c.treasury > 0.25 * c.gdp && budgetBalance(c) > -0.02) {
+    // Savings piling up: cut taxes a little and invest more in roads and research.
+    if (c.taxRate > 0.1) c.taxRate -= 0.01;
+    c.budget.infrastructure = Math.min(0.3, c.budget.infrastructure + 0.003);
+    c.budget.research = Math.min(0.3, c.budget.research + 0.002);
+  }
   // In debt: make sure the budget also covers the interest, or the debt grows forever.
   if (c.treasury < 0 && c.gdp > 0 && c.taxRate < 0.45 && budgetBalance(c) < (-c.treasury * interestRate(c)) / c.gdp) c.taxRate = Math.min(0.45, c.taxRate + 0.005);
 }

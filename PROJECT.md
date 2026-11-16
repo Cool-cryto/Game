@@ -150,7 +150,14 @@ Built: scenario system; **End of the Cold War (1991)** with the Soviet Union, Yu
 browser, export/import, play, host online); server support for scenarios and custom worlds; borders computed from the
 live map.
 
-### Stage 18 — Overhaul Stage B: saves and setup ✅ (current)
+### Stage 19 — Overhaul Stage C: economy ✅ (current)
+Built: a monthly ledger on the Economy screen (taxes, trade, every spending line, interest, construction, net
+change); budgets keep a 5% reserve, so the treasury grows in peacetime; trade earns or costs the state money at world
+prices (capped at ±2% of GDP a year); the AI spends savings above 25% of GDP. Six new buildings: farms, power plants,
+mines, research facilities, military bases and airbases, each with a real effect; the AI builds them when short of a
+resource.
+
+### Stage 18 — Overhaul Stage B: saves and setup ✅
 Built: autosave (every 5 seconds and when the tab closes; restored automatically on reload); four difficulty levels
 that change the player's starting money and how readily computer countries attack human players (never free
 resources for the AI; save version 9); a country selection screen with search, starting figures for every country,

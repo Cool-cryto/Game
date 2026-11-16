@@ -148,9 +148,9 @@ describe("game setup", () => {
     expect(c.resources.food.need).toBeGreaterThan(0);
   });
 
-  it("starts with a balanced budget", () => {
+  it("starts with a budget that keeps a small reserve (5% of taxes)", () => {
     const c = newGame().countries[A]!;
-    expect(0.04 + Object.values(c.budget).reduce((a, b) => a + b, 0)).toBeCloseTo(c.taxRate, 3);
+    expect(0.04 + Object.values(c.budget).reduce((a, b) => a + b, 0)).toBeCloseTo(c.taxRate * 0.95, 3);
   });
 });
 
@@ -468,6 +468,63 @@ describe("saving", () => {
   });
 });
 
+describe("economy ledger and buildings", () => {
+  it("records last month's income and spending, and the treasury moves by exactly the ledger", () => {
+    const s = newGame();
+    scripted(s);
+    run(s, 40); // past the 1st of the month
+    const c = s.countries[A]!;
+    const before = c.treasury;
+    const l0 = c.ledger!;
+    expect(l0.taxes).toBeGreaterThan(0);
+    expect(l0.admin).toBeLessThan(0);
+    // Next month: treasury change = ledger.net + construction (construction was paid when ordered).
+    runUntil(s, () => c.ledger !== l0, 40);
+    expect(c.treasury - before).toBeCloseTo(c.ledger!.net - c.ledger!.construction, 3);
+    // The default budget keeps a reserve, so a country at peace without debt saves money.
+    expect(c.ledger!.taxes + c.ledger!.admin + c.ledger!.welfare + c.ledger!.infrastructure + c.ledger!.research + c.ledger!.defense).toBeGreaterThan(0);
+  });
+
+  it("the world market balances, and a state's share of trade stays within 2% of GDP a year", () => {
+    const s = newGame();
+    run(s, 40);
+    // Every unit sold is bought: the value of all exports equals the value of all imports.
+    for (const r of ["food", "energy", "minerals"] as const) {
+      const ex = Object.values(s.countries).reduce((a, c) => a + c.resources[r].exports, 0);
+      const im = Object.values(s.countries).reduce((a, c) => a + c.resources[r].imports, 0);
+      expect(Math.abs(ex - im)).toBeLessThan(1e-6 * Math.max(1, ex));
+    }
+    for (const c of Object.values(s.countries)) if (c.active && c.ledger) expect(Math.abs(c.ledger.trade)).toBeLessThanOrEqual((0.02 * c.gdp) / 12 + 1e-6);
+  });
+
+  it("farms, power plants, mines, labs, bases and airbases have their effects", () => {
+    const s = newGame();
+    const p = s.provinces[P(2)]!;
+    const food = rawProduction(p, 5, "food");
+    const minerals = rawProduction(p, 5, "minerals");
+    p.buildings = { farm: 2, mine: 1, factory: 1 };
+    expect(rawProduction(p, 5, "food") / food).toBeCloseTo(1.3, 5);
+    expect(rawProduction(p, 5, "minerals") / minerals).toBeCloseTo(1.1 * 1.15, 5); // factory and mine multiply
+    // Research facilities speed research.
+    const a = newGame();
+    const b = newGame();
+    a.countries[A]!.research.focus = "economy";
+    b.countries[A]!.research.focus = "economy";
+    b.provinces[P(1)]!.buildings = { lab: 3 };
+    run(a, 400);
+    run(b, 400);
+    const prog = (x: GameState) => x.countries[A]!.research.levels.economy + x.countries[A]!.research.progress.economy;
+    expect(prog(b)).toBeGreaterThan(prog(a));
+    // A military base trains new armies to full strength.
+    scripted(s);
+    s.countries[A]!.defenseFund = 1e9;
+    s.provinces[P(2)]!.buildings = { base: 1 };
+    run(s, 1, [{ type: "recruit", country: A, unitType: "army", province: P(2) }]);
+    const fresh = unitsOf(s, A).filter((u) => u.province === P(2)).sort((x, y) => y.id - x.id)[0]!;
+    expect(fresh.strength).toBe(100);
+  });
+});
+
 describe("difficulty", () => {
   it("is chosen before taking a country, and sets the player's starting money once", () => {
     const easy = newGame();
@@ -488,7 +545,8 @@ describe("difficulty", () => {
     const t = easy.countries[A]!.treasury;
     tick(easy, geo, [{ type: "releaseCountry", country: A }]);
     tick(easy, geo, [{ type: "claimCountry", country: A }]);
-    expect(easy.countries[A]!.treasury).toBeLessThanOrEqual(t + 1);
+    // (only the month's normal budget reserve may have come in, nowhere near another 10% of GDP)
+    expect(easy.countries[A]!.treasury - t).toBeLessThan(0.02 * easy.countries[A]!.gdp);
   });
 
   it("makes computer countries readier to attack a human player, never each other", () => {
@@ -749,6 +807,17 @@ describe("the modern world over 20 years", () => {
     expect(wars).toBeLessThan(60);
     const active = Object.values(s.countries).filter((c) => c.active);
     expect(active.filter((c) => c.stability < 30).length / active.length).toBeLessThan(0.2);
+  });
+
+  it("keeps public finances sane: few countries in deep debt, nobody with absurd savings", () => {
+    const active = Object.values(s.countries).filter((c) => c.active && c.gdp > 0);
+    const ratio = active.map((c) => c.treasury / c.gdp).sort((a, b) => a - b);
+    const deep = ratio.filter((r) => r < -0.5).length;
+    console.log(
+      `treasury/GDP after 20 years: min ${ratio[0]!.toFixed(2)}, 10th pct ${ratio[Math.floor(ratio.length * 0.1)]!.toFixed(2)}, median ${ratio[Math.floor(ratio.length / 2)]!.toFixed(2)}, 90th pct ${ratio[Math.floor(ratio.length * 0.9)]!.toFixed(2)}, max ${ratio[ratio.length - 1]!.toFixed(2)}; ${deep} below -50%`,
+    );
+    expect(deep / active.length).toBeLessThan(0.1);
+    expect(ratio[ratio.length - 1]!).toBeLessThan(3);
   });
 
   it("prints a summary", () => {

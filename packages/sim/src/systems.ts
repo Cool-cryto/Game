@@ -14,6 +14,7 @@ import {
   rawProduction,
   type CountryState,
   type GameState,
+  type Ledger,
   type ProvinceState,
   type ResourceBalance,
 } from "./state";
@@ -150,16 +151,50 @@ export function growthBreakdown(c: CountryState, infrastructure: number, weighte
   return { parts, total };
 }
 
+/**
+ * What a unit of each resource is worth on the world market, in millions of US$. Set so that a country importing
+ * everything it needs would pay about $300 a person a year for food, 3% of GDP for energy and 1.5% for minerals.
+ */
+export const RESOURCE_PRICE: Record<ResourceId, number> = { food: 25, energy: 25, minerals: 12.5 };
+/** The state's share of trade: its taxes on exporters and its subsidies to importers. */
+export const TRADE_STATE_SHARE = 0.3;
+/** ...at most this share of GDP a year either way (small countries with rich deposits would otherwise get absurdly rich). */
+export const TRADE_INCOME_CAP = 0.02;
+
+/** The state's monthly income from trade (negative for net importers), in millions. */
+export function tradeIncome(c: CountryState): number {
+  let v = 0;
+  for (const r of RESOURCES) v += (c.resources[r].exports - c.resources[r].imports) * RESOURCE_PRICE[r];
+  const cap = (TRADE_INCOME_CAP * c.gdp) / 12;
+  return Math.max(-cap, Math.min(cap, v * TRADE_STATE_SHARE));
+}
+
 function economy(c: CountryState, a: Aggregate, trade: number) {
   const g = growthBreakdown(c, a.infrastructure, a.factories, trade).total;
   c.gdpGrowth = g;
   c.gdp *= Math.pow(1 + g, 1 / 12);
 
-  const revenue = (c.gdp * c.taxRate) / 12;
-  const spending = (c.gdp * (ADMIN_COST + c.budget.infrastructure + c.budget.research + c.budget.welfare + c.budget.defense)) / 12;
-  const interest = c.treasury < 0 ? (-c.treasury * interestRate(c)) / 12 : 0;
-  c.treasury += revenue - spending - interest;
-  c.defenseFund += (c.gdp * c.budget.defense) / 12;
+  const month = (share: number) => (c.gdp * share) / 12;
+  const ledger: Ledger = {
+    taxes: month(c.taxRate),
+    trade: tradeIncome(c),
+    admin: -month(ADMIN_COST),
+    infrastructure: -month(c.budget.infrastructure),
+    research: -month(c.budget.research),
+    welfare: -month(c.budget.welfare),
+    defense: -month(c.budget.defense),
+    interest: c.treasury < 0 ? -(-c.treasury * interestRate(c)) / 12 : 0,
+    // Already paid when each project was ordered; shown here so the month adds up.
+    construction: c.monthConstruction ? -c.monthConstruction : 0, // (never -0: it wouldn't survive JSON)
+    net: 0,
+  };
+  // Construction was taken from the treasury when ordered, so it isn't taken again.
+  const change = ledger.taxes + ledger.trade + ledger.admin + ledger.infrastructure + ledger.research + ledger.welfare + ledger.defense + ledger.interest;
+  ledger.net = change + ledger.construction;
+  c.treasury += change;
+  c.ledger = ledger;
+  c.monthConstruction = 0;
+  c.defenseFund += month(c.budget.defense);
 }
 
 /** Years to gain one tech level when spending 3% of GDP on research. */
@@ -180,7 +215,11 @@ function investment(c: CountryState, provinces: ProvinceState[], treatyResearch 
   const branch = researchTarget(c, MAX_TECH);
   if (branch) {
     const r = c.research;
-    r.progress[branch] += (c.budget.research / 0.03 / (12 * yearsPerBranchLevel(r.levels[branch]))) * researchSpeed(c, treatyResearch);
+    // Research facilities in held provinces: +4% per level, up to +40% (see construction.ts).
+    let labs = 0;
+    for (const p of provinces) if (p.controller === c.id) labs += p.buildings?.lab ?? 0;
+    const facilities = Math.min(0.4, 0.04 * labs);
+    r.progress[branch] += (c.budget.research / 0.03 / (12 * yearsPerBranchLevel(r.levels[branch]))) * (researchSpeed(c, treatyResearch) + facilities);
     while (r.progress[branch] >= 1 && r.levels[branch] < MAX_TECH) {
       r.progress[branch] -= 1;
       r.levels[branch] += 1;

@@ -6,7 +6,7 @@ import type { RngState } from "./rng";
 import type { Geography } from "./geography";
 import { startingGovernment, type Government } from "./government";
 import { resourceBonus, startingResearch, type Research } from "./tech";
-import type { Buildings, Project } from "./construction";
+import { outputMultiplier, type Buildings, type Project } from "./construction";
 import type { Organization, Proposal, Treaty } from "./treaties";
 
 export const SAVE_VERSION = 9;
@@ -142,9 +142,28 @@ export interface CountryState {
   capital: ProvinceId | null;
   /** An enemy holds this country's capital: who, and since which day. Held for CAPITAL_HOLD_DAYS, the country falls. */
   capitalLost?: { by: CountryId; since: number };
+  /** Last month's income and spending, in millions of US$ (see systems.ts). Missing until the first month passes. */
+  ledger?: Ledger;
+  /** Construction paid for so far this month (moves into the ledger at the month's end). */
+  monthConstruction?: number;
   /** Kind of government, ruling bloc, party support, laws and elections (see government.ts). */
   government: Government;
   history: { gdp: number[]; population: number[] };
+}
+
+/** One month of a country's money, in millions of US$. Income is positive, spending negative; `net` is the change in the treasury. */
+export interface Ledger {
+  taxes: number;
+  /** The state's share of what it earned selling surplus resources, minus its share of paying for imports. */
+  trade: number;
+  admin: number;
+  infrastructure: number;
+  research: number;
+  welfare: number;
+  defense: number;
+  interest: number;
+  construction: number;
+  net: number;
 }
 
 export type UnitType = "army" | "navy" | "air";
@@ -278,9 +297,12 @@ export function startingInfrastructure(techLevel: number, population: number, ar
   return Math.round(Math.max(0.5, Math.min(MAX_INFRASTRUCTURE, 1 + techLevel + local)) * 10) / 10;
 }
 
-/** Default budget: the tax take minus admin, split between categories. */
+/** Share of the tax take a sensible budget keeps back as a reserve (so the treasury grows a little in peacetime). */
+export const BUDGET_RESERVE = 0.05;
+
+/** Default budget: the tax take minus admin and a small reserve, split between categories. */
 export function defaultBudget(taxRate: number): Record<BudgetCategory, number> {
-  const spendable = Math.max(0, taxRate - ADMIN_COST);
+  const spendable = Math.max(0, taxRate * (1 - BUDGET_RESERVE) - ADMIN_COST);
   return {
     infrastructure: round4(spendable * 0.18),
     research: round4(spendable * 0.12),
@@ -400,9 +422,8 @@ export const techMultiplier = (tech: number) => 1 + 0.08 * tech;
 
 /** Raw (unscaled) production of one province. */
 export function rawProduction(p: ProvinceState, techLevel: number, r: ResourceId): number {
-  // Factories raise energy and mineral output by 10% per level (see construction.ts).
-  const factory = r === "food" ? 1 : 1 + 0.1 * (p.buildings?.factory ?? 0);
-  return p.deposits[r] * provinceSize(p.areaKm2) * (0.5 + p.infrastructure / MAX_INFRASTRUCTURE) * techMultiplier(techLevel) * factory;
+  // Factories, farms, power plants and mines raise output (see construction.ts).
+  return p.deposits[r] * provinceSize(p.areaKm2) * (0.5 + p.infrastructure / MAX_INFRASTRUCTURE) * techMultiplier(techLevel) * outputMultiplier(p, r);
 }
 
 /** Raw need: food scales with people, energy and minerals with the size of the economy. */

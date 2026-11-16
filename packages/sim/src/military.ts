@@ -95,8 +95,8 @@ export function canRecruit(s: GameState, geo: Geography, country: CountryId, typ
 export function recruit(s: GameState, country: CountryId, type: UnitType, province: ProvinceId): Unit {
   const c = s.countries[country]!;
   c.defenseFund -= recruitCost(c, type);
-  // New units start a little under strength and fill up at home.
-  return addUnit(s, country, type, province, 75);
+  // New units start a little under strength and fill up at home; a military base trains them to full strength.
+  return addUnit(s, country, type, province, s.provinces[province]?.buildings?.base ? 100 : 75);
 }
 
 // ---------- Movement ----------
@@ -252,7 +252,12 @@ export function resolveBattles(s: GameState, geo: Geography) {
       // Defending your own ground: +20%, and +15% per fortification level.
       if (side.some((u) => friendly(s, u.owner, holder))) p *= 1.2 + 0.15 * (s.provinces[province]!.buildings?.fort ?? 0);
       const air = Object.values(s.units).filter(
-        (a) => a.type === "air" && !a.travel && friendly(s, a.owner, side[0]!.owner) && distanceKm(geo, a.province, province) <= AIR_RANGE_KM,
+        (a) =>
+          a.type === "air" &&
+          !a.travel &&
+          friendly(s, a.owner, side[0]!.owner) &&
+          // An airbase extends the range by 40% per level.
+          distanceKm(geo, a.province, province) <= AIR_RANGE_KM * (1 + 0.4 * (s.provinces[a.province]?.buildings?.airbase ?? 0)),
       ).length;
       return p * (1 + Math.min(3, air) * 0.15 * (1 + techMods(s.countries[side[0]!.owner]).airSupport));
     };
@@ -409,6 +414,8 @@ export function militaryMonthly(s: GameState) {
     const home = p && (p.controller === u.owner || allied(s, u.owner, p.controller));
     // Fleets recover faster in a port (+50% per level).
     const port = u.type === "navy" ? 0.5 * (p?.buildings?.port ?? 0) : 0;
-    if (home && !u.travel && u.strength < 100) u.strength = Math.min(100, u.strength + 10 * (1 + techMods(c).recovery + port));
+    // Military bases: +50% recovery per level for any unit stationed there.
+    const base = 0.5 * (p?.buildings?.base ?? 0);
+    if (home && !u.travel && u.strength < 100) u.strength = Math.min(100, u.strength + 10 * (1 + techMods(c).recovery + port + base));
   }
 }

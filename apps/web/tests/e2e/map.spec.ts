@@ -248,6 +248,12 @@ test("you can play as a country and change its policies", async ({ page }) => {
   await expect(page.getByTestId("budget-balance")).toContainText("Surplus");
   await expect(gameDate(page)).toContainText("2021", { timeout: 30_000 });
   await expect(page.getByTestId("player-card")).toContainText(/Treasury\s*\$[1-9]/);
+  // Last month's ledger explains where the money came from.
+  await page.getByTestId("screen-economy").getByRole("tab", { name: "Overview" }).click();
+  const ledger = page.getByTestId("ledger");
+  await expect(ledger).toContainText("Taxes");
+  await expect(ledger).toContainText("Trade");
+  await expect(ledger).toContainText("Change in the treasury");
 });
 
 test("other countries show their policies but can't be changed", async ({ page }) => {
