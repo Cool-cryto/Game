@@ -95,12 +95,13 @@ test("two players share a private server: countries, time, chat", async ({ brows
 
 test("orders from one player show up for the other", async ({ browser }) => {
   const { host, guest } = await privateGame(browser);
-  await searchFor(host, "spain");
-  await host.getByRole("button", { name: "Play as Spain" }).click();
-  await searchFor(guest, "portugal");
-  await guest.getByRole("button", { name: "Play as Portugal" }).click();
-  // The guest declares war on Spain; the host sees it.
-  await searchFor(guest, "spain");
+  // (Not two NATO members: fellow members can't attack each other.)
+  await searchFor(host, "austria");
+  await host.getByRole("button", { name: "Play as Austria" }).click();
+  await searchFor(guest, "switzerland");
+  await guest.getByRole("button", { name: "Play as Switzerland" }).click();
+  // The guest declares war on Austria; the host sees it.
+  await searchFor(guest, "austria");
   await guest.getByRole("button", { name: "Show all details" }).click();
   await guest.getByRole("button", { name: "Declare war…" }).click();
   await guest.getByRole("button", { name: "Declare war", exact: true }).click();

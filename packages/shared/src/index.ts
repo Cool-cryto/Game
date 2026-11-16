@@ -100,4 +100,6 @@ export interface Scenario {
       regimeEstimated?: boolean;
     }
   >;
+  /** International organizations and their members at the start (Wikidata, CC0). */
+  organizations?: { id: string; name: string; kind: "economic" | "defense" | "political"; members: CountryId[] }[];
 }

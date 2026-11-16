@@ -5,6 +5,7 @@ import {
   MAX_TECH,
   nextTech,
   researchSpeed,
+  treatyResearch,
   researchTarget,
   TECHS,
   yearsPerBranchLevel,
@@ -41,7 +42,7 @@ export function ResearchScreen() {
 /** Years to the next level of a branch if all research money went there. */
 function yearsToNext(c: CountryState, b: Branch): number | null {
   if (c.research.levels[b] >= MAX_TECH || c.budget.research <= 0) return null;
-  const perYear = (c.budget.research / 0.03 / yearsPerBranchLevel(c.research.levels[b])) * researchSpeed(c);
+  const perYear = (c.budget.research / 0.03 / yearsPerBranchLevel(c.research.levels[b])) * researchSpeed(c, treatyResearch(useGame.getState().state, c.id));
   return (1 - c.research.progress[b]) / perYear;
 }
 
@@ -101,7 +102,7 @@ function Overview({ c }: { c: CountryState }) {
           );
         })}
       </div>
-      <p className="screen__note">Research speed ×{researchSpeed(c).toFixed(2)} from your government and technologies. All branches start at the same level, set by GDP per person.</p>
+      <p className="screen__note">Research speed ×{researchSpeed(c, treatyResearch(useGame.getState().state, c.id)).toFixed(2)} from your government, technologies and research agreements. All branches start at the same level, set by GDP per person.</p>
     </>
   );
 }

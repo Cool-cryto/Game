@@ -1,4 +1,5 @@
 import { aiConstruction } from "./construction";
+import { aiTreaties, hasTreaty } from "./treaties";
 import { interestRate } from "./systems";
 import { aiGovernment } from "./government";
 import type { CountryId, ProvinceId } from "@gs/shared";
@@ -51,6 +52,7 @@ export function aiMonthly(s: GameState, geo: Geography, neighbors: Map<CountryId
     c.research.focus = isAtWar(s, c.id) && c.research.levels.military < 20 ? "military" : "balanced";
     buildForces(s, geo, c, unitCount.get(c.id) ?? { all: 0, navy: 0, air: 0 }, port.get(c.id) ?? null);
     diplomacy(s, c, neighbors.get(c.id) ?? new Set(), sidePower);
+    aiTreaties(s, c, neighbors.get(c.id) ?? new Set(), sidePower);
   }
   for (const war of [...s.wars]) peaceTalks(s, war);
 }
@@ -110,7 +112,7 @@ function diplomacy(s: GameState, c: CountryState, neighbors: Set<CountryId>, sid
   const mine = sidePower(c.id);
   for (const n of neighbors) {
     const other = s.countries[n];
-    if (!other?.active || relation(s, c.id, n) > -60 || allied(s, c.id, n)) continue;
+    if (!other?.active || relation(s, c.id, n) > -60 || allied(s, c.id, n) || hasTreaty(s, c.id, n, "nonAggression")) continue;
     if (mine < 2 * sidePower(n) || mine === 0) continue;
     if (nextRandom(s.rng) < 0.015) {
       declareWar(s, c.id, n);

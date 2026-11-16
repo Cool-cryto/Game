@@ -113,7 +113,7 @@ export function Welcome() {
       </section>
 
       <footer className="welcome__footer">
-        Map data: Natural Earth (public domain) · 1991 figures: World Bank (CC BY 4.0) · Country facts: mledoze/countries (ODbL) · Governments: V-Dem Regimes of the World (CC BY-SA 4.0, via Our World in Data) and Wikidata (CC0) · Flags: flag-icons (MIT)
+        Map data: Natural Earth (public domain) · 1991 figures: World Bank (CC BY 4.0) · Country facts: mledoze/countries (ODbL) · Governments: V-Dem Regimes of the World (CC BY-SA 4.0, via Our World in Data) and Wikidata (CC0) · International organizations: Wikidata (CC0) · Flags: flag-icons (MIT)
       </footer>
     </div>
   );

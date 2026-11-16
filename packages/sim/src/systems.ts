@@ -1,5 +1,6 @@
 import { governmentGrowth, governmentStability } from "./government";
 import { factoryGrowth } from "./construction";
+import { treatyEffects } from "./treaties";
 import { overallLevel, researchSpeed, researchTarget, resourceBonus, techMods, yearsPerBranchLevel } from "./tech";
 import { RESOURCES, type CountryId, type ResourceId } from "@gs/shared";
 import {
@@ -45,12 +46,14 @@ export function runMonthly(state: GameState): void {
   }
   worldMarket(state, agg);
   const warring = new Set(state.wars.flatMap((w) => [...w.attackers, ...w.defenders]));
+  const treaties = treatyEffects(state);
   for (const c of Object.values(state.countries)) {
     if (!c.active) continue;
     const a = agg.get(c.id)!;
-    economy(c, a);
+    const t = treaties.get(c.id);
+    economy(c, a, t?.trade ?? 0);
     const provinces = (owned.get(c.id) ?? []).map((id) => state.provinces[id]!);
-    investment(c, provinces);
+    investment(c, provinces, t?.research ?? 0);
     society(c, provinces, warring.has(c.id));
     recordHistory(c);
   }
@@ -124,7 +127,8 @@ export const interestRate = (c: CountryState) => 0.04 - techMods(c).interest;
 export const debtRatio = (c: CountryState) => (c.treasury < 0 && c.gdp > 0 ? -c.treasury / c.gdp : 0);
 
 /** The yearly GDP growth rate this month, broken down so the UI can explain it. */
-export function growthBreakdown(c: CountryState, infrastructure: number, weightedFactory = 0) {
+/** `trade` is the extra growth from trade partners (see tradeGrowth in treaties.ts). */
+export function growthBreakdown(c: CountryState, infrastructure: number, weightedFactory = 0, trade = 0) {
   const parts = {
     // Less developed economies catch up faster.
     base: 0.012 + 0.03 * (1 - c.techLevel / 12),
@@ -140,13 +144,14 @@ export function growthBreakdown(c: CountryState, infrastructure: number, weighte
     government: governmentGrowth(c, false),
     technology: techMods(c).growth,
     factories: factoryGrowth(weightedFactory),
+    trade,
   };
   const total = Object.values(parts).reduce((a, b) => a + b, 0);
   return { parts, total };
 }
 
-function economy(c: CountryState, a: Aggregate) {
-  const g = growthBreakdown(c, a.infrastructure, a.factories).total;
+function economy(c: CountryState, a: Aggregate, trade: number) {
+  const g = growthBreakdown(c, a.infrastructure, a.factories, trade).total;
   c.gdpGrowth = g;
   c.gdp *= Math.pow(1 + g, 1 / 12);
 
@@ -160,7 +165,7 @@ function economy(c: CountryState, a: Aggregate) {
 /** Years to gain one tech level when spending 3% of GDP on research. */
 export const yearsPerTechLevel = (level: number) => 4 + 0.5 * level;
 
-function investment(c: CountryState, provinces: ProvinceState[]) {
+function investment(c: CountryState, provinces: ProvinceState[], treatyResearch = 0) {
   // Infrastructure: 4% of GDP slowly builds it up; spending nothing lets it decay.
   const mods = techMods(c);
   const change = (c.budget.infrastructure / 0.04 - 0.5) * 0.01 * (c.budget.infrastructure / 0.04 > 0.5 ? 1 + mods.infraSpeed : 1);
@@ -175,7 +180,7 @@ function investment(c: CountryState, provinces: ProvinceState[]) {
   const branch = researchTarget(c, MAX_TECH);
   if (branch) {
     const r = c.research;
-    r.progress[branch] += (c.budget.research / 0.03 / (12 * yearsPerBranchLevel(r.levels[branch]))) * researchSpeed(c);
+    r.progress[branch] += (c.budget.research / 0.03 / (12 * yearsPerBranchLevel(r.levels[branch]))) * researchSpeed(c, treatyResearch);
     while (r.progress[branch] >= 1 && r.levels[branch] < MAX_TECH) {
       r.progress[branch] -= 1;
       r.levels[branch] += 1;

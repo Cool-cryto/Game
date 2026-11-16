@@ -7,8 +7,9 @@ import type { Geography } from "./geography";
 import { startingGovernment, type Government } from "./government";
 import { resourceBonus, startingResearch, type Research } from "./tech";
 import type { Buildings, Project } from "./construction";
+import type { Organization, Proposal, Treaty } from "./treaties";
 
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
 
 /** Spending categories the player controls, each as a share of GDP per year. */
 export type BudgetCategory = "infrastructure" | "research" | "welfare" | "defense";
@@ -167,6 +168,12 @@ export interface GameState {
   offers: PeaceOffer[];
   /** Last day each pair had a diplomatic action, keyed "FROM>TO". */
   diplomacyCooldown: Record<string, number>;
+  /** Treaties between two countries (see treaties.ts). */
+  treaties: Treaty[];
+  /** International organizations. Replaced (never edited in place) when they change. */
+  organizations: Organization[];
+  /** Treaties and alliances proposed to human players, waiting for an answer. */
+  proposals: Proposal[];
   /** Recent news, newest last. */
   events: GameEvent[];
 }
@@ -274,12 +281,22 @@ export function createGameState(scenario: Scenario, geo: Geography, seed: number
     alliances: [],
     offers: [],
     diplomacyCooldown: {},
+    treaties: [],
+    organizations: startingOrganizations(scenario, countries),
+    proposals: [],
     events: [],
   };
   refreshResources(state);
   for (const c of Object.values(countries)) c.capital = largestProvince(state, c.id);
   createStartingMilitaries(state, geo);
   return state;
+}
+
+/** Real organizations at the scenario's start, keeping only members that are in the game. */
+export function startingOrganizations(scenario: Pick<Scenario, "organizations">, countries: Record<CountryId, Pick<CountryState, "active">>): Organization[] {
+  return (scenario.organizations ?? [])
+    .map((o) => ({ id: `data:${o.id}`, name: o.name, kind: o.kind, members: o.members.filter((m) => countries[m]?.active), source: "data" as const, since: 0 }))
+    .filter((o) => o.members.length >= 2);
 }
 
 /** The most populous province a country owns. */

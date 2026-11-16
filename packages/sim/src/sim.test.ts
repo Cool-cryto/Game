@@ -43,9 +43,16 @@ import {
   governmentEffects,
   ELECTION_INTERVAL,
   LAW_COOLDOWN,
+  hasTreaty,
+  tradeGrowth,
+  treatyEffects,
+  orgsOf,
+  canEnter,
+  wouldAcceptTreaty,
   type Command,
   type GameState,
   type GeographyData,
+  type Organization,
 } from "./index";
 
 // ---------- A tiny test world ----------
@@ -365,6 +372,182 @@ describe("saving", () => {
   });
 });
 
+describe("treaties", () => {
+  const friends = (s: GameState, x: CountryId, y: CountryId, v: number) => (s.relations[[x, y].sort().join("|")] = v);
+
+  it("AI countries sign a treaty when relations are good enough, and a non-aggression pact blocks war", () => {
+    const s = newGame();
+    scripted(s);
+    const err: string[] = [];
+    friends(s, A, B, 10);
+    err.push(...tick(s, geo, [{ type: "proposeTreaty", country: A, target: B, treaty: "trade" }]));
+    expect(err[0]).toMatch(/declined: Relations must be at least 20/);
+    expect(hasTreaty(s, A, B, "trade")).toBe(false);
+    // One diplomatic action per month towards the same country.
+    expect(validateCommand(s, geo, { type: "proposeTreaty", country: A, target: B, treaty: "nonAggression" })).toMatch(/Wait/);
+    run(s, 31);
+    run(s, 1, [{ type: "proposeTreaty", country: A, target: B, treaty: "nonAggression" }]);
+    expect(hasTreaty(s, A, B, "nonAggression")).toBe(true);
+    expect(hasTreaty(s, B, A, "nonAggression")).toBe(true);
+    expect(validateCommand(s, geo, { type: "declareWar", country: A, target: B })).toMatch(/non-aggression pact/);
+    run(s, 1, [{ type: "cancelTreaty", country: A, target: B, treaty: "nonAggression" }]);
+    expect(hasTreaty(s, A, B, "nonAggression")).toBe(false);
+    expect(validateCommand(s, geo, { type: "declareWar", country: A, target: B })).toBeNull();
+  });
+
+  it("trade agreements add growth (more for the smaller partner), research agreements speed up research", () => {
+    const s = newGame();
+    scripted(s);
+    friends(s, A, B, 50);
+    run(s, 1, [{ type: "proposeTreaty", country: A, target: B, treaty: "trade" }]);
+    run(s, 31);
+    run(s, 1, [{ type: "proposeTreaty", country: A, target: B, treaty: "research" }]);
+    expect(hasTreaty(s, A, B, "trade") && hasTreaty(s, A, B, "research")).toBe(true);
+    // B is far smaller than A: B gains the full 0.1%, A a fraction of it.
+    expect(tradeGrowth(s, B)).toBeCloseTo(0.001, 6);
+    expect(tradeGrowth(s, A)).toBeLessThan(0.0002);
+    expect(treatyEffects(s).get(B)).toEqual({ trade: tradeGrowth(s, B), research: 0.05 });
+    expect(growthBreakdown(s.countries[B]!, 5, 0, tradeGrowth(s, B)).parts.trade).toBeCloseTo(0.001, 6);
+  });
+
+  it("military access lets armies cross the other's land; cancelling it sends them home", () => {
+    const s = newGame();
+    scripted(s);
+    expect(canEnter(s, A, P(4))).toBe(false);
+    friends(s, A, B, 60);
+    run(s, 1, [{ type: "proposeTreaty", country: A, target: B, treaty: "access" }]);
+    expect(canEnter(s, A, P(4))).toBe(true);
+    const army = armies(s, A)[0]!;
+    startMove(s, geo, army, [P(4)], "land");
+    runUntil(s, () => army.province === P(4), 60);
+    expect(army.province).toBe(P(4));
+    expect(atWar(s, A, B)).toBe(false);
+    run(s, 1, [{ type: "cancelTreaty", country: A, target: B, treaty: "access" }]);
+    expect(army.province).toBe(s.countries[A]!.capital);
+  });
+
+  it("declaring war ends the two sides' treaties", () => {
+    const s = newGame();
+    scripted(s);
+    friends(s, A, B, 60);
+    run(s, 1, [{ type: "proposeTreaty", country: A, target: B, treaty: "trade" }]);
+    run(s, 1, [{ type: "declareWar", country: A, target: B }]);
+    expect(hasTreaty(s, A, B, "trade")).toBe(false);
+  });
+
+  it("proposals to another player wait for their answer", () => {
+    const s = newGame();
+    scripted(s);
+    s.countries[B]!.controller = "human";
+    friends(s, A, B, 50);
+    run(s, 1, [{ type: "proposeTreaty", country: A, target: B, treaty: "trade" }]);
+    expect(hasTreaty(s, A, B, "trade")).toBe(false);
+    const p = s.proposals.find((x) => x.to === B)!;
+    expect(p.kind).toBe("trade");
+    expect(validateCommand(s, geo, { type: "answerProposal", country: A, proposalId: p.id, accept: true })).toMatch(/expired/);
+    run(s, 1, [{ type: "answerProposal", country: B, proposalId: p.id, accept: true }]);
+    expect(hasTreaty(s, A, B, "trade")).toBe(true);
+    expect(s.proposals).toHaveLength(0);
+    // Unanswered ones expire after two months.
+    run(s, 31);
+    run(s, 1, [{ type: "proposeAlliance", country: A, target: B }]);
+    expect(s.proposals[0]?.kind).toBe("alliance");
+    run(s, 70);
+    expect(s.proposals).toHaveLength(0);
+  });
+
+  it("there's a limit on each kind of treaty", () => {
+    const s = newGame();
+    for (const c of [B, C, D]) friends(s, A, c, 60);
+    s.countries[B]!.controller = "human";
+    // Fill B up to the research limit with made-up partners.
+    s.treaties = [1, 2, 3].map((i) => ({ id: 1000 + i, type: "research" as const, a: B, b: `X${i}` as CountryId, since: 0 }));
+    expect(wouldAcceptTreaty(s, A, B, "research")).toMatch(/already has 3/);
+  });
+});
+
+describe("organizations", () => {
+  const withOrgs = (): GameState => {
+    const s = createGameState(
+      {
+        ...small,
+        organizations: [
+          { id: "PACT", name: "Northern Pact", kind: "defense", members: [B, C] },
+          { id: "MKT", name: "Common Market", kind: "economic", members: [A, B, D] },
+        ],
+      },
+      geo,
+      1,
+    );
+    scripted(s);
+    return s;
+  };
+  const org = (s: GameState, id: string) => s.organizations.find((o) => o.id === id) as Organization;
+
+  it("start from the scenario's real organizations", () => {
+    const s = withOrgs();
+    expect(s.organizations.map((o) => [o.id, o.source, o.members])).toEqual([
+      ["data:PACT", "data", [B, C]],
+      ["data:MKT", "data", [A, B, D]],
+    ]);
+  });
+
+  it("defense alliance members defend each other, like allies", () => {
+    const s = withOrgs();
+    expect(allied(s, B, C)).toBe(true);
+    run(s, 1, [{ type: "declareWar", country: A, target: B }]);
+    expect(atWar(s, A, C)).toBe(true);
+    // Can't attack a fellow member, or break the alliance bilaterally.
+    expect(validateCommand(s, geo, { type: "declareWar", country: C, target: B })).toMatch(/fellow member of Northern Pact/);
+    expect(validateCommand(s, geo, { type: "breakAlliance", country: C, target: B })).toMatch(/leave it/);
+  });
+
+  it("economic union members are each other's trade partners", () => {
+    const s = withOrgs();
+    expect(tradeGrowth(s, B)).toBeGreaterThan(0.0009);
+    expect(tradeGrowth(s, C)).toBe(0);
+  });
+
+  it("joining needs good relations with the leading members; one defense alliance at a time; leaving costs relations", () => {
+    const s = withOrgs();
+    expect(validateCommand(s, geo, { type: "joinOrganization", country: A, org: "data:PACT" })).toMatch(/leading members \(Borduria, Carpania\)/);
+    s.relations["AAA|BBB"] = 50;
+    s.relations["AAA|CCC"] = 50;
+    run(s, 1, [{ type: "joinOrganization", country: A, org: "data:PACT" }]);
+    expect(org(s, "data:PACT").members).toContain(A);
+    expect(allied(s, A, C)).toBe(true);
+    run(s, 1, [{ type: "foundOrganization", country: A, name: "Second Pact", kind: "defense" }]);
+    expect(s.organizations.some((o) => o.name === "Second Pact")).toBe(false);
+    run(s, 1, [{ type: "leaveOrganization", country: A, org: "data:PACT" }]);
+    expect(allied(s, A, C)).toBe(false);
+    expect(s.relations["AAA|CCC"]).toBeLessThan(35);
+  });
+
+  it("players can found an organization; it's wound up when the last member leaves", () => {
+    const s = withOrgs();
+    run(s, 1, [{ type: "foundOrganization", country: A, name: "  Sun <b>Alliance</b> ", kind: "political" }]);
+    const o = s.organizations.find((x) => x.source === "game")!;
+    expect(o).toMatchObject({ name: "Sun bAllianceb", kind: "political", members: [A], founder: A });
+    expect(validateCommand(s, geo, { type: "foundOrganization", country: A, name: "Another", kind: "economic" })).toMatch(/already founded/);
+    expect(validateCommand(s, geo, { type: "foundOrganization", country: B, name: "sun ballianceb", kind: "economic" })).toMatch(/already exists/);
+    run(s, 1, [{ type: "leaveOrganization", country: A, org: o.id }]);
+    expect(s.organizations.find((x) => x.id === o.id)).toBeUndefined();
+  });
+
+  it("an annexed country leaves its treaties and organizations", () => {
+    const s = withOrgs();
+    s.relations["AAA|DDD"] = 50;
+    run(s, 1, [{ type: "proposeTreaty", country: A, target: D, treaty: "trade" }]);
+    expect(orgsOf(s, D)).toHaveLength(1);
+    for (const p of Object.values(s.provinces)) if (p.owner === D) p.controller = A;
+    s.wars.push({ id: 999, name: "Test War", attackers: [A], defenders: [D], startTick: s.tick });
+    run(s, 2);
+    expect(s.countries[D]!.active).toBe(false);
+    expect(orgsOf(s, D)).toHaveLength(0);
+    expect(hasTreaty(s, A, D, "trade")).toBe(false);
+  });
+});
+
 describe("the modern world over 20 years", () => {
   const read = (p: string) => JSON.parse(readFileSync(new URL(`../../../apps/web/src/data/${p}`, import.meta.url), "utf8"));
   const scenario = read("scenario-modern.json") as Scenario;
@@ -418,7 +601,10 @@ describe("the modern world over 20 years", () => {
     console.log(
       `20 years: ${(ms / 1000).toFixed(1)}s, ${wars} wars declared, ${s.wars.length} ongoing, ` +
         `${countries0 - Object.values(s.countries).filter((c) => c.active).length} countries annexed, ${Object.keys(s.units).length} units, ` +
-        `${s.alliances.length} alliances, ownership changes ${s.ownershipVersion}`,
+        `${s.alliances.length} alliances, ownership changes ${s.ownershipVersion}, ` +
+        `${s.treaties.length} treaties (${["trade", "research", "nonAggression", "access"].map((t) => `${t} ${s.treaties.filter((x) => x.type === t).length}`).join(", ")}), ` +
+        `organizations: ${s.organizations.map((o) => `${o.id.replace("data:", "")} ${o.members.length}`).join(", ")}, ` +
+        `GDP ${((Math.pow(worldGdp(s) / gdp0, 1 / 20) - 1) * 100).toFixed(2)}%/yr`,
     );
   });
 });
@@ -457,6 +643,40 @@ describe("network sync", () => {
       expect(Math.abs(q.population - p.population) / Math.max(1, p.population)).toBeLessThan(0.011);
     }
     expect(bytes / 183).toBeLessThan(20_000); // average patch size in this tiny world
+  });
+
+  it("treaties, organizations and proposals reach the client, and only when they change", () => {
+    const server = createGameState({ ...small, organizations: [{ id: "MKT", name: "Common Market", kind: "economic", members: [A, B] }] }, geo, 3);
+    scripted(server);
+    server.countries[B]!.controller = "human";
+    const differ = new StateDiffer(server, { units: false });
+    let client = deserialize(serialize(server));
+    const sync = () => {
+      const patch = differ.diff(server);
+      client = applyPatch(client, JSON.parse(JSON.stringify(patch)));
+      return patch;
+    };
+    server.relations["AAA|DDD"] = 50;
+    server.relations["AAA|CCC"] = 50;
+    run(server, 1, [{ type: "proposeTreaty", country: A, target: D, treaty: "trade" }]);
+    run(server, 1, [{ type: "proposeTreaty", country: A, target: B, treaty: "nonAggression" }]);
+    run(server, 1, [{ type: "foundOrganization", country: A, name: "Sea Union", kind: "political" }]);
+    run(server, 1, [{ type: "leaveOrganization", country: B, org: "data:MKT" }]);
+    expect(sync().treaties?.add).toHaveLength(1);
+    expect(client.treaties).toEqual(server.treaties);
+    expect(client.organizations).toEqual(server.organizations);
+    expect(client.proposals).toEqual(server.proposals);
+    // Nothing changed: none of them are sent again.
+    run(server, 3);
+    const quiet = sync();
+    expect([quiet.treaties, quiet.organizations, quiet.proposals]).toEqual([undefined, undefined, undefined]);
+    run(server, 1, [{ type: "cancelTreaty", country: A, target: D, treaty: "trade" }]);
+    run(server, 1, [{ type: "leaveOrganization", country: A, org: server.organizations.find((o) => o.name === "Sea Union")!.id }]);
+    const p = sync();
+    expect(p.treaties).toEqual({ add: [], remove: [expect.any(Number)] });
+    expect(Object.values(p.organizations!)).toEqual([null]);
+    expect(client.treaties).toEqual(server.treaties);
+    expect(client.organizations).toEqual(server.organizations);
   });
 });
 
@@ -610,6 +830,21 @@ describe("government", () => {
     expect(loaded.countries[B]!.government.regime).toBe("closed_autocracy");
     expect(loaded.countries[A]!.government.source).toBe("estimate");
   });
+
+  it("saves from before treaties existed load with the scenario's organizations", () => {
+    const old = JSON.parse(serialize(newGame()));
+    old.version = 7;
+    delete old.treaties;
+    delete old.organizations;
+    delete old.proposals;
+    const loaded = deserialize(JSON.stringify(old), undefined, (id) => (id === "test" ? [{ id: "MKT", name: "Common Market", kind: "economic", members: [A, B, "ZZZ" as CountryId] }] : undefined));
+    expect(loaded.version).toBe(SAVE_VERSION);
+    expect(loaded.treaties).toEqual([]);
+    expect(loaded.proposals).toEqual([]);
+    expect(loaded.organizations).toEqual([{ id: "data:MKT", name: "Common Market", kind: "economic", members: [A, B], source: "data", since: 0 }]);
+    // Without the scenario's data (e.g. a custom world): no organizations.
+    expect(deserialize(JSON.stringify(old)).organizations).toEqual([]);
+  });
 });
 
 describe("technology tree", () => {
@@ -754,6 +989,24 @@ describe("custom worlds", () => {
   });
 });
 
+describe("real organizations (2020)", () => {
+  const read = (p: string) => JSON.parse(readFileSync(new URL(`../../../apps/web/src/data/${p}`, import.meta.url), "utf8"));
+  const s = createGameState(read("scenario-modern.json") as Scenario, geographyFrom(read("geography.json") as GeographyData), 1);
+  const o = (id: string) => s.organizations.find((x) => x.id === `data:${id}`)!;
+
+  it("are members as of 1 January 2020 (Wikidata)", () => {
+    expect(o("NATO").members).toHaveLength(29); // North Macedonia joined in March 2020
+    expect(o("NATO").members).not.toContain("MKD");
+    expect(o("EU").members).toHaveLength(28); // the UK left on 31 January 2020
+    expect(o("EU").members).toContain("GBR");
+    expect(o("ASEAN").members).toHaveLength(10);
+    expect(o("CSTO").members).toEqual(["ARM", "BLR", "KAZ", "KGZ", "RUS", "TJK"]);
+    expect(o("NATO").kind).toBe("defense");
+    expect(allied(s, "USA" as CountryId, "EST" as CountryId)).toBe(true);
+    expect(allied(s, "USA" as CountryId, "RUS" as CountryId)).toBe(false);
+  });
+});
+
 describe("the End of the Cold War scenario (1991)", () => {
   const read = (p: string) => JSON.parse(readFileSync(new URL(`../../../apps/web/src/data/${p}`, import.meta.url), "utf8"));
   const sc = read("scenario-cold-war-1991.json") as Scenario;
@@ -778,6 +1031,14 @@ describe("the End of the Cold War scenario (1991)", () => {
     expect(gdp / 1e6).toBeGreaterThan(20);
     expect(gdp / 1e6).toBeLessThan(28);
     expect(s.countries["SUN" as CountryId]!.population / 1e6).toBeGreaterThan(280);
+  });
+
+  it("has the organizations of 1991: NATO, the European Communities and the Warsaw Pact", () => {
+    const o = (id: string) => s.organizations.find((x) => x.id === `data:${id}`)?.members ?? [];
+    expect(o("NATO")).toHaveLength(16);
+    expect(o("EC")).toHaveLength(12);
+    expect(o("WARSAW")).toEqual(["BGR", "CSK", "HUN", "POL", "ROU", "SUN"]);
+    expect(s.organizations.find((x) => x.id === "data:EU")).toBeUndefined();
   });
 
   it("runs for 10 years without broken numbers", () => {

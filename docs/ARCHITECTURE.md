@@ -213,6 +213,21 @@ Serverless platforms are not a good fit, because players keep a connection open.
   population-weighted level), railways in `legDays` and infrastructure growth, ports in sea `legDays` and fleet recovery,
   forts in battle defence and `siegeDays`. Command: `build`. Province sync compares `buildings`. Save version 7.
 
+### Treaties and organizations (Stage 14)
+
+- `packages/sim/src/treaties.ts` – `GameState.treaties` (type, sorted pair, since), `organizations` (kind economic /
+  defense / political, members, source data or game) and `proposals` (offers to human players). Effects: `tradeGrowth`
+  feeds `growthBreakdown` ("trade"), `treatyResearch` feeds `researchSpeed`, access feeds `canEnter`, non-aggression
+  blocks `declareWar`, defense organizations count as `allied` (so `alliesOf` and `declareWar` bring members in).
+  In `diplomacyMonthly`, treaties and shared organizations make relations drift friendlier (existing pairs only, so the
+  relations table doesn't grow). `aiTreaties` runs in `aiMonthly`. Commands: `proposeTreaty`, `cancelTreaty`,
+  `answerProposal`, `joinOrganization`, `leaveOrganization`, `foundOrganization`.
+- Treaties and organizations are **replaced, never edited in place**: lookups are cached per array (`hasTreaty`,
+  `defenseOrgOf`) and network sync knows something changed when the array is new. Patches carry only treaties added and
+  removed, changed organizations, and proposals, and only when they changed (the 50-player load test stays ~140 KB/s).
+- Data: `apps/web/scripts/build-organizations.mjs` writes `organizations` into each scenario from Wikidata membership
+  dates. Save version 8: older saves and server rooms get the scenario's organizations (`deserialize`'s third argument).
+
 ### Interface layout (Stage 10)
 
 - `apps/web/src/ui/nav/TopNav.tsx` – the navigation bar (ten sections, search, Play online, Settings) and the information

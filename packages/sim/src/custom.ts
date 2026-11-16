@@ -83,5 +83,6 @@ export function applyCustomWorld(base: Scenario, w: CustomWorld): Scenario {
     dataNote: `A custom world based on "${base.name}". ${base.dataNote}`,
     provinces,
     countries,
+    ...(base.organizations ? { organizations: base.organizations } : {}),
   };
 }

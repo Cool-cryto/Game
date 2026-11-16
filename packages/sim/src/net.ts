@@ -2,6 +2,7 @@ import type { CountryId, ProvinceId } from "@gs/shared";
 import type { Geography } from "./geography";
 import type { CountryState, GameEvent, GameState, ProvinceState, Unit } from "./state";
 import { fogView, visionIndex, type VisionIndex } from "./visibility";
+import type { Organization, Treaty } from "./treaties";
 
 /**
  * Network sync. The server runs the real game; clients get one full snapshot
@@ -21,6 +22,12 @@ export interface Patch {
   alliances: GameState["alliances"];
   offers: GameState["offers"];
   diplomacyCooldown: GameState["diplomacyCooldown"];
+  /** Treaties signed and ended since the previous patch (absent when nothing changed). */
+  treaties?: { add: Treaty[]; remove: number[] };
+  /** Organizations that changed (whole), or null for ones that are gone (absent when nothing changed). */
+  organizations?: Record<string, Organization | null>;
+  /** Waiting proposals, whole, when they changed. */
+  proposals?: GameState["proposals"];
   /** News since the previous patch. */
   events: GameEvent[];
   /** Changed fields of countries (never their history arrays). Numbers are rounded to 5 significant digits. */
@@ -41,6 +48,11 @@ export class StateDiffer {
   private provinces = new Map<string, ProvinceState>();
   private units = new Map<string, string>();
   private lastEvent: GameEvent | undefined;
+  private treatyList: Treaty[] = [];
+  private treatyIds = new Set<number>();
+  private orgList: Organization[] = [];
+  private orgJson = new Map<string, string>();
+  private proposals: GameState["proposals"] = [];
 
   /**
    * Start from a snapshot that clients already have. With `units: false` the
@@ -62,6 +74,11 @@ export class StateDiffer {
     for (const p of Object.values(s.provinces)) this.provinces.set(p.id, { ...p, siege: p.siege ? { ...p.siege } : null, ...(p.buildings ? { buildings: { ...p.buildings } } : {}) });
     if (this.opts.units !== false) for (const u of Object.values(s.units)) this.units.set(String(u.id), JSON.stringify(u));
     this.lastEvent = s.events[s.events.length - 1];
+    this.treatyList = s.treaties;
+    this.treatyIds = new Set(s.treaties.map((t) => t.id));
+    this.orgList = s.organizations;
+    this.orgJson = new Map(s.organizations.map((o) => [o.id, JSON.stringify(o)]));
+    this.proposals = s.proposals;
   }
 
   diff(s: GameState): Patch {
@@ -86,6 +103,39 @@ export class StateDiffer {
     const i = this.lastEvent ? s.events.lastIndexOf(this.lastEvent) : -1;
     patch.events = s.events.slice(i + 1);
     this.lastEvent = s.events[s.events.length - 1] ?? this.lastEvent;
+
+    // Treaties, organizations and proposals are replaced (not edited) when they change, so a new array means news.
+    if (s.treaties !== this.treatyList) {
+      const now = new Set(s.treaties.map((t) => t.id));
+      const add = s.treaties.filter((t) => !this.treatyIds.has(t.id));
+      const remove = [...this.treatyIds].filter((id) => !now.has(id));
+      if (add.length || remove.length) patch.treaties = { add, remove };
+      this.treatyList = s.treaties;
+      this.treatyIds = now;
+    }
+    if (s.organizations !== this.orgList) {
+      const changed: Record<string, Organization | null> = {};
+      const seen = new Set<string>();
+      for (const o of s.organizations) {
+        seen.add(o.id);
+        const json = JSON.stringify(o);
+        if (this.orgJson.get(o.id) !== json) {
+          changed[o.id] = o;
+          this.orgJson.set(o.id, json);
+        }
+      }
+      for (const id of [...this.orgJson.keys()]) {
+        if (seen.has(id)) continue;
+        changed[id] = null;
+        this.orgJson.delete(id);
+      }
+      if (Object.keys(changed).length) patch.organizations = changed;
+      this.orgList = s.organizations;
+    }
+    if (s.proposals !== this.proposals) {
+      patch.proposals = s.proposals;
+      this.proposals = s.proposals;
+    }
 
     for (const c of Object.values(s.countries)) {
       const fields = countryFields(c);
@@ -177,6 +227,19 @@ export function applyPatch(s: GameState, p: Patch, maxEvents = 300, historyMonth
     diplomacyCooldown: p.diplomacyCooldown,
   };
   if (p.events.length) next.events = [...s.events, ...p.events].slice(-maxEvents);
+  if (p.treaties) {
+    const gone = new Set(p.treaties.remove);
+    next.treaties = [...s.treaties.filter((t) => !gone.has(t.id)), ...p.treaties.add];
+  }
+  if (p.organizations) {
+    const changed = p.organizations;
+    const kept = s.organizations.filter((o) => !(o.id in changed));
+    const updated = Object.values(changed).filter((o): o is Organization => !!o);
+    // Keep the original order: existing organizations where they were, new ones at the end.
+    const order = new Map(s.organizations.map((o, i) => [o.id, i]));
+    next.organizations = [...kept, ...updated].sort((a, b) => (order.get(a.id) ?? 1e9) - (order.get(b.id) ?? 1e9));
+  }
+  if (p.proposals) next.proposals = p.proposals;
   const changedCountries = new Set([...Object.keys(p.countries), ...Object.keys(p.history)]);
   if (changedCountries.size) {
     next.countries = { ...s.countries };

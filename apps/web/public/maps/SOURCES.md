@@ -13,6 +13,7 @@ sources into `.cache/` (not committed) on first run.
 | ../flags/*.svg | `flag-icons` npm package | MIT |
 | Government in src/data/scenario-*.json (`regime`) | V-Dem "Regimes of the World" (Lührmann, Tannenberg & Lindberg), V-Dem dataset (Coppedge et al.), as published by Our World in Data (`political-regime.csv`), for 2020 and 1991; built by `scripts/build-government.mjs` | CC BY-SA 4.0, credit: V-Dem, processed by Our World in Data. The `regime` values are an adaptation and are also CC BY-SA 4.0 |
 | Government in src/data/scenario-*.json (`monarchy`) | Wikidata: form of government is a kind of monarchy, or head-of-state office is a kind of monarch; changes since 1991/2020 corrected by hand in the script | CC0 |
+| International organizations in src/data/scenario-*.json (`organizations`) | Wikidata: "member of" with start/end dates, on 1 Jan 2020 and 1 Jan 1991 (scripts/build-organizations.mjs); only organizations whose lists check out are used | CC0 |
 
 Notes:
 - Country ids are ISO 3166-1 alpha-3 (e.g. `FRA`). Natural Earth codes that differ are mapped in `CODE_MAP`;
