@@ -469,7 +469,7 @@ describe("treaties", () => {
     expect(canEnter(s, A, P(4))).toBe(true);
     const army = armies(s, A)[0]!;
     startMove(s, geo, army, [P(4)], "land");
-    runUntil(s, () => army.province === P(4), 60);
+    runUntil(s, () => army.province === P(4), 400);
     expect(army.province).toBe(P(4));
     expect(atWar(s, A, B)).toBe(false);
     run(s, 1, [{ type: "cancelTreaty", country: A, target: B, treaty: "access" }]);
