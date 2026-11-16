@@ -6,8 +6,9 @@ import type { RngState } from "./rng";
 import type { Geography } from "./geography";
 import { startingGovernment, type Government } from "./government";
 import { resourceBonus, startingResearch, type Research } from "./tech";
+import type { Buildings, Project } from "./construction";
 
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 /** Spending categories the player controls, each as a share of GDP per year. */
 export type BudgetCategory = "infrastructure" | "research" | "welfare" | "defense";
@@ -53,6 +54,8 @@ export interface CountryState {
   techLevel: number;
   /** Research branches, their progress and the current focus. */
   research: Research;
+  /** Buildings under construction (see construction.ts). */
+  construction: Project[];
   /** Progress to the next tech level, 0-1. */
   researchProgress: number;
   /** Last month's GDP growth, as a yearly rate (0.02 = 2%). */
@@ -128,6 +131,8 @@ export interface ProvinceState {
   controller: CountryId;
   /** Siege in progress: who is taking the province and how far along (0-1). */
   siege: { by: CountryId; progress: number } | null;
+  /** Buildings here (factory, railway, port, fort levels); missing means none. */
+  buildings?: Buildings;
 }
 
 /**
@@ -226,6 +231,7 @@ export function createGameState(scenario: Scenario, geo: Geography, seed: number
       resources: emptyResources(),
       defenseFund: 0,
       capital: null,
+      construction: [],
       research: startingResearch(active ? startingTechLevel((gdp * 1e6) / c.population!) : 1),
       government: startingGovernment(id, c, id.startsWith("C-")),
       history: { gdp: [], population: [] },
@@ -296,7 +302,9 @@ export const techMultiplier = (tech: number) => 1 + 0.08 * tech;
 
 /** Raw (unscaled) production of one province. */
 export function rawProduction(p: ProvinceState, techLevel: number, r: ResourceId): number {
-  return p.deposits[r] * provinceSize(p.areaKm2) * (0.5 + p.infrastructure / MAX_INFRASTRUCTURE) * techMultiplier(techLevel);
+  // Factories raise energy and mineral output by 10% per level (see construction.ts).
+  const factory = r === "food" ? 1 : 1 + 0.1 * (p.buildings?.factory ?? 0);
+  return p.deposits[r] * provinceSize(p.areaKm2) * (0.5 + p.infrastructure / MAX_INFRASTRUCTURE) * techMultiplier(techLevel) * factory;
 }
 
 /** Raw need: food scales with people, energy and minerals with the size of the economy. */

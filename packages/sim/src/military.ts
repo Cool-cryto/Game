@@ -132,10 +132,14 @@ function legDays(s: GameState, geo: Geography, u: Unit, mode: "land" | "sea" | "
   const km = distanceKm(geo, u.province, next);
   if (mode === "air") return Math.max(1, Math.ceil(km / AIR_KM_PER_DAY));
   const m = techMods(s.countries[u.owner]);
-  if (mode === "sea") return Math.max(2, Math.ceil(km / (SEA_KM_PER_DAY * (1 + m.seaSpeed))));
-  const infra = s.provinces[next]?.infrastructure ?? 0;
-  const home = s.provinces[next]?.controller === u.owner ? m.ownLandSpeed : 0;
-  return Math.max(1, Math.ceil(km / (LAND_KM_PER_DAY * (1 + infra / 10) * (1 + m.landSpeed + home))));
+  const port = s.provinces[u.province]?.buildings?.port ?? 0;
+  if (mode === "sea") return Math.max(2, Math.ceil(km / (SEA_KM_PER_DAY * (1 + m.seaSpeed + 0.15 * port))));
+  const to = s.provinces[next];
+  const infra = to?.infrastructure ?? 0;
+  const home = to?.controller === u.owner ? m.ownLandSpeed : 0;
+  // A railway speeds up armies of the side holding the province.
+  const rail = to?.buildings?.railway && friendly(s, u.owner, to.controller) ? 0.4 : 0;
+  return Math.max(1, Math.ceil(km / (LAND_KM_PER_DAY * (1 + infra / 10) * (1 + m.landSpeed + home + rail))));
 }
 
 export function startMove(s: GameState, geo: Geography, u: Unit, path: ProvinceId[], mode: "land" | "sea" | "air") {
@@ -210,7 +214,8 @@ export function resolveBattles(s: GameState, geo: Geography) {
     const powerOf = (side: Unit[]) => {
       let p = side.reduce((sum, u) => sum + combatPower(s, u), 0);
       const holder = s.provinces[province]!.controller;
-      if (side.some((u) => friendly(s, u.owner, holder))) p *= 1.2;
+      // Defending your own ground: +20%, and +15% per fortification level.
+      if (side.some((u) => friendly(s, u.owner, holder))) p *= 1.2 + 0.15 * (s.provinces[province]!.buildings?.fort ?? 0);
       const air = Object.values(s.units).filter(
         (a) => a.type === "air" && !a.travel && friendly(s, a.owner, side[0]!.owner) && distanceKm(geo, a.province, province) <= AIR_RANGE_KM,
       ).length;
@@ -259,7 +264,7 @@ function retreat(s: GameState, geo: Geography, u: Unit) {
 // ---------- Sieges and occupation ----------
 
 /** Days of siege needed for a province: longer where infrastructure (and so fortification) is higher. */
-export const siegeDays = (infrastructure: number) => 10 + 3 * infrastructure;
+export const siegeDays = (infrastructure: number, fort = 0) => (10 + 3 * infrastructure) * (1 + 0.4 * fort);
 
 /**
  * Armies standing unopposed in a province held by an enemy take it over time.
@@ -286,7 +291,7 @@ export function advanceSieges(s: GameState) {
     if (armies.some((u) => friendly(s, u.owner, p.controller))) continue;
     if (!p.siege || p.siege.by !== besieger.owner) p.siege = { by: besieger.owner, progress: 0 };
     const force = Math.min(3, armies.filter((u) => friendly(s, u.owner, besieger.owner)).reduce((a, u) => a + u.strength / 100, 0));
-    p.siege.progress += force / siegeDays(p.infrastructure);
+    p.siege.progress += force / siegeDays(p.infrastructure, p.buildings?.fort ?? 0);
     if (p.siege.progress >= 1) {
       const liberated = friendly(s, besieger.owner, p.owner);
       p.controller = liberated ? p.owner : besieger.owner;
@@ -338,6 +343,8 @@ export function militaryMonthly(s: GameState) {
     }
     const p = s.provinces[u.province];
     const home = p && (p.controller === u.owner || allied(s, u.owner, p.controller));
-    if (home && !u.travel && u.strength < 100) u.strength = Math.min(100, u.strength + 10 * (1 + techMods(c).recovery));
+    // Fleets recover faster in a port (+50% per level).
+    const port = u.type === "navy" ? 0.5 * (p?.buildings?.port ?? 0) : 0;
+    if (home && !u.travel && u.strength < 100) u.strength = Math.min(100, u.strength + 10 * (1 + techMods(c).recovery + port));
   }
 }

@@ -3535,3 +3535,11 @@ button.infobar__country:hover .infobar__name {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* Province panel: build buttons */
+.build-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}

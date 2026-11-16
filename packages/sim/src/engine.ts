@@ -7,6 +7,7 @@ import { dateAt, SAVE_VERSION, type GameState } from "./state";
 import { runMonthly } from "./systems";
 import { politicsMonthly, startingGovernment, type Regime } from "./government";
 import { startingResearch } from "./tech";
+import { constructionDaily } from "./construction";
 
 /**
  * Advance the game by one day. Order:
@@ -26,6 +27,7 @@ export function tick(state: GameState, geo: Geography, commands: Command[] = [])
   resolveBattles(state, geo);
   advanceSieges(state);
   checkCapitulations(state);
+  constructionDaily(state);
   aiDaily(state, geo);
   state.tick += 1;
   if (dateAt(state.startDate, state.tick).endsWith("-01")) {
@@ -71,6 +73,11 @@ export function deserialize(text: string, scenarioCountries?: Record<string, { r
     for (const c of Object.values(s.countries) as GameState["countries"][keyof GameState["countries"]][]) {
       c.research ??= startingResearch(c.techLevel, c.researchProgress ?? 0);
     }
+    (s as { version: number }).version = 6;
+  }
+  if ((s.version as number) === 6) {
+    // Version 7 added construction.
+    for (const c of Object.values(s.countries) as GameState["countries"][keyof GameState["countries"]][]) c.construction ??= [];
     (s as { version: number }).version = SAVE_VERSION;
   }
   if (s.version !== SAVE_VERSION) {

@@ -1,3 +1,4 @@
+import { canBuild, startBuilding, type BuildingType } from "./construction";
 import { BRANCHES, type ResearchFocus } from "./tech";
 import { canCallElection, canChangeLaw, changeLaw, type LawId } from "./government";
 import type { CountryId, ProvinceId } from "@gs/shared";
@@ -37,7 +38,8 @@ export type Command =
   | { type: "breakAlliance"; country: CountryId; target: CountryId }
   | { type: "setLaw"; country: CountryId; law: LawId; value: string }
   | { type: "callElection"; country: CountryId }
-  | { type: "setResearchFocus"; country: CountryId; focus: ResearchFocus };
+  | { type: "setResearchFocus"; country: CountryId; focus: ResearchFocus }
+  | { type: "build"; country: CountryId; province: ProvinceId; building: BuildingType };
 
 export const TAX_RANGE = [0.05, 0.6] as const;
 export const BUDGET_RANGE = [0, 0.3] as const;
@@ -127,6 +129,8 @@ export function validateCommand(s: GameState, geo: Geography, cmd: Command): str
     case "setResearchFocus":
       if (cmd.focus !== "balanced" && !BRANCHES.includes(cmd.focus)) return "Unknown research branch.";
       return null;
+    case "build":
+      return canBuild(s, geo, cmd.country, cmd.province, cmd.building);
   }
 }
 
@@ -233,6 +237,9 @@ export function applyCommand(s: GameState, geo: Geography, cmd: Command): string
       break;
     case "setResearchFocus":
       c.research.focus = cmd.focus;
+      break;
+    case "build":
+      startBuilding(s, cmd.country, cmd.province, cmd.building);
       break;
   }
   return null;

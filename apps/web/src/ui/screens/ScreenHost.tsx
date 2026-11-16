@@ -2,7 +2,8 @@ import { Component, type ReactNode } from "react";
 import { useUi } from "../../state/uiStore";
 import { CountryScreen, EconomyScreen, MilitaryScreen } from "./CoreScreens";
 import { useEscapeCloses } from "./Screen";
-import { ConstructionScreen, DiplomacyScreen, MoreScreen, StatisticsScreen } from "./WorldScreens";
+import { DiplomacyScreen, MoreScreen, StatisticsScreen } from "./WorldScreens";
+import { ConstructionScreen } from "./ConstructionScreen";
 import { ResearchScreen } from "./ResearchScreen";
 import { GovernmentScreen } from "./GovernmentScreen";
 

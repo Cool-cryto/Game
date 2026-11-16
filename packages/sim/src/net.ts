@@ -59,7 +59,7 @@ export class StateDiffer {
       this.countries.set(c.id, countryFields(c));
       this.history.set(c.id, historyKey(c));
     }
-    for (const p of Object.values(s.provinces)) this.provinces.set(p.id, { ...p, siege: p.siege ? { ...p.siege } : null });
+    for (const p of Object.values(s.provinces)) this.provinces.set(p.id, { ...p, siege: p.siege ? { ...p.siege } : null, ...(p.buildings ? { buildings: { ...p.buildings } } : {}) });
     if (this.opts.units !== false) for (const u of Object.values(s.units)) this.units.set(String(u.id), JSON.stringify(u));
     this.lastEvent = s.events[s.events.length - 1];
   }
@@ -106,7 +106,7 @@ export class StateDiffer {
       const last = this.provinces.get(p.id);
       if (!last || provinceChanged(last, p)) {
         patch.provinces[p.id] = p;
-        this.provinces.set(p.id, { ...p, siege: p.siege ? { ...p.siege } : null });
+        this.provinces.set(p.id, { ...p, siege: p.siege ? { ...p.siege } : null, ...(p.buildings ? { buildings: { ...p.buildings } } : {}) });
       }
     }
     if (this.opts.units === false) return patch;
@@ -154,6 +154,7 @@ function provinceChanged(a: ProvinceState, b: ProvinceState): boolean {
   if (a.owner !== b.owner || a.controller !== b.controller) return true;
   if (!!a.siege !== !!b.siege || (a.siege && b.siege && (a.siege.by !== b.siege.by || Math.abs(a.siege.progress - b.siege.progress) >= 0.05))) return true;
   if (Math.abs(a.infrastructure - b.infrastructure) >= 0.05) return true;
+  if (JSON.stringify(a.buildings ?? {}) !== JSON.stringify(b.buildings ?? {})) return true;
   return Math.abs(a.population - b.population) > Math.max(1000, a.population * 0.01);
 }
 

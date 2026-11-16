@@ -568,7 +568,7 @@ test.describe("top navigation (first-time player)", () => {
       ["diplomacy", ["Relations", "Wars & peace", "Alliances", "Treaties & organizations"]],
       ["government", ["Overview", "Parties & elections", "Laws", "Stability"]],
       ["research", ["Overview", "Technology tree", "Research spending"]],
-      ["construction", ["Infrastructure", "By province", "Buildings"]],
+      ["construction", ["Overview", "Build", "By province", "Infrastructure"]],
       ["statistics", ["Economy (GDP)", "Population", "GDP per person", "Military spending", "Technology", "Your charts"]],
       ["more", ["Population", "News", "Intelligence", "Settings"]],
     ];
@@ -686,4 +686,28 @@ test("research: three branches, choosing a focus, and the technology tree", asyn
   await expect(screen.getByTestId("tech-computing")).toContainText("Unlocked");
   await expect(screen.getByTestId("tech-automation")).toContainText("Next");
   await expect(screen.getByTestId("tech-ai")).toContainText("Level 15");
+});
+
+test("construction: order a factory, see it under construction, and it finishes", async ({ page }) => {
+  test.setTimeout(60_000);
+  await openMap(page);
+  await playAs(page, "France");
+  await page.getByTestId("nav-construction").click();
+  const screen = page.getByTestId("screen-construction");
+  await screen.getByRole("tab", { name: "Build" }).click();
+  await screen.getByRole("radio", { name: "Factory" }).click();
+  // The biggest province is first; order a factory there.
+  const first = screen.getByTestId("build-table").locator("tbody tr").first();
+  await first.getByRole("button", { name: "Build" }).click();
+  await expect(first).toContainText("(+1)");
+  await expect(page.getByTestId("player-card")).toContainText(/Treasury\s*-\$/); // paid by borrowing
+  await screen.getByRole("tab", { name: "Overview" }).click();
+  await expect(screen.getByTestId("projects")).toContainText("Factory");
+  // Let time run until it's done.
+  await page.getByRole("radio", { name: "Speed 5" }).click();
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(screen).toContainText("Nothing being built", { timeout: 30_000 });
+  await page.getByRole("button", { name: "Pause" }).click();
+  await screen.getByRole("tab", { name: "By province" }).click();
+  await expect(screen.getByTestId("province-buildings").locator("tbody tr").first()).toContainText("1");
 });

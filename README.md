@@ -53,9 +53,9 @@ Not built yet: government types, naval battles, trade deals. To put the game onl
    - **Diplomacy**: relations (make friends, ally, declare war), wars with one-click **Attack** and **Make peace**, alliances
    - **Government**: your real kind of government (V-Dem data), party blocs and elections, laws (conscription,
      economy, press), stability · **Research**: three branches (economy, military, infrastructure), a research focus, and an 18-technology tree ·
-     **Construction**: infrastructure by province · **Statistics**: world rankings and charts ·
+     **Construction**: build factories, railways, ports and fortifications (also from a province's panel); infrastructure · **Statistics**: world rankings and charts ·
      **More**: population, the full news log, intelligence (what fog of war lets you see), settings
-   - Buildings, equipment, treaties and spies are shown as
+   - Equipment, treaties and spies are shown as
      **coming in a later update**, never with made-up numbers.
 3. Under the navigation, the **information bar** shows your flag, treasury, world rank, the date, and Play/Pause with
    five speeds. **Settings** (top right) holds saves, new games, the world editor and options.

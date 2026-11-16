@@ -204,6 +204,15 @@ Serverless platforms are not a good fit, because players keep a connection open.
   `combatPower` (military level + power mods), air support, `legDays` and recovery. Command: `setResearchFocus`.
   `techLevel` remains as the average (growth catch-up, maps, rankings). Save version 6 (upgrade from 4 and 5).
 
+### Construction (Stage 13)
+
+- `packages/sim/src/construction.ts` – `ProvinceState.buildings` (factory, railway, port, fort levels; missing = none)
+  and `CountryState.construction` (projects with a finish day). `canBuild`, `buildCost` (factory: 3% of the province's
+  share of GDP per level; others fixed × `costMultiplier`, capped at 3% of GDP), `constructionDaily` (runs in `tick`),
+  `aiConstruction`. Effects: factories in `rawProduction` (energy, minerals) and `growthBreakdown` ("factories", from the
+  population-weighted level), railways in `legDays` and infrastructure growth, ports in sea `legDays` and fleet recovery,
+  forts in battle defence and `siegeDays`. Command: `build`. Province sync compares `buildings`. Save version 7.
+
 ### Interface layout (Stage 10)
 
 - `apps/web/src/ui/nav/TopNav.tsx` – the navigation bar (ten sections, search, Play online, Settings) and the information
