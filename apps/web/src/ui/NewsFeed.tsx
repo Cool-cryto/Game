@@ -51,9 +51,9 @@ export function NewsFeed() {
   return (
     <>
       {toast && (
-        <div className={`news-toast news-toast--${toast.kind}`} role="status" data-testid="news-toast">
+        <div className={`news-toast news-toast--${toast.kind}`} role="status" data-testid="news-toast" title="Tap to close" onClick={() => setToast(null)}>
           <span className="news__icon">{ICON[toast.kind]}</span>
-          {toast.text}
+          <span className="news-toast__text">{toast.text}</span>
         </div>
       )}
       <section className={`news ${open ? "" : "news--closed"}`} aria-label="News">
