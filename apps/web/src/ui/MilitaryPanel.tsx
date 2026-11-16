@@ -3,6 +3,9 @@ import type { CountryId, ProvinceId } from "@gs/shared";
 import {
   canRecruit,
   etaDays,
+  kindOf,
+  rankOf,
+  TRAITS,
   recruitCost,
   siegeDays,
   unitCap,
@@ -16,6 +19,7 @@ import { GEOGRAPHY, getCountry, getProvince, flagUrl } from "../data/countries";
 import { playerCountry, useGame } from "../state/gameStore";
 import { useUi } from "../state/uiStore";
 import { formatMoneyMillions } from "./format";
+import { kindSummary, stackGeneral } from "./screens/MilitaryForces";
 
 const TYPES: UnitType[] = ["army", "navy", "air"];
 const TYPE_HELP: Record<UnitType, string> = {
@@ -25,6 +29,7 @@ const TYPE_HELP: Record<UnitType, string> = {
 };
 
 export function unitStatus(s: GameState, u: Unit): string {
+  if (u.training) return `Training · ${u.training} days`;
   if (u.retreating) return "Retreating";
   if (u.travel && u.path.length) {
     const to = getProvince(u.path[u.path.length - 1]!)?.name ?? "?";
@@ -72,6 +77,14 @@ export function UnitsView({ province, owner }: { province: ProvinceId; owner: Co
           ×
         </button>
       </div>
+      {(() => {
+        const g = stackGeneral(state, owner, units);
+        return g ? (
+          <p className="panel__small" data-testid="stack-general">
+            Led by {rankOf(g)} {g.name} · skill {g.skill} · {TRAITS[g.trait].label}
+          </p>
+        ) : null;
+      })()}
       {units.length === 0 ? (
         <p className="panel__note">No units here any more.</p>
       ) : (
@@ -81,7 +94,7 @@ export function UnitsView({ province, owner }: { province: ProvinceId; owner: Co
               {mine && (
                 <input
                   type="checkbox"
-                  aria-label={`Select ${UNIT_STATS[u.type].label} ${u.id}`}
+                  aria-label={`Select ${kindOf(u).label} ${u.id}`}
                   checked={chosen ? chosen.has(u.id) : true}
                   onChange={(e) => {
                     const next = new Set(chosen ?? units.map((x) => x.id));
@@ -96,7 +109,7 @@ export function UnitsView({ province, owner }: { province: ProvinceId; owner: Co
               <span className={`unit-icon unit-icon--${u.type}`} aria-hidden />
               <span className="unit-row__main">
                 <span className="unit-row__name">
-                  {UNIT_STATS[u.type].label} #{u.id}
+                  {kindOf(u).label} #{u.id}
                 </span>
                 <span className="unit-row__status">{unitStatus(state, u)}</span>
               </span>
@@ -141,7 +154,7 @@ export function MilitarySection({ country }: { country: CountryId }) {
   const select = useUi((s) => s.select);
   const stacks = new Map<ProvinceId, Unit[]>();
   for (const u of units) stacks.set(u.province, [...(stacks.get(u.province) ?? []), u]);
-  const upkeep = units.reduce((a, u) => a + upkeepPerYear(c, u.type), 0);
+  const upkeep = units.reduce((a, u) => a + upkeepPerYear(c, u.type, u.kind), 0);
 
   return (
     <section aria-label="Military">
@@ -165,11 +178,7 @@ export function MilitarySection({ country }: { country: CountryId }) {
             <li key={p}>
               <button onClick={() => select({ kind: "units", province: p, owner: country }, { focus: true })}>
                 <span className="stack-list__name">{getProvince(p)?.name ?? p}</span>
-                <span className="stack-list__units">
-                  {TYPES.filter((t) => list.some((u) => u.type === t))
-                    .map((t) => `${list.filter((u) => u.type === t).length} ${UNIT_STATS[t].label.toLowerCase()}`)
-                    .join(", ")}
-                </span>
+                <span className="stack-list__units">{kindSummary(list)}</span>
                 <span className="stack-list__status">{unitStatus(state, list[0]!)}</span>
               </button>
             </li>

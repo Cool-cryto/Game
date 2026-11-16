@@ -15,3 +15,5 @@ export * from "./government";
 export * from "./tech";
 export * from "./construction";
 export * from "./treaties";
+export * from "./units";
+export * from "./generals";

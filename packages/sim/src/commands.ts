@@ -35,7 +35,9 @@ import {
   sideOf,
   wouldAcceptPeace,
 } from "./diplomacy";
-import { canRecruit, planMove, recruit, startMove, UNIT_STATS } from "./military";
+import { canRecruit, planMove, recruit, recruitCost, startMove, unitCap, unitsOf, UNIT_STATS } from "./military";
+import { DEFAULT_KIND, type UnitKind } from "./units";
+import { dismissGeneral, generalCap, generalCost, generalsOf, hireGeneral, releaseOrphanedGenerals, TRAITS, updateGeneral } from "./generals";
 import { DIFFICULTIES, DIFFICULTY_RULES, type Difficulty } from "./state";
 import { BUDGET_CATEGORIES, logEvent, nameOf, type BudgetCategory, type GameState, type PeaceTerms, type UnitType } from "./state";
 
@@ -51,7 +53,12 @@ export type Command =
   | { type: "releaseCountry"; country: CountryId }
   | { type: "setTaxRate"; country: CountryId; value: number }
   | { type: "setBudget"; country: CountryId; category: BudgetCategory; value: number }
-  | { type: "recruit"; country: CountryId; unitType: UnitType; province: ProvinceId }
+  /** Recruit `count` (1-10, default 1) units of a kind (default: the branch's basic kind). */
+  | { type: "recruit"; country: CountryId; unitType: UnitType; province: ProvinceId; kind?: UnitKind; count?: number }
+  | { type: "hireGeneral"; country: CountryId }
+  /** Put a general in charge of a unit (and the stack it is in), or `unit: -1` to take them off command. */
+  | { type: "assignGeneral"; country: CountryId; general: number; unit: number }
+  | { type: "dismissGeneral"; country: CountryId; general: number }
   | { type: "disband"; country: CountryId; units: number[] }
   | { type: "moveUnits"; country: CountryId; units: number[]; to: ProvinceId }
   | { type: "declareWar"; country: CountryId; target: CountryId }
@@ -112,8 +119,36 @@ export function validateCommand(s: GameState, geo: Geography, cmd: Command): str
       if (!BUDGET_CATEGORIES.includes(cmd.category)) return `Unknown budget category ${cmd.category}`;
       if (!Number.isFinite(cmd.value) || cmd.value < BUDGET_RANGE[0] || cmd.value > BUDGET_RANGE[1]) return "Budget out of range";
       return null;
-    case "recruit":
-      return canRecruit(s, geo, cmd.country, cmd.unitType, cmd.province);
+    case "recruit": {
+      const count = cmd.count ?? 1;
+      if (!Number.isInteger(count) || count < 1 || count > 10) return "Recruit between 1 and 10 at a time.";
+      const err = canRecruit(s, geo, cmd.country, cmd.unitType, cmd.province, cmd.kind);
+      if (err) return err;
+      const kind = cmd.kind ?? DEFAULT_KIND[cmd.unitType];
+      if (count > 1) {
+        if (unitsOf(s, cmd.country).length + count > unitCap(c)) return `Your population supports at most ${unitCap(c)} units.`;
+        if (c.defenseFund < count * recruitCost(c, cmd.unitType, kind)) return `Not enough defense funds for ${count}.`;
+      }
+      return null;
+    }
+    case "hireGeneral": {
+      const mine = generalsOf(s, cmd.country).length;
+      const cap = generalCap(unitsOf(s, cmd.country).length);
+      if (mine >= cap) return `You can have ${cap} general${cap > 1 ? "s" : ""} with your current forces (one more per six units).`;
+      if (c.defenseFund < generalCost(c)) return "Not enough defense funds to hire a general.";
+      return null;
+    }
+    case "assignGeneral":
+    case "dismissGeneral": {
+      const g = s.generals.find((x) => x.id === cmd.general);
+      if (!g || g.owner !== cmd.country) return "That isn't one of your generals.";
+      if (cmd.type === "assignGeneral" && cmd.unit !== -1) {
+        const u = s.units[cmd.unit];
+        if (!u || u.owner !== cmd.country) return "You can only put generals in charge of your own units.";
+        if (u.type !== "army") return "Generals lead armies.";
+      }
+      return null;
+    }
     case "disband":
     case "moveUnits": {
       if (!cmd.units.length) return "No units selected.";
@@ -237,10 +272,26 @@ export function applyCommand(s: GameState, geo: Geography, cmd: Command): string
       c.budget[cmd.category] = cmd.value;
       break;
     case "recruit":
-      recruit(s, cmd.country, cmd.unitType, cmd.province);
+      for (let i = 0; i < (cmd.count ?? 1); i++) recruit(s, cmd.country, cmd.unitType, cmd.province, cmd.kind);
       break;
     case "disband":
       for (const id of cmd.units) delete s.units[id];
+      releaseOrphanedGenerals(s);
+      break;
+    case "hireGeneral": {
+      c.defenseFund -= generalCost(c);
+      const g = hireGeneral(s, cmd.country);
+      if (c.controller === "human") logEvent(s, "military", `${c.name} appointed ${g.name} (${TRAITS[g.trait].label.toLowerCase()}).`, [c.id]);
+      break;
+    }
+    case "assignGeneral": {
+      // One general per unit: whoever led this unit steps aside.
+      if (cmd.unit !== -1) for (const other of s.generals) if (other.unit === cmd.unit && other.id !== cmd.general) updateGeneral(s, other.id, { unit: null });
+      updateGeneral(s, cmd.general, { unit: cmd.unit === -1 ? null : cmd.unit });
+      break;
+    }
+    case "dismissGeneral":
+      dismissGeneral(s, cmd.general);
       break;
     case "moveUnits": {
       const stayed: string[] = [];

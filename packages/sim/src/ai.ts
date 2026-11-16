@@ -8,6 +8,9 @@ import { findLandPath, type Geography } from "./geography";
 import { allied, alliesOf, atWar, declareWar, isAtWar, makePeace, pairKey, relation, sideOf, warScore, wouldAcceptPeace } from "./diplomacy";
 import { canEnter, canRecruit, combatPower, recruit, startMove, unitCap } from "./military";
 import { DIFFICULTY_RULES, difficultyOf } from "./state";
+import { DEFAULT_KIND, kindUnlocked, type UnitKind } from "./units";
+import { generalCap, generalCost, generalsOf, hireGeneral, updateGeneral } from "./generals";
+import type { Unit } from "./state";
 import { budgetBalance, defaultBudget, logEvent, nameOf, type CountryState, type GameState, type ProvinceState, type UnitType } from "./state";
 
 /**
@@ -39,6 +42,8 @@ export function aiMonthly(s: GameState, geo: Geography, neighbors: Map<CountryId
   for (const u of Object.values(s.units)) if (u.type !== "navy") power.set(u.owner, (power.get(u.owner) ?? 0) + combatPower(s, u));
   const sidePower = (c: CountryId) => [c, ...alliesOf(s, c)].reduce((sum, x) => sum + (power.get(x) ?? 0), 0);
 
+  const armiesOf = new Map<CountryId, Unit[]>();
+  for (const u of Object.values(s.units)) if (u.type === "army") armiesOf.set(u.owner, [...(armiesOf.get(u.owner) ?? []), u]);
   const owned = new Map<CountryId, ProvinceState[]>();
   for (const p of Object.values(s.provinces)) {
     if (!owned.has(p.owner)) owned.set(p.owner, []);
@@ -52,6 +57,7 @@ export function aiMonthly(s: GameState, geo: Geography, neighbors: Map<CountryId
     // Research: weapons first in wartime, otherwise keep the branches even.
     c.research.focus = isAtWar(s, c.id) && c.research.levels.military < 20 ? "military" : "balanced";
     buildForces(s, geo, c, unitCount.get(c.id) ?? { all: 0, navy: 0, air: 0 }, port.get(c.id) ?? null);
+    aiGenerals(s, c, armiesOf.get(c.id) ?? []);
     diplomacy(s, c, neighbors.get(c.id) ?? new Set(), sidePower);
     aiTreaties(s, c, neighbors.get(c.id) ?? new Set(), sidePower);
   }
@@ -90,7 +96,43 @@ function buildForces(s: GameState, geo: Geography, c: CountryState, units: { all
   if (port && units.navy < units.all * 0.15) type = "navy";
   else if (units.air < units.all * 0.2) type = "air";
   const where = type === "navy" ? port! : c.capital;
-  if (!canRecruit(s, geo, c.id, type, where)) recruit(s, c.id, type, where);
+  const kind = aiKind(c, type, units.all);
+  if (!canRecruit(s, geo, c.id, type, where, kind)) recruit(s, c.id, type, where, kind);
+}
+
+/** A sensible mix: mostly infantry with artillery and armour as technology allows; fighters and bombers; a balanced fleet. */
+const AI_MIX: Record<UnitType, UnitKind[]> = {
+  army: ["infantry", "infantry", "artillery", "tanks", "infantry", "mechanized", "motorized", "antiTank", "infantry", "antiAir", "tanks", "specialForces"],
+  air: ["fighter", "fighter", "bomber", "heavyFighter", "fighter", "navalBomber", "bomber", "strategicBomber"],
+  navy: ["destroyer", "cruiser", "submarine", "destroyer", "battleship", "carrier", "transportShip"],
+};
+function aiKind(c: CountryState, type: UnitType, n: number): UnitKind {
+  const want = AI_MIX[type][n % AI_MIX[type].length]!;
+  return kindUnlocked(c, want) ? want : DEFAULT_KIND[type];
+}
+
+/** Hire a general once the army is big enough, and keep every general in charge of a big stack. */
+function aiGenerals(s: GameState, c: CountryState, armies: Unit[]) {
+  if (armies.length >= 4 && generalsOf(s, c.id).length < generalCap(armies.length) && c.defenseFund > 3 * generalCost(c) && nextRandom(s.rng) < 0.15) {
+    c.defenseFund -= generalCost(c);
+    hireGeneral(s, c.id);
+  }
+  const led = new Set(s.generals.filter((g) => g.owner === c.id && g.unit !== null).map((g) => s.units[g.unit!]?.province));
+  for (const g of generalsOf(s, c.id)) {
+    if (g.unit !== null && s.units[g.unit]) continue;
+    // The biggest stack without a general.
+    const counts = new Map<ProvinceId, Unit>();
+    const size = new Map<ProvinceId, number>();
+    for (const u of armies) {
+      if (led.has(u.province)) continue;
+      size.set(u.province, (size.get(u.province) ?? 0) + 1);
+      if (!counts.has(u.province)) counts.set(u.province, u);
+    }
+    const best = [...size].sort((a, b) => b[1] - a[1])[0];
+    if (!best) break;
+    updateGeneral(s, g.id, { unit: counts.get(best[0])!.id });
+    led.add(best[0] as ProvinceId);
+  }
 }
 
 /** Military power of a country and its allies. */
@@ -177,7 +219,7 @@ export function aiDaily(s: GameState, geo: Geography) {
   }
   for (const u of Object.values(s.units)) {
     const c = s.countries[u.owner];
-    if (!c || c.controller !== "ai" || u.type !== "army" || u.travel || u.retreating) continue;
+    if (!c || c.controller !== "ai" || u.type !== "army" || u.travel || u.retreating || u.training) continue;
     if (guard.get(u.owner) === u.id && isAtWar(s, u.owner)) continue;
     if ((s.tick + u.id) % 5 !== 0) continue;
     if (!guard.has(u.owner) && c.capital && isAtWar(s, u.owner)) {

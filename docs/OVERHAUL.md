@@ -113,10 +113,46 @@ resources (oil, steel…) would be game-generated deposits like the existing one
 - Not done in this stage (planned with Stage D, since they matter once units need equipment): oil, steel,
   aluminium and the other named resources.
 
-### Stage D — Military depth
-Unit types (infantry, motorised, mechanised, tanks, artillery, AA, AT, special forces; fighters, bombers;
-destroyers, cruisers, battleships, carriers, submarines), each with attack/defence/speed/organisation and
-resource needs; recruitment with training time; generals; supply.
+### Stage D — Military depth ✅
+- **22 unit types** (`packages/sim/src/units.ts`) inside the existing three branches:
+  - Army: infantry, motorized, mechanized, tanks, heavy tanks, artillery, anti-air, anti-tank, special forces,
+    paratroopers.
+  - Air: fighters, heavy fighters, bombers, strategic bombers, naval bombers, transport aircraft.
+  - Navy: destroyers, cruisers, battleships, carriers, submarines, transport ships.
+
+  Each type has its own attack, defense, speed, price (upkeep follows), training time, the military research level
+  that unlocks it, and whether it burns fuel.
+- **Recruiting** picks a branch, type and quantity (1–10). New units train before they can move and defend at half
+  strength meanwhile; a military base trains them 30% faster and to full strength.
+- **Combat:**
+  - Attackers use attack and defenders use defense.
+  - Anti-tank units blunt enemy armour (up to −30%).
+  - Submarines hit hard unless the enemy has destroyers.
+  - Fuel-burning units fight at 60–100% depending on their country's energy supply.
+  - Air support comes from each air wing's (and carrier's) own value, minus what enemy fighters and anti-air
+    cancel (up to +60%).
+  - Strategic bombers wear down enemy infrastructure every month.
+  - Paratroopers can drop up to 1,200 km into enemy land if the country has transport aircraft.
+  - Special forces occupy 50% faster.
+- **Generals** (`generals.ts`): hire them (one, plus one per six units), put each in charge of a unit to lead its
+  stack, or dismiss them. Skill (1–5) adds 4% per level. Traits:
+  - offensive: +10% attack
+  - defensive: +10% defense
+  - logistics: faster movement and fewer fuel problems
+  - armour: +15% for tanks
+  - siege: +30% occupation speed
+
+  Generals gain experience in battle and are promoted. Names are fictional.
+- **AI:** recruits a mix of types as research allows, hires generals and puts them in charge of its biggest stacks.
+  In a 20-year run it fielded infantry, artillery, tanks, mechanized, anti-air and anti-tank units; fighters,
+  heavy fighters and bombers; destroyers, cruisers, submarines and battleships; and 68 generals.
+- **Interface:**
+  - Military: a recruitment panel with type cards, plus new Generals and Unit types tabs.
+  - Forces lists show unit types and their general; unit panels show training and who leads the stack.
+- Save version 10: old units become infantry, fighters and destroyers. Generals are synced to online players.
+- **Bug fixed:** saves from version 7 skipped the version 8 upgrade (introduced in Stage B).
+- Not yet: stockpiled equipment and the named resources (oil, steel, aluminium…); terrain and weather in battles
+  (no terrain data yet).
 
 ### Stage E — Diplomacy, politics, AI
 Sanctions, aid, guarantees, puppets and reparations in peace deals; coups, revolutions and civil wars; AI

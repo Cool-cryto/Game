@@ -7,6 +7,8 @@ import { dateAt, SAVE_VERSION, type GameState } from "./state";
 import { runMonthly } from "./systems";
 import { politicsMonthly, startingGovernment, type Regime } from "./government";
 import { startingResearch } from "./tech";
+import { DEFAULT_KIND } from "./units";
+import { releaseOrphanedGenerals } from "./generals";
 import { constructionDaily } from "./construction";
 import { expireProposals } from "./treaties";
 import { startingOrganizations } from "./state";
@@ -37,12 +39,13 @@ export function tick(state: GameState, geo: Geography, commands: Command[] = [])
   if (dateAt(state.startDate, state.tick).endsWith("-01")) {
     runMonthly(state);
     politicsMonthly(state);
-    militaryMonthly(state);
+    militaryMonthly(state, geo);
     const neighbors = countryNeighbors(geo, (p) => state.provinces[p]?.owner);
     diplomacyMonthly(state, neighbors);
     aiMonthly(state, geo, neighbors);
   }
   enforceUnitCaps(state);
+  releaseOrphanedGenerals(state);
   return errors;
 }
 
@@ -95,7 +98,7 @@ export function deserialize(
     s.treaties ??= [];
     s.proposals ??= [];
     s.organizations ??= startingOrganizations({ organizations: organizationsFor?.(s.scenarioId ?? "") }, s.countries);
-    (s as { version: number }).version = 9;
+    (s as { version: number }).version = 8;
   }
   if ((s.version as number) === 8) {
     // Version 9 added game settings (difficulty). Older games played at Normal, and their players already started.
@@ -105,6 +108,12 @@ export function deserialize(
         .filter((c) => c.controller === "human")
         .map((c) => c.id),
     };
+    (s as { version: number }).version = 9;
+  }
+  if ((s.version as number) === 9) {
+    // Version 10 added unit kinds (old units become infantry, fighters and destroyers), training and generals.
+    for (const u of Object.values(s.units ?? {}) as GameState["units"][string][]) u.kind ??= DEFAULT_KIND[u.type];
+    s.generals ??= [];
     (s as { version: number }).version = SAVE_VERSION;
   }
   if (s.version !== SAVE_VERSION) {

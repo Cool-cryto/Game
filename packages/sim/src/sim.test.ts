@@ -15,6 +15,12 @@ import {
   tick,
   unitCap,
   DIFFICULTY_RULES,
+  UNIT_KINDS,
+  planMove,
+  recruitCost,
+  fuelFactor,
+  generalBonus,
+  generalCap,
   unitsOf,
   validateCommand,
   warScore,
@@ -525,6 +531,118 @@ describe("economy ledger and buildings", () => {
   });
 });
 
+describe("unit types and generals", () => {
+  it("kinds unlock with military research, cost their price, and train before they can move", () => {
+    const s = newGame();
+    scripted(s);
+    const c = s.countries[A]!;
+    c.defenseFund = 1e9;
+    c.research.levels.military = 2;
+    expect(validateCommand(s, geo, { type: "recruit", country: A, unitType: "army", kind: "tanks", province: P(1) })).toMatch(/research level 4/);
+    expect(validateCommand(s, geo, { type: "recruit", country: A, unitType: "army", kind: "fighter", province: P(1) })).toMatch(/Unknown unit type/);
+    c.research.levels.military = 4;
+    run(s, 1, [{ type: "recruit", country: A, unitType: "army", kind: "tanks", province: P(1), count: 2 }]);
+    const tanks = unitsOf(s, A).filter((u) => u.kind === "tanks");
+    expect(tanks).toHaveLength(2);
+    expect(recruitCost(c, "army", "tanks")).toBeCloseTo(UNIT_KINDS.tanks.cost * recruitCost(c, "army", "infantry"), 5);
+    const t = tanks[0]!;
+    expect(t.training).toBeGreaterThan(0);
+    expect(validateCommand(s, geo, { type: "moveUnits", country: A, units: [t.id], to: P(2) })).toMatch(/Still training/);
+    expect(runUntil(s, () => !t.training, UNIT_KINDS.tanks.trainDays + 2)).toBe(true);
+    expect(validateCommand(s, geo, { type: "moveUnits", country: A, units: [t.id], to: P(2) })).toBeNull();
+    expect(validateCommand(s, geo, { type: "recruit", country: A, unitType: "army", province: P(1), count: 11 })).toMatch(/between 1 and 10/);
+  });
+
+  it("attack and defense differ by kind; fuel shortages weaken fuel-burning units", () => {
+    const s = newGame();
+    const u = armies(s, A)[0]!;
+    u.kind = "tanks";
+    expect(combatPower(s, u, "attack")).toBeGreaterThan(combatPower(s, u, "defense"));
+    u.kind = "antiTank";
+    expect(combatPower(s, u, "defense")).toBeGreaterThan(combatPower(s, u, "attack"));
+    u.kind = "tanks";
+    const full = fuelFactor(s, u);
+    s.countries[A]!.resources.energy = { production: 0, need: 100, imports: 0, exports: 0 };
+    expect(fuelFactor(s, u)).toBeLessThan(full);
+    u.kind = "infantry";
+    expect(fuelFactor(s, u)).toBe(1);
+  });
+
+  it("tanks beat infantry in the open, but anti-tank guns blunt them", () => {
+    const fight = (attackerKind: "tanks" | "infantry", defenderKinds: ("infantry" | "antiTank")[]) => {
+      const s = newGame();
+      s.countries[B]!.capital = P(5);
+      scripted(s);
+      for (const u of unitsOf(s, B)) delete s.units[u.id];
+      run(s, 1, [{ type: "declareWar", country: A, target: B }]);
+      const att = armies(s, A).slice(0, 2);
+      for (const u of att) Object.assign(u, { kind: attackerKind, province: P(4), strength: 100, path: [], travel: null });
+      for (const k of defenderKinds) s.units[s.nextId] = { id: s.nextId++, owner: B, type: "army", kind: k, province: P(4), strength: 100, path: [], travel: null, retreating: false };
+      for (const u of unitsOf(s, A)) if (!att.includes(u)) delete s.units[u.id];
+      run(s, 3);
+      return armies(s, B).reduce((a, u) => a + (100 - u.strength), 0) / Math.max(1, att.reduce((a, u) => a + (100 - u.strength), 0));
+    };
+    expect(fight("tanks", ["infantry", "infantry"])).toBeGreaterThan(fight("infantry", ["infantry", "infantry"]));
+    expect(fight("tanks", ["antiTank", "antiTank"])).toBeLessThan(fight("tanks", ["infantry", "infantry"]));
+  });
+
+  it("generals: hire within the limit, lead a stack, gain experience in battle", () => {
+    const s = newGame();
+    s.countries[B]!.capital = P(5);
+    scripted(s);
+    s.countries[A]!.defenseFund = 1e9;
+    const n = unitsOf(s, A).length;
+    for (let i = 0; i < generalCap(n); i++) run(s, 1, [{ type: "hireGeneral", country: A }]);
+    expect(s.generals.filter((g) => g.owner === A)).toHaveLength(generalCap(n));
+    expect(validateCommand(s, geo, { type: "hireGeneral", country: A })).toMatch(/one more per six units/);
+    const g = s.generals.find((x) => x.owner === A)!;
+    const a = armies(s, A)[0]!;
+    expect(validateCommand(s, geo, { type: "assignGeneral", country: B, general: g.id, unit: a.id })).toMatch(/isn't one of your generals/);
+    run(s, 1, [{ type: "assignGeneral", country: A, general: g.id, unit: a.id }]);
+    expect(s.generals.find((x) => x.id === g.id)!.unit).toBe(a.id);
+    expect(generalBonus({ ...g, skill: 3, trait: "offensive" }, a, true, false)).toBeCloseTo(1.22, 5);
+    // Battle experience.
+    run(s, 1, [{ type: "declareWar", country: A, target: B }]);
+    const b = armies(s, B)[0]!;
+    Object.assign(a, { province: P(4), path: [], travel: null, training: undefined });
+    Object.assign(b, { province: P(4), path: [], travel: null, training: undefined });
+    run(s, 2);
+    expect(s.generals.find((x) => x.id === g.id)!.xp).toBeGreaterThan(0);
+    // A general whose unit is gone loses the command.
+    delete s.units[a.id];
+    run(s, 1);
+    expect(s.generals.find((x) => x.id === g.id)!.unit).toBeNull();
+  });
+
+  it("paratroopers drop onto enemy land in range only with transport aircraft", () => {
+    const s = newGame();
+    s.countries[B]!.capital = P(5);
+    scripted(s);
+    run(s, 1, [{ type: "declareWar", country: A, target: B }]);
+    const para = armies(s, A)[0]!;
+    para.kind = "paratroopers";
+    para.province = P(1);
+    const noPlane = planMove(s, geo, para, P(5));
+    expect("mode" in noPlane ? noPlane.mode : "error").not.toBe("air");
+    const wing = unitsOf(s, A).find((u) => u.type === "air");
+    if (wing) wing.kind = "transportPlane";
+    else s.units[s.nextId] = { id: s.nextId++, owner: A, type: "air", kind: "transportPlane", province: P(1), strength: 100, path: [], travel: null, retreating: false };
+    const drop = planMove(s, geo, para, P(5));
+    expect("mode" in drop && drop.mode).toBe("air");
+  });
+
+  it("old saves (version 9) get unit kinds and an empty list of generals", () => {
+    const s = newGame();
+    const old = JSON.parse(serialize(s));
+    old.version = 9;
+    delete old.generals;
+    for (const u of Object.values(old.units) as { kind?: string }[]) delete u.kind;
+    const loaded = deserialize(JSON.stringify(old));
+    expect(loaded.generals).toEqual([]);
+    for (const u of Object.values(loaded.units)) expect(u.kind).toBe({ army: "infantry", air: "fighter", navy: "destroyer" }[u.type]);
+  });
+});
+
 describe("difficulty", () => {
   it("is chosen before taking a country, and sets the player's starting money once", () => {
     const easy = newGame();
@@ -827,7 +945,12 @@ describe("the modern world over 20 years", () => {
         `${s.alliances.length} alliances, ownership changes ${s.ownershipVersion}, ` +
         `${s.treaties.length} treaties (${["trade", "research", "nonAggression", "access"].map((t) => `${t} ${s.treaties.filter((x) => x.type === t).length}`).join(", ")}), ` +
         `organizations: ${s.organizations.map((o) => `${o.id.replace("data:", "")} ${o.members.length}`).join(", ")}, ` +
-        `GDP ${((Math.pow(worldGdp(s) / gdp0, 1 / 20) - 1) * 100).toFixed(2)}%/yr`,
+        `GDP ${((Math.pow(worldGdp(s) / gdp0, 1 / 20) - 1) * 100).toFixed(2)}%/yr, ` +
+        `${s.generals.length} generals (${s.generals.filter((g) => g.unit !== null).length} in command, best skill ${Math.max(0, ...s.generals.map((g) => g.skill))}), ` +
+        `kinds: ${Object.entries(Object.values(s.units).reduce<Record<string, number>>((a, u) => ((a[u.kind] = (a[u.kind] ?? 0) + 1), a), {}))
+          .sort((x, y) => y[1] - x[1])
+          .map(([k, n]) => `${k} ${n}`)
+          .join(", ")}`,
     );
   });
 });
