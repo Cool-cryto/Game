@@ -21,7 +21,8 @@ export type MapModeId =
   | "minerals"
   | "diplomacy"
   | "wars"
-  | "government";
+  | "government"
+  | "buildings";
 
 export interface MapModeContext {
   info: CountryInfo | undefined;
@@ -102,6 +103,7 @@ const stability = steps([20, 35, 50, 65, 80], DIVERGING, (n) => String(n));
 const tech = steps([2, 4, 6, 8, 10], VIOLET, (n) => `Level ${n}`);
 const density = steps([5, 25, 75, 150, 400], BLUE, (n) => `${n}/km²`);
 const infra = steps([2, 4, 6, 8, 9], GREEN, (n) => String(n));
+const BUILD_SCALE = steps([1, 2, 4, 6, 9], ["#2c3440", ...GREEN.slice(1)], (n) => String(n));
 const deposit = (r: ResourceId) => {
   const colors = RES_COLORS[r];
   const items = [0, 1, 2, 3, 4, 5].map((v) => ({ label: v === 0 ? "None" : `${v} of 5`, color: colors[v]! }));
@@ -239,6 +241,14 @@ export const MAP_MODES: Record<MapModeId, MapMode> = {
       ],
     },
   ),
+  buildings: {
+    id: "buildings",
+    label: "Buildings",
+    group: "Provinces",
+    level: "province",
+    provinceColor: (p) => BUILD_SCALE.color(Object.values(p.buildings ?? {}).reduce((a, b) => a + (b ?? 0), 0)),
+    legend: { title: "Buildings (total levels)", note: "Factories, railways, ports and fortifications built during the game.", items: BUILD_SCALE.items },
+  },
   food: resourceMode("food", "Food"),
   energy: resourceMode("energy", "Energy"),
   minerals: resourceMode("minerals", "Minerals"),

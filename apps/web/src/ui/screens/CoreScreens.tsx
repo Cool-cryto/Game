@@ -7,6 +7,7 @@ import {
   canRecruit,
   debtRatio,
   growthBreakdown,
+  weightedLevel,
   interestRate,
   governmentLabel,
   isAtWar,
@@ -235,6 +236,8 @@ export function EconomyScreen() {
 
 function EconomyOverview({ c }: { c: CountryState }) {
   const infra = useAvgInfrastructure(c.id);
+  const state = useGame((s) => s.state);
+  const factories = weightedLevel(state, c.id, "factory");
   const b = yearlyBudget(c);
   const started = c.history.gdp.length > 0;
   return (
@@ -271,7 +274,7 @@ function EconomyOverview({ c }: { c: CountryState }) {
         />
       </Card>
       <Card title="Why is the economy growing at this rate?" wide>
-        <Why title="Show the breakdown" parts={growthBreakdown(c, infra).parts} format={(v) => pct(v, 2, true)} labels={GROWTH_LABELS} />
+        <Why title="Show the breakdown" parts={growthBreakdown(c, infra, factories).parts} format={(v) => pct(v, 2, true)} labels={GROWTH_LABELS} />
       </Card>
     </div>
   );

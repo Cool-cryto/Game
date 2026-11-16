@@ -1,4 +1,5 @@
 import { governmentGrowth, governmentStability } from "./government";
+import { factoryGrowth } from "./construction";
 import { overallLevel, researchSpeed, researchTarget, resourceBonus, techMods, yearsPerBranchLevel } from "./tech";
 import { RESOURCES, type CountryId, type ResourceId } from "@gs/shared";
 import {
@@ -58,22 +59,26 @@ export function runMonthly(state: GameState): void {
 interface Aggregate {
   /** Population-weighted average infrastructure. */
   infrastructure: number;
+  /** Population-weighted average factory level (held provinces). */
+  factories: number;
   production: Record<ResourceId, number>;
 }
 
 function aggregateProvinces(state: GameState): Map<CountryId, Aggregate> {
-  const out = new Map<CountryId, Aggregate & { pop: number; infraPop: number }>();
+  const out = new Map<CountryId, Aggregate & { pop: number; infraPop: number; factoryPop: number }>();
   for (const p of Object.values(state.provinces)) {
     const owner = state.countries[p.owner];
     if (!owner?.active) continue;
     let a = out.get(p.owner);
-    if (!a) out.set(p.owner, (a = { pop: 0, infraPop: 0, infrastructure: 0, production: { food: 0, energy: 0, minerals: 0 } }));
+    if (!a) out.set(p.owner, (a = { pop: 0, infraPop: 0, factoryPop: 0, infrastructure: 0, factories: 0, production: { food: 0, energy: 0, minerals: 0 } }));
     a.pop += p.population;
     a.infraPop += p.infrastructure * p.population;
+    if (p.controller === p.owner) a.factoryPop += (p.buildings?.factory ?? 0) * p.population;
     for (const r of RESOURCES) a.production[r] += rawProduction(p, owner.research.levels.economy, r) * resourceBonus(owner, r) * state.resourceScale[r];
   }
   for (const [id, a] of out) {
     a.infrastructure = a.pop > 0 ? a.infraPop / a.pop : 0;
+    a.factories = a.pop > 0 ? a.factoryPop / a.pop : 0;
     state.countries[id]!.population = a.pop;
   }
   return out;
@@ -119,7 +124,7 @@ export const interestRate = (c: CountryState) => 0.04 - techMods(c).interest;
 export const debtRatio = (c: CountryState) => (c.treasury < 0 && c.gdp > 0 ? -c.treasury / c.gdp : 0);
 
 /** The yearly GDP growth rate this month, broken down so the UI can explain it. */
-export function growthBreakdown(c: CountryState, infrastructure: number) {
+export function growthBreakdown(c: CountryState, infrastructure: number, weightedFactory = 0) {
   const parts = {
     // Less developed economies catch up faster.
     base: 0.012 + 0.03 * (1 - c.techLevel / 12),
@@ -134,13 +139,14 @@ export function growthBreakdown(c: CountryState, infrastructure: number) {
     debt: -Math.min(0.03, debtRatio(c) * 0.02),
     government: governmentGrowth(c, false),
     technology: techMods(c).growth,
+    factories: factoryGrowth(weightedFactory),
   };
   const total = Object.values(parts).reduce((a, b) => a + b, 0);
   return { parts, total };
 }
 
 function economy(c: CountryState, a: Aggregate) {
-  const g = growthBreakdown(c, a.infrastructure).total;
+  const g = growthBreakdown(c, a.infrastructure, a.factories).total;
   c.gdpGrowth = g;
   c.gdp *= Math.pow(1 + g, 1 / 12);
 
@@ -160,7 +166,9 @@ function investment(c: CountryState, provinces: ProvinceState[]) {
   const change = (c.budget.infrastructure / 0.04 - 0.5) * 0.01 * (c.budget.infrastructure / 0.04 > 0.5 ? 1 + mods.infraSpeed : 1);
   const cap = Math.min(MAX_INFRASTRUCTURE, c.research.levels.infrastructure + 2);
   for (const p of provinces) {
-    p.infrastructure = clamp(p.infrastructure + change, 0, Math.max(p.infrastructure, cap));
+    // Railways speed up building (not decay).
+    const rail = change > 0 && p.buildings?.railway ? 1.5 : 1;
+    p.infrastructure = clamp(p.infrastructure + change * rail, 0, Math.max(p.infrastructure, cap));
   }
 
   // Research: money goes to the focused branch (or the lowest, when balanced).

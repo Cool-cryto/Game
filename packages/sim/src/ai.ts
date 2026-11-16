@@ -1,10 +1,12 @@
+import { aiConstruction } from "./construction";
+import { interestRate } from "./systems";
 import { aiGovernment } from "./government";
 import type { CountryId, ProvinceId } from "@gs/shared";
 import { nextRandom } from "./rng";
 import { findLandPath, type Geography } from "./geography";
-import { allied, alliesOf, atWar, declareWar, isAtWar, makePeace, pairKey, relation, warScore, wouldAcceptPeace } from "./diplomacy";
+import { allied, alliesOf, atWar, declareWar, isAtWar, makePeace, pairKey, relation, sideOf, warScore, wouldAcceptPeace } from "./diplomacy";
 import { canEnter, canRecruit, combatPower, recruit, startMove, unitCap } from "./military";
-import { budgetBalance, defaultBudget, logEvent, nameOf, type CountryState, type GameState, type UnitType } from "./state";
+import { budgetBalance, defaultBudget, logEvent, nameOf, type CountryState, type GameState, type ProvinceState, type UnitType } from "./state";
 
 /**
  * Computer-run countries. Simple, readable rules rather than a clever planner:
@@ -35,8 +37,15 @@ export function aiMonthly(s: GameState, geo: Geography, neighbors: Map<CountryId
   for (const u of Object.values(s.units)) if (u.type !== "navy") power.set(u.owner, (power.get(u.owner) ?? 0) + combatPower(s, u));
   const sidePower = (c: CountryId) => [c, ...alliesOf(s, c)].reduce((sum, x) => sum + (power.get(x) ?? 0), 0);
 
+  const owned = new Map<CountryId, ProvinceState[]>();
+  for (const p of Object.values(s.provinces)) {
+    if (!owned.has(p.owner)) owned.set(p.owner, []);
+    owned.get(p.owner)!.push(p);
+  }
   for (const c of ai(s)) {
     economyPolicy(s, c);
+    const enemies = new Set(s.wars.flatMap((w) => (sideOf(w, c.id) === "attackers" ? w.defenders : sideOf(w, c.id) === "defenders" ? w.attackers : [])));
+    aiConstruction(s, geo, c, enemies, owned.get(c.id) ?? []);
     aiGovernment(s, c, isAtWar(s, c.id));
     // Research: weapons first in wartime, otherwise keep the branches even.
     c.research.focus = isAtWar(s, c.id) && c.research.levels.military < 20 ? "military" : "balanced";
@@ -60,6 +69,8 @@ function economyPolicy(s: GameState, c: CountryState) {
     if (c.taxRate < 0.45) c.taxRate = Math.min(0.45, c.taxRate + 0.01);
     else c.budget.welfare = Math.max(0.02, c.budget.welfare - 0.005);
   } else if (budgetBalance(c) > 0.03 && c.treasury > 0.2 * c.gdp && c.taxRate > 0.1) c.taxRate -= 0.01;
+  // In debt: make sure the budget also covers the interest, or the debt grows forever.
+  if (c.treasury < 0 && c.gdp > 0 && c.taxRate < 0.45 && budgetBalance(c) < (-c.treasury * interestRate(c)) / c.gdp) c.taxRate = Math.min(0.45, c.taxRate + 0.005);
 }
 
 function buildForces(s: GameState, geo: Geography, c: CountryState, units: { all: number; navy: number; air: number }, coast: ProvinceId | null) {

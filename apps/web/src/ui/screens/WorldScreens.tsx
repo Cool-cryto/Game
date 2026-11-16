@@ -4,7 +4,6 @@ import {
   alliesOf,
   dateAt,
   isAtWar,
-  MAX_INFRASTRUCTURE,
   relation,
   relationLabel,
   sideOf,
@@ -18,10 +17,10 @@ import { gdpPerCapita } from "../../map/mapModes";
 import { playerCountry, useGame } from "../../state/gameStore";
 import { useUi } from "../../state/uiStore";
 import { formatCompact, formatDate, formatInt, formatMoneyMillions, formatPercent } from "../format";
-import { BUDGET_LABEL, Meter, PolicySlider } from "../InfoPanel";
+import { BUDGET_LABEL, PolicySlider } from "../InfoPanel";
 import { Relations, SimpleWar } from "../simple/SimpleHud";
 import { Sparkline } from "../Sparkline";
-import { ProvinceList, useAvgInfrastructure } from "./CoreScreens";
+import { ProvinceList } from "./CoreScreens";
 import { Card, NeedCountry, Planned, Rows, ScreenFrame } from "./Screen";
 
 const money = formatMoneyMillions;
@@ -135,7 +134,7 @@ function AlliancesTab({ me }: { me: CountryId }) {
 }
 
 /** One budget category as a slider, with what it costs. */
-function SpendingSlider({ c, category, note }: { c: CountryState; category: "research" | "infrastructure"; note: string }) {
+export function SpendingSlider({ c, category, note }: { c: CountryState; category: "research" | "infrastructure"; note: string }) {
   const send = useGame((s) => s.send);
   return (
     <div className="grid">
@@ -154,55 +153,6 @@ function SpendingSlider({ c, category, note }: { c: CountryState; category: "res
         </p>
       </Card>
     </div>
-  );
-}
-
-// ============ Construction ============
-
-export function ConstructionScreen() {
-  return (
-    <NeedCountry>
-      {(c) => (
-        <ScreenFrame
-          id="construction"
-          title="Construction"
-          subtitle="Infrastructure across your provinces"
-          tabs={[
-            { id: "infrastructure", label: "Infrastructure" },
-            { id: "provinces", label: "By province" },
-            { id: "buildings", label: "Buildings" },
-          ]}
-        >
-          {(tab) =>
-            tab === "infrastructure" ? (
-              <InfraTab c={c} />
-            ) : tab === "provinces" ? (
-              <ProvinceList c={c} sort="infrastructure" />
-            ) : (
-              <Planned title="Buildings" items={["Factories", "Railways and roads between provinces", "Ports and airports", "Fortifications"]} note="Today each province has one infrastructure level, built up by infrastructure spending." />
-            )
-          }
-        </ScreenFrame>
-      )}
-    </NeedCountry>
-  );
-}
-
-function InfraTab({ c }: { c: CountryState }) {
-  const avg = useAvgInfrastructure(c.id);
-  return (
-    <>
-      <div className="grid">
-        <Card title="Average infrastructure" hint="Roads, power and services. Raises resource output and economic growth.">
-          <p className="big-number">
-            {avg.toFixed(1)}
-            <span className="big-number__sub"> / {MAX_INFRASTRUCTURE}</span>
-          </p>
-          <Meter value={avg} max={MAX_INFRASTRUCTURE} label="Weighted by population" tone="good" />
-        </Card>
-      </div>
-      <SpendingSlider c={c} category="infrastructure" note="About 4% of GDP keeps infrastructure growing; it rises fastest where it is lowest." />
-    </>
   );
 }
 

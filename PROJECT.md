@@ -31,7 +31,7 @@ What was asked for at the start, and where each item stands today.
 | Populations | ✅ Done | Country and province populations that grow over time |
 | Resources | ✅ Done | Food, energy, minerals with a world market (deposits are game-generated) |
 | Technology | ✅ Done | Three research branches and an 18-technology tree with real effects |
-| Infrastructure | ✅ Done | Per-province infrastructure from spending |
+| Infrastructure | ✅ Done | Per-province infrastructure from spending; factories, railways, ports, fortifications |
 | Diplomacy | ✅ Done | Relations, alliances, peace deals |
 | Armies, navies and air forces as strategic units | ✅ Done | Recruit, move, fight, besiege; fleets carry armies; air support |
 | AI countries that develop and interact independently | ✅ Done | Rule-based AI for economy, military, alliances, war and peace |
@@ -150,7 +150,18 @@ Built: scenario system; **End of the Cold War (1991)** with the Soviet Union, Yu
 browser, export/import, play, host online); server support for scenarios and custom worlds; borders computed from the
 live map.
 
-### Stage 12 — Technology tree ✅ (current)
+### Stage 13 — Construction ✅ (current)
+Built: four buildings in provinces: factories (levels 1–5: growth weighted by population, +10% energy and minerals per
+level), railways (armies 40% faster into the province for the side holding it; infrastructure grows 50% faster),
+ports (coast, 1–3: fleets sail out faster and recover faster) and fortifications (1–3: defenders +15% per level, sieges
+40% longer per level). Paid from the treasury (borrowing allowed down to −50% of GDP) and finished after 3–6 months;
+up to five at once. A factory costs 3% of its province's share of the economy per level, so it's worth the same
+everywhere. Buildings stay with a province that changes hands; work stops while occupied. Provinces start with none.
+AI countries build factories while their debt is light and fortify borders in wartime; indebted AI now raises taxes
+to cover interest. Construction screen (overview, build, by province, infrastructure), build buttons in province
+panels, a Buildings map mode. Save version 7.
+
+### Stage 12 — Technology tree ✅
 Built: three research branches (Economy, Military, Infrastructure), each level 1–20, with a research focus (one branch,
 or Balanced = the lowest branch; progress kept when switching). An 18-technology tree, six per branch, each with a
 concrete effect on existing rules: resource output, growth, research speed, interest on debt, army/fleet/unit power,
@@ -241,12 +252,10 @@ bandwidth 5× too high, and an editor race that wiped a newly created country.
 ## 7. What is still left to build
 
 ### Next steps (recommended order)
-0. **Systems the new screens are waiting for** (each screen already has its place): buildings (factories, railways, ports); equipment; treaties and organizations;
-   intelligence.
-1. **Hosting on the internet** so friends anywhere can play online. Needs an account with a host that runs a long-lived
-   Node.js app with a persistent disk (e.g. Fly.io, Railway, Render or a small VPS) and HTTPS. Steps are in
-   [docs/HOSTING.md](docs/HOSTING.md). The project is ready to deploy (Dockerfile, Railway settings, proxy-safe sign-in
-   limit, connection keep-alive). *Waiting on: you creating a hosting account.*
+0. **Systems the new screens are waiting for** (each screen already has its place): equipment, treaties and
+   organizations, intelligence, changing the kind of government.
+1. ~~Hosting on the internet~~ **Done**: live on Railway (free plan) with a $5 Square paywall and free passes; see
+   [docs/HOSTING.md](docs/HOSTING.md). Moving to Railway's Hobby plan keeps it online all month.
 2. **Changing the kind of government**: reforms, coups and revolutions (governments, parties, laws and elections exist).
 3. **Naval warfare**: fleet battles, blockades, AI sea invasions.
 4. **More historical scenarios** (e.g. 1936, 1914). These need historical borders that don't follow today's provinces and
@@ -255,7 +264,7 @@ bandwidth 5× too high, and an editor race that wiped a newly created country.
 ### Gameplay ideas not yet started
 - Trade agreements and sanctions; resource-specific deals
 - Victory screen when you reach #1 (simple mode already shows your world rank)
-- Province buildings (factories, ports, fortifications) and a local economy per province
+- A local economy per province (buildings exist; GDP is still national)
 - Events and decisions (elections, crises, disasters)
 - Smarter AI (planning, coalitions, naval invasions, adapting to the player), and an AI that respects fog of war
 - Unit types beyond army/fleet/air wing (armour, artillery, missiles), supply lines, terrain effects

@@ -28,6 +28,14 @@ import {
   ViewSync,
   visibleProvinces,
   startingGovernment,
+  SAVE_VERSION,
+  applyCommand,
+  startMove,
+  BUILDINGS,
+  buildCost,
+  siegeDays,
+  rawProduction,
+  growthBreakdown,
   techMods,
   TECHS,
   combatPower,
@@ -596,7 +604,8 @@ describe("government", () => {
     old.version = 4;
     for (const c of Object.values(old.countries) as { government?: unknown }[]) delete c.government;
     const loaded = deserialize(JSON.stringify(old), { BBB: { regime: "closed_autocracy" } });
-    expect(loaded.version).toBe(6);
+    expect(loaded.version).toBe(SAVE_VERSION);
+    expect(loaded.countries[A]!.construction).toEqual([]);
     expect(loaded.countries[A]!.research.levels.economy).toBe(s.countries[A]!.techLevel);
     expect(loaded.countries[B]!.government.regime).toBe("closed_autocracy");
     expect(loaded.countries[A]!.government.source).toBe("estimate");
@@ -641,6 +650,66 @@ describe("technology tree", () => {
     expect(techMods(a).ownLandSpeed).toBeCloseTo(0.2);
     // Military level 11: 8% per level, plus Combined arms (+10% armies) and Precision weapons (+10%).
     expect(combatPower(s, army) / weak).toBeCloseTo(((1 + 0.08 * 11) * 1.2) / 1.08, 5);
+  });
+});
+
+describe("construction", () => {
+  it("building costs money, takes time, and raises the level when done", () => {
+    const s = newGame();
+    scripted(s);
+    const a = s.countries[A]!;
+    const before = a.treasury;
+    expect(applyCommand(s, geo, { type: "build", country: A, province: P(2), building: "factory" })).toBeNull();
+    const cost = buildCost(s, a, P(2), "factory");
+    expect(cost).toBeCloseTo(0.03 * a.gdp * (s.provinces[P(2)]!.population / a.population), 0);
+    expect(a.treasury).toBeCloseTo(before - cost, 6);
+    expect(a.construction).toHaveLength(1);
+    run(s, BUILDINGS.factory.days - 1);
+    expect(s.provinces[P(2)]!.buildings?.factory ?? 0).toBe(0);
+    run(s, 2);
+    expect(s.provinces[P(2)]!.buildings?.factory).toBe(1);
+    expect(a.construction).toHaveLength(0);
+  });
+
+  it("checks where and how much you can build", () => {
+    const s = newGame();
+    scripted(s);
+    expect(validateCommand(s, geo, { type: "build", country: A, province: P(4), building: "factory" })).toMatch(/own and hold/);
+    expect(validateCommand(s, geo, { type: "build", country: A, province: P(2), building: "port" })).toMatch(/coast/);
+    expect(validateCommand(s, geo, { type: "build", country: A, province: P(1), building: "port" })).toBeNull();
+    s.provinces[P(2)]!.buildings = { railway: 1 };
+    expect(validateCommand(s, geo, { type: "build", country: A, province: P(2), building: "railway" })).toMatch(/highest level/);
+    s.countries[A]!.treasury = -0.6 * s.countries[A]!.gdp;
+    expect(validateCommand(s, geo, { type: "build", country: A, province: P(1), building: "fort" })).toMatch(/debt is too high/);
+  });
+
+  it("buildings change the rules: factories, forts, railways", () => {
+    const s = newGame();
+    const p = s.provinces[P(2)]!;
+    const plain = rawProduction(p, 5, "minerals");
+    p.buildings = { factory: 3, fort: 2, railway: 1 };
+    expect(rawProduction(p, 5, "minerals") / plain).toBeCloseTo(1.3, 5);
+    expect(rawProduction(p, 5, "food")).toBe(rawProduction({ ...p, buildings: {} }, 5, "food")); // food unaffected
+    expect(siegeDays(5, 2) / siegeDays(5, 0)).toBeCloseTo(1.8, 5);
+    expect(growthBreakdown(s.countries[A]!, 5, 5).parts.factories).toBeCloseTo(0.008, 5);
+    // A railway into P-2 shortens the march from P-1.
+    const army = armies(s, A)[0]!;
+    army.province = P(1);
+    p.buildings = {};
+    startMove(s, geo, army, [P(2)], "land");
+    const slow = army.travel!.daysLeft;
+    p.buildings = { railway: 1 };
+    army.province = P(1);
+    startMove(s, geo, army, [P(2)], "land");
+    expect(army.travel!.daysLeft).toBeLessThan(slow);
+  });
+
+  it("AI countries with money build factories", () => {
+    const s = newGame();
+    for (const c of Object.values(s.countries)) c.treasury = c.gdp * 0.2;
+    run(s, 365 * 2);
+    const built = Object.values(s.provinces).reduce((n, p) => n + (p.buildings?.factory ?? 0), 0);
+    expect(built).toBeGreaterThan(0);
   });
 });
 

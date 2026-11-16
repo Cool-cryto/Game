@@ -7,6 +7,7 @@ import {
   budgetBalance,
   governmentLabel,
   growthBreakdown,
+  weightedLevel,
   resourceBonus,
   MAX_INFRASTRUCTURE,
   MAX_TECH,
@@ -22,6 +23,7 @@ import { citiesIn, flagUrl, GEOGRAPHY, getCountry, getProvince, landNeighbours, 
 import { gdpPerCapita } from "../map/mapModes";
 import { fogOf } from "../state/fog";
 import { SimpleCountryView } from "./simple/SimpleHud";
+import { ProvinceBuildings } from "./screens/ConstructionScreen";
 import { playerCountry, useGame } from "../state/gameStore";
 import { useOnline } from "../net/online";
 import { DiplomacySection, WarsSection } from "./DiplomacyPanel";
@@ -229,7 +231,7 @@ export function CountryView({ id }: { id: CountryId }) {
                 <Sparkline values={state.history.population} label="Population history" />
               </div>
             </div>
-            <Why title="Why is GDP growing at this rate?" parts={growthBreakdown(state, avgInfra).parts} format={(v) => formatPercent(v, 2, true)} labels={GROWTH_LABELS} />
+            <Why title="Why is GDP growing at this rate?" parts={growthBreakdown(state, avgInfra, weightedLevel(useGame.getState().state, id, "factory")).parts} format={(v) => formatPercent(v, 2, true)} labels={GROWTH_LABELS} />
           </section>
 
           <section>
@@ -346,6 +348,7 @@ export const GROWTH_LABELS: Record<string, string> = {
   debt: "Debt",
   government: "Government and laws",
   technology: "Technology",
+  factories: "Factories",
 };
 export const STABILITY_LABELS: Record<string, string> = {
   base: "Baseline",
@@ -533,6 +536,7 @@ function ProvinceView({ id }: { id: ProvinceId }) {
 
       <ProvinceWarStatus province={id} />
       <SendHere province={id} label={p.name} />
+      <ProvinceBuildings province={id} />
 
       <div className="panel__actions">
         <button className="btn btn--ghost" onClick={() => select({ kind: "province", id }, { focus: true })}>
