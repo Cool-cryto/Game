@@ -10,7 +10,8 @@ import { sameSelection, useUi, type CameraCommand, type Selection } from "../../
 import { createEquirectFrame, type Bounds, type CountryShape, type ProvinceShape, type ProvinceTopology } from "../geo";
 import { MAP_MODES, NO_DATA } from "../mapModes";
 import { fogOf } from "../../state/fog";
-import { drawUnitsOverlay, markerAt, politicalColor, previewMove, stackLabel, stripes, type Marker } from "../overlay";
+import { startKeyPan } from "../keyPan";
+import { clickMarker, drawUnitsOverlay, markerAt, politicalColor, previewMove, stackLabel, stripes, type Marker } from "../overlay";
 import { GlobeRenderer, type GlobeCamera } from "./globeRenderer";
 import type { GlobeWorkerRequest, GlobeWorkerResponse } from "./globe.worker";
 
@@ -587,14 +588,16 @@ export function GlobeView({ active }: { active: boolean }) {
         if (hit) useEditor.getState().click(hit.province);
         return;
       }
+      const marker = markerAt(markers, p.x, p.y);
+      const me = playerCountry(useGame.getState().state)?.id;
+      // Clicking your own units (even while others wait for an order) picks them instead.
+      if (marker && (!ui.moveOrder || marker.stack.owner === me)) return clickMarker(marker, me);
       if (ui.moveOrder) {
         const hit = pick(p.x, p.y);
         if (hit) orderMove(ui.moveOrder.units, hit.province);
         ui.setMoveOrder(null);
         return;
       }
-      const marker = markerAt(markers, p.x, p.y);
-      if (marker) return ui.select({ kind: "units", province: marker.stack.province, owner: marker.stack.owner });
       ui.select(selectionFor(pick(p.x, p.y)));
     };
     const onLeave = () => {
@@ -666,8 +669,21 @@ export function GlobeView({ active }: { active: boolean }) {
       };
     }
 
+    // W/A/S/D (and arrows) turn the globe: one radius on screen ≈ one radian, as when dragging.
+    const stopKeys = startKeyPan(
+      (dx, dy) => {
+        cam.lon += (dx / cam.radius) * DEG;
+        cam.lat = Math.max(-85, Math.min(85, cam.lat - (dy / cam.radius) * DEG));
+        cam.lon = ((((cam.lon + 180) % 360) + 360) % 360) - 180;
+        setTip(null);
+        requestDraw();
+      },
+      () => useUi.getState().view === "globe",
+    );
+
     return () => {
       disposed = true;
+      stopKeys();
       worker.terminate();
       unsubGame();
       unsubUi();

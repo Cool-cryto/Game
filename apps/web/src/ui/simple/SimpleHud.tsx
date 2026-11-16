@@ -392,7 +392,7 @@ export function Guide() {
           <strong>Economy:</strong> choose what your country focuses on, like growing the economy or building the army.
         </li>
         <li>
-          <strong>Military:</strong> recruit armies to defend yourself or attack.
+          <strong>Military:</strong> recruit armies to defend yourself or attack. Click your army on the map, then click where it should go: it takes every undefended enemy province it walks into. Guard your capital: if it falls, your whole country falls.
         </li>
         <li>
           <strong>Diplomacy:</strong> make friends and allies, or declare war and press Attack.

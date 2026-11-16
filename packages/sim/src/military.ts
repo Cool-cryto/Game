@@ -17,9 +17,9 @@ export const UNIT_STATS: Record<UnitType, { label: string; recruit: number; powe
 };
 /** Yearly upkeep as a share of the recruiting cost. */
 const UPKEEP_SHARE = 0.3;
-const LAND_KM_PER_DAY = 25;
-const SEA_KM_PER_DAY = 400;
-const AIR_KM_PER_DAY = 800;
+const LAND_KM_PER_DAY = 50;
+const SEA_KM_PER_DAY = 800;
+const AIR_KM_PER_DAY = 1600;
 /** Air wings support battles within this distance of their base. */
 export const AIR_RANGE_KM = 1200;
 /** A unit this weak falls back from battle. */
@@ -186,6 +186,11 @@ export function advanceMovement(s: GameState, geo: Geography) {
     u.path.shift();
     // Walking into enemy forces stops the march: there's a battle here.
     if (!u.retreating && u.type !== "air" && hostileArmiesIn(s, next, u.owner, u.type)) u.path = [];
+    // An army that walks into an undefended enemy province without fortifications takes it at once.
+    else if (u.type === "army" && !u.retreating) {
+      const p = s.provinces[next]!;
+      if (atWar(s, u.owner, p.controller) && !(p.buildings?.fort ?? 0)) captureProvince(s, next, u.owner);
+    }
     if (u.path.length) u.travel = { mode: u.travel.mode, daysLeft: legDays(s, geo, u, u.travel.mode, u.path[0]!) };
     else {
       u.travel = null;
@@ -271,8 +276,27 @@ function retreat(s: GameState, geo: Geography, u: Unit) {
 
 // ---------- Sieges and occupation ----------
 
-/** Days of siege needed for a province: longer where infrastructure (and so fortification) is higher. */
-export const siegeDays = (infrastructure: number, fort = 0) => (10 + 3 * infrastructure) * (1 + 0.4 * fort);
+/**
+ * Days of siege needed for a province with full-strength armies. Without fortifications there's no siege:
+ * the first army to walk in takes it. Each fortification level adds 4 days (a little more where infrastructure is high).
+ */
+export const siegeDays = (infrastructure: number, fort = 0) => fort * (4 + 0.2 * infrastructure);
+
+/** An enemy province changes hands (or one of yours or an ally's is freed and goes back to its owner). */
+export function captureProvince(s: GameState, id: ProvinceId, by: CountryId) {
+  const p = s.provinces[id]!;
+  const liberated = friendly(s, by, p.owner);
+  p.controller = liberated ? p.owner : by;
+  p.siege = null;
+  if (p.population > 0) {
+    logEvent(
+      s,
+      "occupation",
+      liberated ? `${nameOf(s, by)} liberated a province of ${nameOf(s, p.owner)}.` : `${nameOf(s, by)} took a province of ${nameOf(s, p.owner)}.`,
+      [by, p.owner],
+    );
+  }
+}
 
 /**
  * Armies standing unopposed in a province held by an enemy take it over time.
@@ -297,22 +321,15 @@ export function advanceSieges(s: GameState) {
     }
     // Defenders still in the province must be beaten first.
     if (armies.some((u) => friendly(s, u.owner, p.controller))) continue;
+    const days = siegeDays(p.infrastructure, p.buildings?.fort ?? 0);
+    if (days <= 0) {
+      captureProvince(s, id, besieger.owner);
+      continue;
+    }
     if (!p.siege || p.siege.by !== besieger.owner) p.siege = { by: besieger.owner, progress: 0 };
     const force = Math.min(3, armies.filter((u) => friendly(s, u.owner, besieger.owner)).reduce((a, u) => a + u.strength / 100, 0));
-    p.siege.progress += force / siegeDays(p.infrastructure, p.buildings?.fort ?? 0);
-    if (p.siege.progress >= 1) {
-      const liberated = friendly(s, besieger.owner, p.owner);
-      p.controller = liberated ? p.owner : besieger.owner;
-      p.siege = null;
-      if (p.population > 0) {
-        logEvent(
-          s,
-          "occupation",
-          liberated ? `${nameOf(s, besieger.owner)} liberated a province of ${nameOf(s, p.owner)}.` : `${nameOf(s, besieger.owner)} occupied a province of ${nameOf(s, p.owner)}.`,
-          [besieger.owner, p.owner],
-        );
-      }
-    }
+    p.siege.progress += force / days;
+    if (p.siege.progress >= 1) captureProvince(s, id, besieger.owner);
   }
 }
 

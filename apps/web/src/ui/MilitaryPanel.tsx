@@ -81,6 +81,8 @@ export function UnitsView({ province, owner }: { province: ProvinceId; owner: Co
                     if (e.target.checked) next.add(u.id);
                     else next.delete(u.id);
                     setChosen(next);
+                    // Units waiting for a move order: only the ticked ones go.
+                    if (moveOrder) setMoveOrder(next.size ? { units: [...next] } : null);
                   }}
                 />
               )}
@@ -106,7 +108,7 @@ export function UnitsView({ province, owner }: { province: ProvinceId; owner: Co
           <button className="btn btn--primary" disabled={!picked.length} onClick={() => setMoveOrder(moveOrder ? null : { units: picked })}>
             {moveOrder ? "Cancel move" : `Move ${picked.length} unit${picked.length === 1 ? "" : "s"}…`}
           </button>
-          {moveOrder && <p className="panel__small">Click a province on the map to send them there. Esc cancels. Tip: right-click a province to move directly.</p>}
+          {moveOrder && <p className="panel__small">Ready to move: click a province on the map to send them there. Esc cancels.</p>}
           <button
             className="btn btn--ghost"
             disabled={!picked.length}
@@ -214,8 +216,8 @@ export function ProvinceWarStatus({ province }: { province: ProvinceId }) {
       {occupied && <p>Occupied by {getCountry(p.controller)?.name ?? p.controller}.</p>}
       {p.siege && (
         <p>
-          Under siege by {getCountry(p.siege.by)?.name ?? p.siege.by}: {Math.round(p.siege.progress * 100)}% (a full siege takes about{" "}
-          {Math.round(siegeDays(p.infrastructure))} days with full-strength armies).
+          Under siege by {getCountry(p.siege.by)?.name ?? p.siege.by}: {Math.round(p.siege.progress * 100)}% (its fortifications hold out about{" "}
+          {Math.round(siegeDays(p.infrastructure, p.buildings?.fort ?? 0))} days against full-strength armies).
         </p>
       )}
     </div>

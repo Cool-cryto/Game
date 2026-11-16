@@ -5,7 +5,7 @@
 import type { CountryId, ProvinceId } from "@gs/shared";
 import { atWar, planMove, UNIT_STATS, type GameState, type Unit } from "@gs/sim";
 import { COUNTRIES, GEOGRAPHY, getCountry } from "../data/countries";
-import type { Selection } from "../state/uiStore";
+import { useUi, type Selection } from "../state/uiStore";
 import { MAP_MODES } from "./mapModes";
 
 /** A country's map color (uses the game's own color for countries made in the world editor). */
@@ -83,24 +83,51 @@ export function drawUnitsOverlay(ctx: CanvasRenderingContext2D, o: UnitsOverlayO
     st.units.push(u);
   }
 
-  // Routes of the player's moving units (the selected stack's more strongly).
+  // Routes of the player's moving units (the selected stack's more strongly), with an arrow and a ring
+  // where they're going. One line per destination, not per unit.
   const selectedStack = selected?.kind === "units" ? `${selected.province}|${selected.owner}` : null;
   for (const st of stacks.values()) {
     if (st.owner !== me) continue;
     const emphasised = `${st.province}|${st.owner}` === selectedStack;
+    const drawn = new Set<string>();
     for (const u of st.units) {
       if (!u.path.length) continue;
-      ctx.beginPath();
-      ctx.moveTo(st.x, st.y);
+      const key = u.path.join(">");
+      if (drawn.has(key)) continue;
+      drawn.add(key);
+      const pts: [number, number][] = [[st.x, st.y]];
       for (const p of u.path) {
         const pos = project(p);
-        if (pos) ctx.lineTo(pos[0], pos[1]);
+        if (pos) pts.push(pos);
       }
-      ctx.setLineDash([6, 5]);
-      ctx.lineWidth = emphasised ? 2.5 : 1.5;
-      ctx.strokeStyle = emphasised ? "#ffd678" : "rgba(255, 214, 120, 0.6)";
+      if (pts.length < 2) continue;
+      const color = emphasised ? "#ffd678" : "rgba(255, 214, 120, 0.8)";
+      ctx.beginPath();
+      pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      // A dark edge under the line keeps it readable on any map color.
+      ctx.lineWidth = emphasised ? 6 : 4.5;
+      ctx.strokeStyle = "rgba(5, 10, 16, 0.55)";
+      ctx.stroke();
+      ctx.setLineDash([9, 6]);
+      ctx.lineWidth = emphasised ? 3.5 : 2.5;
+      ctx.strokeStyle = color;
       ctx.stroke();
       ctx.setLineDash([]);
+      const [tx, ty] = pts[pts.length - 1]!;
+      const [fx, fy] = pts[pts.length - 2]!;
+      const a = Math.atan2(ty - fy, tx - fx);
+      ctx.beginPath();
+      ctx.moveTo(tx, ty);
+      ctx.lineTo(tx - 13 * Math.cos(a - 0.45), ty - 13 * Math.sin(a - 0.45));
+      ctx.lineTo(tx - 13 * Math.cos(a + 0.45), ty - 13 * Math.sin(a + 0.45));
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(tx, ty, 9, 0, Math.PI * 2);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = color;
+      ctx.stroke();
     }
   }
 
@@ -116,18 +143,31 @@ export function drawUnitsOverlay(ctx: CanvasRenderingContext2D, o: UnitsOverlayO
     const show = zoom >= 2.5 || battle || list.some((st) => st.owner === me) || moveOrder != null;
     if (!show) continue;
     list.forEach((st, i) => {
-      const x = st.x + (i - (list.length - 1) / 2) * 30;
-      const y = st.y - 18;
-      if (x < -30 || y < -30 || x > w + 30 || y > h + 30) return;
+      const x = st.x + (i - (list.length - 1) / 2) * 42;
+      const y = st.y - 22;
+      if (x < -40 || y < -40 || x > w + 40 || y > h + 40) return;
       drawMarker(ctx, game, st, x, y, st.owner === me, `${province}|${st.owner}` === selectedStack);
-      markers.push({ x0: x - 14, y0: y - 10, x1: x + 14, y1: y + 10, stack: st });
+      markers.push({ x0: x - 20, y0: y - 14, x1: x + 20, y1: y + 18, stack: st });
     });
-    if (battle) drawBattle(ctx, list[0]!.x, list[0]!.y - 38);
+    if (battle) drawBattle(ctx, list[0]!.x, list[0]!.y - 50);
   }
   return markers;
 }
 
-function drawMarker(ctx: CanvasRenderingContext2D, game: GameState, st: Stack, x: number, y: number, mine: boolean, isSelected: boolean) {
+/** Unit markers are drawn at this size (1 = the old 26×18 box). */
+const S = 1.4;
+
+function drawMarker(ctx: CanvasRenderingContext2D, game: GameState, st: Stack, x0: number, y0: number, mine: boolean, isSelected: boolean) {
+  ctx.save();
+  ctx.translate(x0, y0);
+  ctx.scale(S, S);
+  // Your own units glow a little, so they stand out from everyone else's.
+  if (mine || isSelected) {
+    ctx.shadowColor = isSelected ? "rgba(255, 214, 120, 0.9)" : "rgba(255, 255, 255, 0.55)";
+    ctx.shadowBlur = isSelected ? 10 : 6;
+  }
+  const x = 0;
+  const y = 0;
   const counts = { army: 0, navy: 0, air: 0 };
   for (const u of st.units) counts[u.type]++;
   const main = (["army", "navy", "air"] as const).reduce((a, b) => (counts[b] > counts[a] ? b : a));
@@ -136,6 +176,8 @@ function drawMarker(ctx: CanvasRenderingContext2D, game: GameState, st: Stack, x
   ctx.roundRect(x - 13, y - 9, 26, 18, 3);
   ctx.fillStyle = politicalColor(st.owner, game);
   ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.shadowColor = "transparent";
   ctx.lineWidth = isSelected ? 2.5 : 1.5;
   ctx.strokeStyle = isSelected ? "#ffd678" : mine ? "#ffffff" : "rgba(5, 10, 16, 0.9)";
   ctx.stroke();
@@ -169,11 +211,12 @@ function drawMarker(ctx: CanvasRenderingContext2D, game: GameState, st: Stack, x
   ctx.fillRect(x - 13, y + 10, 26, 3);
   ctx.fillStyle = strength > 60 ? "#7fd39a" : strength > 30 ? "#e8c25a" : "#f08a7a";
   ctx.fillRect(x - 13, y + 10, (26 * strength) / 100, 3);
+  ctx.restore();
 }
 
 function drawBattle(ctx: CanvasRenderingContext2D, x: number, y: number) {
   ctx.beginPath();
-  ctx.arc(x, y, 10, 0, Math.PI * 2);
+  ctx.arc(x, y, 12, 0, Math.PI * 2);
   ctx.fillStyle = "rgba(200, 50, 40, 0.92)";
   ctx.fill();
   ctx.strokeStyle = "#fff";
@@ -184,6 +227,18 @@ function drawBattle(ctx: CanvasRenderingContext2D, x: number, y: number) {
   ctx.moveTo(x + 5, y - 5);
   ctx.lineTo(x - 5, y + 5);
   ctx.stroke();
+}
+
+/**
+ * Clicking a unit marker selects it; clicking your own also gets them ready to move, so the next click on the
+ * map sends them there. Clicking the same units again (while they wait for an order) cancels.
+ */
+export function clickMarker(marker: Marker, me: CountryId | undefined) {
+  const ui = useUi.getState();
+  const st = marker.stack;
+  if (ui.moveOrder && st.units.some((u) => ui.moveOrder!.units.includes(u.id))) return ui.setMoveOrder(null);
+  ui.select({ kind: "units", province: st.province, owner: st.owner });
+  ui.setMoveOrder(st.owner === me ? { units: st.units.map((u) => u.id) } : null);
 }
 
 export const markerAt = (markers: Marker[], x: number, y: number) =>

@@ -150,7 +150,16 @@ Built: scenario system; **End of the Cold War (1991)** with the Soviet Union, Yu
 browser, export/import, play, host online); server support for scenarios and custom worlds; borders computed from the
 live map.
 
-### Stage 14 — Treaties & international organizations ✅ (current)
+### Stage 15 — Faster war ✅ (current)
+Built: an army that walks into an undefended enemy province without fortifications takes it at once (no siege);
+fortifications still mean a short siege (about 4 days per level). When a country at war loses its capital, the whole
+country falls: the enemy that took the capital annexes it (provinces another enemy holds go to that enemy). Armies,
+fleets and air wings move twice as fast. AI countries keep one army guarding their capital in wartime. Bigger unit
+markers (your own glow; the selected stack glows gold), thicker routes with an arrow and a ring at the destination, and
+one-click orders: click your units on the map, then click where they should go. W/A/S/D (or the arrow keys, Shift for faster) move the camera on the flat map and the globe. In 20-year runs provinces change hands
+far more often, while the number of countries conquered stays about the same (0–3).
+
+### Stage 14 — Treaties & international organizations ✅
 Built: four treaties between two countries: non-aggression pacts (no war between the two until one cancels), trade
 agreements (up to +0.1% growth per partner, more for the smaller economy, +0.5% at most), research agreements (+5%
 research speed each, three count) and military access (armies may cross each other's land). Each has a relations

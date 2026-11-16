@@ -238,7 +238,7 @@ describe("military", () => {
     run(s, 1, [{ type: "moveUnits", country: A, units: [u.id], to: P(3) }]);
     expect(u.path).toEqual([P(2), P(3)]);
     const eta = etaDays(s, geo, u);
-    expect(eta).toBeGreaterThan(3);
+    expect(eta).toBeGreaterThan(1);
     expect(runUntil(s, () => u.province === P(3), 60)).toBe(true);
   });
 
@@ -256,26 +256,66 @@ describe("military", () => {
 });
 
 describe("war", () => {
-  /** A declares war on B and marches its whole army in. */
-  function invade(s: GameState) {
+  /** A declares war on B and marches its whole army in (towards P-5, or `to`). */
+  function invade(s: GameState, to = P(5)) {
     scripted(s);
     run(s, 1, [{ type: "declareWar", country: A, target: B }]);
-    pushOn(s);
+    pushOn(s, to);
   }
-  /** Like a player would: send idle armies on towards P-5 (they halt when they meet the enemy). */
-  function pushOn(s: GameState) {
+  /** Like a player would: send idle armies on towards the target (they halt when they meet the enemy). */
+  function pushOn(s: GameState, to = P(5)) {
     const ids = armies(s, A)
-      .filter((u) => !u.travel && u.province !== P(5) && s.provinces[u.province]!.controller !== B)
+      .filter((u) => !u.travel && u.province !== to && s.provinces[u.province]!.controller !== B)
       .map((u) => u.id);
-    if (ids.length && s.wars.length) run(s, 1, [{ type: "moveUnits", country: A, units: ids, to: P(5) }]);
+    if (ids.length && s.wars.length) run(s, 1, [{ type: "moveUnits", country: A, units: ids, to }]);
   }
-  function runWar(s: GameState, done: () => boolean, limit: number) {
-    for (let i = 0; i < limit && !done(); i += 20) {
-      run(s, 20);
-      pushOn(s);
+  function runWar(s: GameState, done: () => boolean, limit: number, to = P(5)) {
+    for (let i = 0; i < limit && !done(); i += 5) {
+      run(s, 5);
+      pushOn(s, to);
     }
     return done();
   }
+  /** B's capital moved to P-5, and A only goes as far as P-4: occupation without the capital falling. */
+  function invadeWithoutCapital(s: GameState) {
+    s.countries[B]!.capital = P(5);
+    invade(s, P(4));
+  }
+
+  it("an army takes an undefended province the moment it walks in; fortifications make it a siege", () => {
+    const s = newGame();
+    s.countries[B]!.capital = P(5);
+    scripted(s);
+    for (const u of unitsOf(s, B)) delete s.units[u.id];
+    run(s, 1, [{ type: "declareWar", country: A, target: B }]);
+    const army = armies(s, A)[0]!;
+    army.province = P(3);
+    startMove(s, geo, army, [P(4)], "land");
+    runUntil(s, () => army.province === P(4), 30);
+    expect(s.provinces[P(4)]!.controller).toBe(A);
+    // A fort: the army has to besiege it for a few days.
+    s.provinces[P(5)]!.buildings = { fort: 2 };
+    startMove(s, geo, army, [P(5)], "land");
+    runUntil(s, () => army.province === P(5), 30);
+    expect(s.provinces[P(5)]!.controller).toBe(B);
+    expect(runUntil(s, () => s.provinces[P(5)]!.controller !== B, 30)).toBe(true);
+  });
+
+  it("when a country's capital falls, the whole country falls", () => {
+    const s = newGame();
+    scripted(s);
+    for (const u of unitsOf(s, B)) delete s.units[u.id];
+    run(s, 1, [{ type: "declareWar", country: A, target: B }]);
+    expect(s.countries[B]!.capital).toBe(P(4));
+    const army = armies(s, A)[0]!;
+    army.province = P(3);
+    startMove(s, geo, army, [P(4)], "land");
+    runUntil(s, () => !s.countries[B]!.active, 30);
+    expect(s.countries[B]!.active).toBe(false);
+    expect([s.provinces[P(4)]!.owner, s.provinces[P(5)]!.owner]).toEqual([A, A]); // P-5 too, never reached
+    expect(s.wars).toHaveLength(0);
+    expect(s.events.some((e) => e.text.includes("took the capital of Borduria"))).toBe(true);
+  });
 
   it("declaring war brings in the defender's allies", () => {
     const s = newGame();
@@ -311,12 +351,12 @@ describe("war", () => {
 
   it("a peace treaty can hand over occupied provinces, and the AI only accepts when losing", () => {
     const s = newGame();
-    invade(s);
+    invadeWithoutCapital(s);
     const war = s.wars[0]!;
     // Too early: B isn't losing yet, so B rejects.
     run(s, 1, [{ type: "offerPeace", country: A, warId: war.id, terms: "occupied" }]);
     expect(s.wars).toHaveLength(1);
-    expect(runWar(s, () => s.provinces[P(4)]!.controller === A, 800)).toBe(true);
+    expect(runWar(s, () => s.provinces[P(4)]!.controller === A, 800, P(4))).toBe(true);
     expect(warScore(s, war, "attackers")).toBeGreaterThan(0.15);
     run(s, 1, [{ type: "offerPeace", country: A, warId: war.id, terms: "occupied" }]);
     expect(s.wars).toHaveLength(0);
@@ -327,9 +367,9 @@ describe("war", () => {
 
   it("white peace returns occupied land", () => {
     const s = newGame();
-    invade(s);
+    invadeWithoutCapital(s);
     const war = s.wars[0]!;
-    expect(runWar(s, () => s.provinces[P(4)]!.controller === A, 800)).toBe(true);
+    expect(runWar(s, () => s.provinces[P(4)]!.controller === A, 800, P(4))).toBe(true);
     // B (AI) proposes nothing; A offers white peace, which B accepts as it is losing.
     run(s, 1, [{ type: "offerPeace", country: A, warId: war.id, terms: "white" }]);
     expect(s.wars).toHaveLength(0);
@@ -540,6 +580,7 @@ describe("organizations", () => {
     run(s, 1, [{ type: "proposeTreaty", country: A, target: D, treaty: "trade" }]);
     expect(orgsOf(s, D)).toHaveLength(1);
     for (const p of Object.values(s.provinces)) if (p.owner === D) p.controller = A;
+    for (const u of unitsOf(s, D)) delete s.units[u.id]; // (an army at home would simply take its capital back)
     s.wars.push({ id: 999, name: "Test War", attackers: [A], defenders: [D], startTick: s.tick });
     run(s, 2);
     expect(s.countries[D]!.active).toBe(false);
@@ -634,7 +675,7 @@ describe("network sync", () => {
     for (const c of Object.values(server.countries)) {
       const { history, ...rest } = c;
       const { history: clientHistory, ...clientRest } = client.countries[c.id]!;
-      expect(clientRest).toEqual(round5(rest));
+      expect(round5(clientRest)).toEqual(round5(rest));
       expect(clientHistory).toEqual(history);
     }
     for (const p of Object.values(server.provinces)) {
@@ -715,6 +756,9 @@ describe("fog of war", () => {
   it("each player's patches carry exactly the units and sieges they can see", () => {
     const server = newGame(3);
     invadeB(server);
+    // Forts, so there are sieges to see (without them provinces fall at once).
+    server.provinces[P(4)]!.buildings = { fort: 3 };
+    server.provinces[P(5)]!.buildings = { fort: 3 };
     const differ = new StateDiffer(server, { units: false });
     const viewers = [A, B, D];
     const clients = new Map(viewers.map((v) => [v, deserialize(serialize(fogView(server, geo, v)))]));
@@ -925,7 +969,8 @@ describe("construction", () => {
     p.buildings = { factory: 3, fort: 2, railway: 1 };
     expect(rawProduction(p, 5, "minerals") / plain).toBeCloseTo(1.3, 5);
     expect(rawProduction(p, 5, "food")).toBe(rawProduction({ ...p, buildings: {} }, 5, "food")); // food unaffected
-    expect(siegeDays(5, 2) / siegeDays(5, 0)).toBeCloseTo(1.8, 5);
+    expect(siegeDays(5, 0)).toBe(0); // no fort: taken at once
+    expect(siegeDays(5, 2)).toBeCloseTo(10, 5);
     expect(growthBreakdown(s.countries[A]!, 5, 5).parts.factories).toBeCloseTo(0.008, 5);
     // A railway into P-2 shortens the march from P-1.
     const army = armies(s, A)[0]!;

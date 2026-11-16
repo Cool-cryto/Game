@@ -157,10 +157,29 @@ function peaceTalks(s: GameState, war: (typeof s.wars)[number]) {
  * march on the nearest enemy-held province. Each unit re-thinks every 5 days.
  */
 export function aiDaily(s: GameState, geo: Geography) {
+  // In wartime one army guards the capital (if it falls, the whole country falls): the one already there or
+  // on its way, otherwise the next idle army that thinks about what to do.
+  const guard = new Map<CountryId, number>();
+  if (s.wars.length) {
+    for (const u of Object.values(s.units)) {
+      const cap = s.countries[u.owner]?.capital;
+      if (!cap || u.type !== "army" || u.retreating || guard.has(u.owner)) continue;
+      if ((u.province === cap && !u.travel) || u.path[u.path.length - 1] === cap) guard.set(u.owner, u.id);
+    }
+  }
   for (const u of Object.values(s.units)) {
     const c = s.countries[u.owner];
     if (!c || c.controller !== "ai" || u.type !== "army" || u.travel || u.retreating) continue;
+    if (guard.get(u.owner) === u.id && isAtWar(s, u.owner)) continue;
     if ((s.tick + u.id) % 5 !== 0) continue;
+    if (!guard.has(u.owner) && c.capital && isAtWar(s, u.owner)) {
+      guard.set(u.owner, u.id);
+      if (u.province !== c.capital) {
+        const home = findLandPath(geo, u.province, (p) => p === c.capital, (p) => canEnter(s, u.owner, p), 3000);
+        if (home?.length) startMove(s, geo, u, home, "land");
+      }
+      continue;
+    }
     if (!isAtWar(s, u.owner)) {
       // At peace: go home if stranded abroad.
       const here = s.provinces[u.province];
