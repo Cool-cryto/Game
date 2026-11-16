@@ -17,12 +17,12 @@ export const UNIT_STATS: Record<UnitType, { label: string; recruit: number; powe
 };
 /** Yearly upkeep as a share of the recruiting cost (recruiting is cheap; keeping a big army is what costs). */
 const UPKEEP_SHARE = 0.6;
-// Time runs at 21 days a second, so these are also on-screen speeds: an army crosses France in about
-// three seconds on good roads (infrastructure, railways and technology make it faster), a fleet the
-// Atlantic in about five.
-const LAND_KM_PER_DAY = 10;
-const SEA_KM_PER_DAY = 50;
-const AIR_KM_PER_DAY = 100;
+// Time runs at 21 days a second, so these are also on-screen speeds. With typical roads and technology an
+// army covers about 120 km a second (crossing France takes 7-8 seconds), a fleet about 320 km a second
+// (the Atlantic in about 20), an air wing about 840.
+const LAND_KM_PER_DAY = 3;
+const SEA_KM_PER_DAY = 15;
+const AIR_KM_PER_DAY = 40;
 /** Strength lost per day of battle at even odds (a battle lasts a couple of seconds). */
 const BATTLE_LOSS_PER_DAY = 2.5;
 /** Air wings support battles within this distance of their base. */

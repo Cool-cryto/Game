@@ -3774,3 +3774,54 @@ button.infobar__country:hover .infobar__name {
     width: auto;
   }
 }
+
+/* Management screens: a narrow panel down the left side, so the map stays visible. */
+.screen {
+  width: min(430px, 100%);
+}
+.screen__body {
+  padding: 12px 12px 20px;
+  font-size: 13px;
+}
+.screen__head {
+  padding: 10px 12px 6px;
+}
+.screen__head h2 {
+  font-size: 17px;
+}
+.screen .grid,
+.screen .grid--3 {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.screen .card {
+  padding: 10px 12px;
+}
+.screen .choices--3,
+.screen .choices--4 {
+  grid-template-columns: minmax(0, 1fr);
+}
+.screen .table {
+  display: block;
+  overflow-x: auto;
+}
+.screen__tabs {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.screen__tabs button {
+  flex: none;
+}
+/* In the narrow screen panel, a country's buttons go on their own line under its name. */
+.screen .srel--compact {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+.screen .srel--compact .srel__head {
+  flex: 1 1 100%;
+}
+.screen .srel--compact .srel__actions {
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+}

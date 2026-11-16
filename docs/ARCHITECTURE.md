@@ -218,6 +218,7 @@ Serverless platforms are not a good fit, because players keep a connection open.
 - `GAME_DAYS_PER_SECOND = 21` (`packages/sim/src/protocol.ts`) is the only pace. The browser worker runs while
   `gameStore` isn't holding time (no country chosen, world editor, game menu: `hold(reason, on)`). Server rooms run
   whenever anyone is connected; `clock` messages are refused.
+- Speeds (`military.ts`): 3 km/day on land, 15 at sea, 40 in the air, before roads, railways and technology.
 - `Unit.travel.total` is the length of the current leg; `overlay.ts` draws moving units part-way along it and creeps
   forward at the game's pace between updates (`legProgress`), so units glide.
 - `CountryState.capitalLost` (who holds the capital, since when) and `CAPITAL_HOLD_DAYS` in `diplomacy.ts`. Patches
