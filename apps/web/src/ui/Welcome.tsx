@@ -87,7 +87,9 @@ export function Welcome() {
             <li>Future updates included</li>
             <li>No subscription, no ads</li>
           </ul>
-          <p className="welcome__small">Payments are handled securely by Stripe. Your card details never reach this game's server.</p>
+          <p className="welcome__small">
+            Payments are handled securely by {config.provider === "stripe" ? "Stripe" : "Square"}. Your card details never reach this game's server.
+          </p>
         </div>
         <div id="account" className="welcome__account">
           {me ? <Unlock /> : <SignInForm />}

@@ -1,8 +1,9 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Access, Db } from "./db";
+import type { SquareConfig } from "./square";
 
 /**
- * The paywall: the game is unlocked by buying it once (through Stripe Checkout),
+ * The paywall: the game is unlocked by buying it once (through Square or Stripe),
  * or by a free pass that an admin gives to a username. Admins always have access.
  *
  * Card details never touch this server: players pay on Stripe's own page, and
@@ -15,15 +16,21 @@ export interface PaywallConfig {
   currency: string;
   /** Usernames that can give and take away free passes (case-insensitive). */
   admins: string[];
-  /** Stripe secret key (sk_live_… or sk_test_…). Without it the Buy button says purchases aren't open yet. */
+  /** Square checkout (used when set; see square.ts). */
+  square?: SquareConfig;
+  /** Stripe secret key (sk_live_… or sk_test_…), used if Square isn't set up. Without either, the Buy button says purchases aren't open yet. */
   stripeSecretKey?: string;
   /** Signing secret of the Stripe webhook (whsec_…). Optional: purchases are also confirmed when the player returns. */
   stripeWebhookSecret?: string;
   /** Where players come back to after paying, e.g. https://game.example.com. Worked out from the request if not set. */
   publicUrl?: string;
-  /** For tests: stands in for Stripe's API. */
+  /** For tests: stands in for Square's / Stripe's API. */
   stripeFetch?: typeof fetch;
 }
+
+/** Which payment service takes the money, if any is set up. */
+export const paymentProvider = (cfg: PaywallConfig | null): "square" | "stripe" | null =>
+  cfg?.square ? "square" : cfg?.stripeSecretKey ? "stripe" : null;
 
 const STRIPE_API = "https://api.stripe.com/v1";
 
@@ -119,6 +126,16 @@ export function paywallFromEnv(env: NodeJS.ProcessEnv): PaywallConfig | null {
     priceCents: Number(env.PRICE_CENTS ?? 500),
     currency: (env.CURRENCY ?? "usd").toLowerCase(),
     admins: (env.ADMIN_USERS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+    square:
+      env.SQUARE_ACCESS_TOKEN && env.SQUARE_LOCATION_ID
+        ? {
+            accessToken: env.SQUARE_ACCESS_TOKEN,
+            locationId: env.SQUARE_LOCATION_ID,
+            environment: env.SQUARE_ENVIRONMENT === "production" ? "production" : "sandbox",
+            webhookSignatureKey: env.SQUARE_WEBHOOK_SIGNATURE_KEY || undefined,
+            webhookUrl: env.SQUARE_WEBHOOK_URL || undefined,
+          }
+        : undefined,
     stripeSecretKey: env.STRIPE_SECRET_KEY || undefined,
     stripeWebhookSecret: env.STRIPE_WEBHOOK_SECRET || undefined,
     publicUrl: env.PUBLIC_URL?.replace(/\/$/, "") || undefined,

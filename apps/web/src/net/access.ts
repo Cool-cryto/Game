@@ -20,8 +20,9 @@ export interface ShopConfig {
   paywall: boolean;
   priceCents: number;
   currency: string;
-  /** False until the owner has connected Stripe. */
+  /** False until the owner has connected a payment service. */
   canBuy: boolean;
+  provider?: "square" | "stripe" | null;
 }
 
 interface AccessState {
@@ -66,7 +67,7 @@ export async function refreshAccess(): Promise<void> {
   useAccess.setState({ config, me, status: me?.access ? "open" : "locked" });
 }
 
-/** Back from Stripe: confirm the purchase (the server asks Stripe), then unlock. */
+/** Back from the payment page: confirm the purchase (the server asks Square or Stripe), then unlock. */
 export async function handleCheckoutReturn(): Promise<void> {
   const params = new URLSearchParams(location.search);
   const id = params.get("checkout");
@@ -86,7 +87,7 @@ export async function handleCheckoutReturn(): Promise<void> {
   useAccess.setState({ notice: "We haven't received the payment confirmation yet. If you paid, wait a minute and press Check again." });
 }
 
-/** Go to Stripe's payment page. Returns an error message, or never returns (the page changes). */
+/** Go to the payment page. Returns an error message, or never returns (the page changes). */
 export async function startCheckout(): Promise<string | null> {
   try {
     const res = await fetch(apiUrl("checkout"), { method: "POST", headers: { ...authHeaders(), "content-type": "application/json" }, body: "{}" });

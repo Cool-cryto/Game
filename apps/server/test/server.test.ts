@@ -479,7 +479,7 @@ describe("paywall", () => {
     });
 
   it("a new player can't load the map or play online until they have access", async () => {
-    expect((await call("/api/config")).body).toEqual({ paywall: true, priceCents: 500, currency: "usd", canBuy: true });
+    expect((await call("/api/config")).body).toEqual({ paywall: true, priceCents: 500, currency: "usd", canBuy: true, provider: "stripe" });
     const p = await signUp("newbie");
     const me = await call("/api/me", { token: p.token });
     expect(me.body).toMatchObject({ access: false, accessKind: null, admin: false });
@@ -542,5 +542,87 @@ describe("paywall", () => {
     expect(await closed).toBe(4005);
     expect(await mapStatus(friend.cookie)).toBe(403);
     expect((await call("/api/admin/access", { token: boss.token, body: { username: "buyer", access: null } })).status).toBe(400);
+  });
+});
+
+describe("paywall with Square", () => {
+  // A fake Square: payment links create orders; tests mark orders paid.
+  const orders = new Map<string, Record<string, unknown>>();
+  let links = 0;
+  const fakeSquare: typeof fetch = async (input, init) => {
+    const url = String(input);
+    expect(url.startsWith("https://connect.squareupsandbox.com/v2/")).toBe(true);
+    const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, any>) : null;
+    if (url.endsWith("/online-checkout/payment-links")) {
+      const id = `order_${++links}`;
+      orders.set(id, { id, state: "OPEN", total_money: body!.quick_pay.price_money, net_amount_due_money: { amount: body!.quick_pay.price_money.amount } });
+      return Response.json({ payment_link: { id: `pl_${links}`, order_id: id, url: `https://square.test/pay/${id}`, redirect: body!.checkout_options.redirect_url } });
+    }
+    if (url.endsWith("/orders/batch-retrieve")) return Response.json({ orders: (body!.order_ids as string[]).map((id) => orders.get(id)).filter(Boolean) });
+    const id = decodeURIComponent(url.split("/").pop()!);
+    return orders.has(id) ? Response.json({ order: orders.get(id) }) : Response.json({ errors: [{ detail: "Not found" }] }, { status: 404 });
+  };
+  const pay = (id: string, amount = 500) => orders.set(id, { ...orders.get(id), state: "COMPLETED", total_money: { amount, currency: "USD" }, net_amount_due_money: { amount: 0 }, tenders: [{ id: "t" }] });
+  const sigKey = "sq_sig_key";
+  let sdb: Db;
+  let sserver: Server;
+  let sbase = "";
+  beforeAll(async () => {
+    sdb = new Db(":memory:");
+    sserver = await startServer({
+      port: 0, db: sdb, scenarios, geo, webDist: null, graceMs: 300, globalSpeed: 2, saveEveryMs: 60_000, log: () => {},
+      paywall: { priceCents: 500, currency: "usd", admins: [], square: { accessToken: "EAAA_test", locationId: "LOC1", environment: "sandbox", webhookSignatureKey: sigKey, webhookUrl: "https://game.test/api/square/webhook" }, stripeFetch: fakeSquare },
+    });
+    sbase = `http://localhost:${sserver.port}`;
+  });
+  afterAll(async () => {
+    await sserver.close();
+  });
+  const call = async (path: string, opts: { token?: string; body?: unknown; headers?: Record<string, string> } = {}) => {
+    const res = await fetch(sbase + path, {
+      method: opts.body !== undefined ? "POST" : "GET",
+      headers: { ...(opts.token ? { authorization: `Bearer ${opts.token}` } : {}), ...opts.headers },
+      body: opts.body === undefined ? undefined : typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body),
+    });
+    return { status: res.status, body: (await res.json().catch(() => ({}))) as Record<string, any> };
+  };
+  const signUp = async (username: string) => {
+    const r = await call("/api/register", { body: { username, password: "correct horse" } });
+    return { token: r.body.token as string, id: r.body.user.id as number };
+  };
+
+  it("buying through Square: the game unlocks when the player returns, only once the order is paid", async () => {
+    expect((await call("/api/config")).body).toMatchObject({ canBuy: true, provider: "square" });
+    const p = await signUp("sqbuyer");
+    const start = await call("/api/checkout", { token: p.token, body: {} });
+    expect(start.body.url).toBe("https://square.test/pay/order_1");
+    // Back before paying: still locked.
+    expect((await call("/api/checkout/confirm", { token: p.token, body: { id: "square" } })).body.access).toBe(false);
+    // Someone else can't claim this order.
+    pay("order_1");
+    const other = await signUp("sqsneaky");
+    expect((await call("/api/checkout/confirm", { token: other.token, body: { id: "square" } })).body.access).toBe(false);
+    expect((await call("/api/checkout/confirm", { token: p.token, body: { id: "square" } })).body).toMatchObject({ access: true, accessKind: "paid" });
+  });
+
+  it("an underpaid order unlocks nothing", async () => {
+    const p = await signUp("sqcheap");
+    const start = await call("/api/checkout", { token: p.token, body: {} });
+    pay(start.body.url.split("/").pop(), 100);
+    expect((await call("/api/checkout/confirm", { token: p.token, body: { id: "square" } })).body.access).toBe(false);
+  });
+
+  it("Square's signed webhook unlocks the game; a forged one doesn't", async () => {
+    const p = await signUp("sqhook");
+    const start = await call("/api/checkout", { token: p.token, body: {} });
+    const orderId = start.body.url.split("/").pop();
+    pay(orderId);
+    const event = JSON.stringify({ type: "payment.updated", data: { object: { payment: { order_id: orderId, status: "COMPLETED" } } } });
+    const { createHmac } = await import("node:crypto");
+    const sign = (key: string) => createHmac("sha256", key).update(`https://game.test/api/square/webhook${event}`).digest("base64");
+    expect((await call("/api/square/webhook", { body: event, headers: { "x-square-hmacsha256-signature": sign("wrong") } })).status).toBe(400);
+    expect((await call("/api/me", { token: p.token })).body.access).toBe(false);
+    expect((await call("/api/square/webhook", { body: event, headers: { "x-square-hmacsha256-signature": sign(sigKey) } })).status).toBe(200);
+    expect((await call("/api/me", { token: p.token })).body.accessKind).toBe("paid");
   });
 });
