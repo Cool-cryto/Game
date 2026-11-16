@@ -5,6 +5,8 @@ import { useUi } from "./state/uiStore";
 import { useEditor } from "./state/editor";
 import { EditorPanel } from "./ui/EditorPanel";
 import { startSimulation } from "./state/gameStore";
+import { startAutosave } from "./state/autosave";
+import { AutosaveNotice } from "./ui/AutosaveNotice";
 import { GameErrors } from "./ui/GameErrors";
 import { InfoPanel } from "./ui/InfoPanel";
 import { NewsFeed } from "./ui/NewsFeed";
@@ -18,13 +20,17 @@ function OnlineDialogHost() {
 }
 import { Legend } from "./ui/Legend";
 import { ZoomControls } from "./ui/ZoomControls";
-import { Guide, StartScreen } from "./ui/simple/SimpleHud";
+import { Guide } from "./ui/simple/SimpleHud";
+import { StartScreen } from "./ui/StartScreen";
 import { TopNav } from "./ui/nav/TopNav";
 import { MapModeControl } from "./ui/nav/MapModeControl";
 import { ScreenHost } from "./ui/screens/ScreenHost";
 
 export function App() {
-  useEffect(() => startSimulation(), []);
+  useEffect(() => {
+    startSimulation();
+    void startAutosave();
+  }, []);
   const view = useUi((s) => s.view);
   const editorWanted = useUi((s) => s.editor);
   const editing = useEditor((s) => s.active);
@@ -67,6 +73,7 @@ export function App() {
       <ZoomControls />
       <GameErrors />
       <NewsFeed />
+      <AutosaveNotice />
       <OnlinePanel />
       <OnlineDialogHost />
       <footer className="credits">

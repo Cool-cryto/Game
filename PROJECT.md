@@ -150,7 +150,14 @@ Built: scenario system; **End of the Cold War (1991)** with the Soviet Union, Yu
 browser, export/import, play, host online); server support for scenarios and custom worlds; borders computed from the
 live map.
 
-### Stage 17 — Overhaul Stage A: clock and conquest ✅ (current)
+### Stage 18 — Overhaul Stage B: saves and setup ✅ (current)
+Built: autosave (every 5 seconds and when the tab closes; restored automatically on reload); four difficulty levels
+that change the player's starting money and how readily computer countries attack human players (never free
+resources for the AI; save version 9); a country selection screen with search, starting figures for every country,
+scenario information, difficulty and Start game. Fixed: time could stay stopped after loading a game; the map could
+stay on "Loading world map…" after a quick ownership change; the globe could keep old borders.
+
+### Stage 17 — Overhaul Stage A: clock and conquest ✅
 Start of the grand-strategy overhaul (findings and the stage plan are in [docs/OVERHAUL.md](docs/OVERHAUL.md)).
 Built: pause and 1x–4x speed in single player (button, Space, +/-), with 2x the old pace and still one clock; online
 rooms keep the server's fixed pace. Provinces are no longer taken the moment an army walks in. Occupying takes 2–12

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { online, useOnline } from "../net/online";
 import { newGameState, useGame } from "../state/gameStore";
+import { clearAutosave } from "../state/autosave";
 import { deleteSlot, describe, exportSave, importSave, listSlots, loadFromSlot, saveToSlot, SLOTS, type SaveInfo, type Slot } from "../state/saves";
 import { useUi } from "../state/uiStore";
 import { SCENARIOS } from "../data/scenarios";
@@ -256,6 +257,7 @@ function NewGame({ onStarted, onEditor }: { onStarted: (name: string) => void; o
       const saved = worlds.find((w) => `world:${w.id}` === id);
       const scenario = builtIn ? await builtIn.load() : saved ? await scenarioFromCustom(saved.world) : null;
       if (!scenario) return;
+      await clearAutosave();
       replace(newGameState(scenario));
       onStarted(scenario.name);
     } catch (e) {

@@ -231,7 +231,7 @@ test("time stands still until you lead a country, then runs at the chosen speed;
 
 test("you can play as a country and change its policies", async ({ page }) => {
   await openMap(page);
-  await expect(page.getByTestId("player-card")).toContainText("Play as");
+  await expect(page.getByTestId("player-card")).toContainText("Choose a country");
   await searchFor(page, "japan");
   await panel(page).getByRole("button", { name: "Play as Japan" }).click();
   await expect(page.getByTestId("player-card")).toContainText("Japan");
@@ -599,7 +599,19 @@ test.describe("top navigation (first-time player)", () => {
     const errors = await openMap(page);
     const start = page.getByTestId("start-screen");
     await expect(start).toContainText("Your goal");
-    await start.getByRole("button", { name: /France/ }).click();
+    await expect(page.getByTestId("start-scenario")).toContainText("Modern World");
+    // Search any country, see its starting figures, pick a difficulty, start.
+    await page.getByTestId("start-search").fill("viet");
+    await start.getByRole("option", { name: /Vietnam/ }).click();
+    await expect(page.getByTestId("start-detail")).toContainText("Population");
+    await expect(page.getByTestId("start-detail")).toContainText("Military (est.)");
+    await page.getByTestId("start-search").fill("");
+    await start.getByRole("option", { name: /France/ }).click();
+    await page.getByTestId("difficulty-hard").click();
+    await page.getByTestId("start-game").click();
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __gsGame: { getState: () => { state: { settings: { difficulty: string } } } } }).__gsGame.getState().state.settings.difficulty))
+      .toBe("hard");
     await expect(page.getByTestId("guide")).toContainText("You lead France");
     await page.getByRole("button", { name: "Let's go" }).click();
     await expect(page.getByTestId("player-card")).toContainText("Rank");
@@ -816,4 +828,25 @@ test("W/A/S/D move the camera on the flat map and the globe, but not while typin
   const cam1 = await page.evaluate(() => window.__gsGlobe!.camera());
   expect(cam1.lat).toBeLessThan(cam0.lat - 3); // looking further south
   expect(errors).toEqual([]);
+});
+
+test("the game is autosaved and comes back after a page refresh", async ({ page }) => {
+  await openMap(page);
+  await playAs(page, "Japan");
+  const tickNow = () => page.evaluate(() => (window as unknown as { __gsGame: { getState: () => { state: { tick: number } } } }).__gsGame.getState().state.tick);
+  await page.waitForTimeout(6000); // past the first autosave
+  const before = await tickNow();
+  expect(before).toBeGreaterThan(30);
+  await page.reload();
+  await page.waitForFunction(() => window.__gsMap);
+  await expect(page.getByTestId("autosave-notice")).toContainText("Japan");
+  await expect(page.getByTestId("player-card")).toContainText("Japan");
+  // At most one autosave interval (5 seconds, ~105 days at 2x) is lost, even if the save on closing doesn't finish.
+  const restored = await tickNow();
+  expect(restored).toBeGreaterThan(30);
+  expect(restored).toBeGreaterThanOrEqual(before - 110);
+  // Time keeps running after the restore.
+  const t = await tickNow();
+  await page.waitForTimeout(1000);
+  expect(await tickNow()).toBeGreaterThan(t);
 });

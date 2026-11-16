@@ -36,6 +36,7 @@ import {
   wouldAcceptPeace,
 } from "./diplomacy";
 import { canRecruit, planMove, recruit, startMove, UNIT_STATS } from "./military";
+import { DIFFICULTIES, DIFFICULTY_RULES, type Difficulty } from "./state";
 import { BUDGET_CATEGORIES, logEvent, nameOf, type BudgetCategory, type GameState, type PeaceTerms, type UnitType } from "./state";
 
 /**
@@ -45,6 +46,8 @@ import { BUDGET_CATEGORIES, logEvent, nameOf, type BudgetCategory, type GameStat
  */
 export type Command =
   | { type: "claimCountry"; country: CountryId }
+  /** Single player, before you lead a country (the server never accepts it). */
+  | { type: "setDifficulty"; difficulty: Difficulty }
   | { type: "releaseCountry"; country: CountryId }
   | { type: "setTaxRate"; country: CountryId; value: number }
   | { type: "setBudget"; country: CountryId; category: BudgetCategory; value: number }
@@ -82,6 +85,11 @@ const cooldownLeft = (s: GameState, from: CountryId, to: CountryId) => {
 
 /** Returns null if the command is allowed, otherwise the reason it isn't. */
 export function validateCommand(s: GameState, geo: Geography, cmd: Command): string | null {
+  if (cmd.type === "setDifficulty") {
+    if (!DIFFICULTIES.includes(cmd.difficulty)) return "Unknown difficulty.";
+    if (Object.values(s.countries).some((x) => x.controller === "human")) return "Difficulty is chosen before you take a country.";
+    return null;
+  }
   const c = s.countries[cmd.country];
   if (!c) return `Unknown country ${cmd.country}`;
   if (!c.active) return `${c.name} has no government to give orders`;
@@ -202,11 +210,22 @@ export function wouldAcceptAlliance(s: GameState, from: CountryId, target: Count
 export function applyCommand(s: GameState, geo: Geography, cmd: Command): string | null {
   const error = validateCommand(s, geo, cmd);
   if (error) return error;
+  if (cmd.type === "setDifficulty") {
+    s.settings.difficulty = cmd.difficulty;
+    return null;
+  }
   const c = s.countries[cmd.country]!;
   switch (cmd.type) {
     case "claimCountry":
       // The caller releases the player's previous country first (see the client and server).
       c.controller = "human";
+      // The difficulty's starting money, once per country.
+      if (!s.settings.started.includes(c.id)) {
+        const rules = DIFFICULTY_RULES[s.settings.difficulty];
+        c.treasury += rules.playerTreasury * c.gdp;
+        c.defenseFund = Math.max(0, c.defenseFund + (rules.playerDefenseMonths * c.gdp * c.budget.defense) / 12);
+        s.settings = { ...s.settings, started: [...s.settings.started, c.id] };
+      }
       break;
     case "releaseCountry":
       c.controller = "ai";
