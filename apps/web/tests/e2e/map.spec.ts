@@ -626,7 +626,7 @@ test.describe("top navigation (first-time player)", () => {
     const screens: [string, string[]][] = [
       ["country", ["Overview", "Provinces", "History"]],
       ["economy", ["Overview", "Budget & taxes", "Resources & trade", "Debt", "Detailed budget"]],
-      ["military", ["Overview", "Forces", "Military budget", "Equipment"]],
+      ["military", ["Overview", "Forces", "Generals", "Unit types", "Military budget"]],
       ["diplomacy", ["Relations", "Wars & peace", "Alliances", "Treaties", "Organizations"]],
       ["government", ["Overview", "Parties & elections", "Laws", "Stability"]],
       ["research", ["Overview", "Technology tree", "Research spending"]],
@@ -855,4 +855,33 @@ test("the game is autosaved and comes back after a page refresh", async ({ page 
   const t = await tickNow();
   await page.waitForTimeout(1000);
   expect(await tickNow()).toBeGreaterThan(t);
+});
+
+test("military: recruit a chosen unit type in numbers, it trains first; hire and assign a general", async ({ page }) => {
+  await openMap(page);
+  await playAs(page, "France");
+  await page.getByTestId("nav-military").click();
+  const screen = page.getByTestId("screen-military");
+  const count = () =>
+    page.evaluate(() => Object.values((window as unknown as { __gsGame: { getState: () => { state: { units: Record<string, { owner: string; kind: string; training?: number }> } } } }).__gsGame.getState().state.units).filter((u) => u.owner === "FRA" && u.kind === "artillery" && u.training).length);
+  await screen.getByTestId("kind-artillery").click();
+  await screen.getByTestId("recruit-count").fill("2");
+  await screen.getByTestId("recruit-button").click();
+  await expect.poll(count).toBe(2);
+  await screen.getByRole("tab", { name: "Forces" }).click();
+  await expect(page.getByTestId("forces-table")).toContainText("artillery");
+  // Unit types: locked kinds say what research they need.
+  await screen.getByRole("tab", { name: "Unit types" }).click();
+  await expect(page.getByTestId("unit-catalogue")).toContainText("Aircraft carriers");
+  // Generals.
+  await screen.getByRole("tab", { name: "Generals" }).click();
+  await page.getByTestId("hire-general").click();
+  const list = page.getByTestId("generals-list");
+  await expect(list.locator(".general")).toHaveCount(1);
+  const select = list.locator("select").first();
+  const option = await select.locator("option").nth(1).getAttribute("value");
+  await select.selectOption(option!);
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __gsGame: { getState: () => { state: { generals: { unit: number | null }[] } } } }).__gsGame.getState().state.generals.filter((g) => g.unit !== null).length))
+    .toBeGreaterThan(0);
 });

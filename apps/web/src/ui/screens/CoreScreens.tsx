@@ -4,7 +4,6 @@ import {
   ADMIN_COST,
   BUDGET_CATEGORIES,
   BUDGET_RANGE,
-  canRecruit,
   debtRatio,
   growthBreakdown,
   weightedLevel,
@@ -12,10 +11,8 @@ import {
   governmentLabel,
   isAtWar,
   MAX_INFRASTRUCTURE,
-  recruitCost,
   stabilityBreakdown,
   supplied,
-  UNIT_STATS,
   unitCap,
   upkeepPerYear,
   type CountryState,
@@ -25,17 +22,18 @@ import {
   RESOURCE_PRICE,
   TRADE_STATE_SHARE,
 } from "@gs/sim";
-import { flagUrl, GEOGRAPHY, getCountry, getProvince, landNeighbours } from "../../data/countries";
+import { flagUrl, getCountry, getProvince, landNeighbours } from "../../data/countries";
 import { gdpPerCapita } from "../../map/mapModes";
 import { useGame } from "../../state/gameStore";
 import { useUi } from "../../state/uiStore";
 import { formatCompact, formatInt, formatMoneyMillions, formatPercent } from "../format";
 import { BUDGET_LABEL, GROWTH_LABELS, Meter, Policies, PolicySlider, RESOURCE_LABEL, STABILITY_LABELS, Why } from "../InfoPanel";
 import { unitStatus } from "../MilitaryPanel";
-import { economyRank, plainReason, recruitProvince } from "../simple/SimpleHud";
+import { economyRank } from "../simple/SimpleHud";
 import { currentFocus, currentTaxLevel, FOCUSES, policyCommands, TAX_LEVELS } from "../simple/focus";
 import { Sparkline } from "../Sparkline";
 import { Card, NeedCountry, Planned, Rows, ScreenFrame } from "./Screen";
+import { GeneralsPanel, kindSummary, RecruitPanel, stackGeneral, UnitCatalogue } from "./MilitaryForces";
 
 const money = formatMoneyMillions;
 const pct = (v: number, d = 1, signed = false) => formatPercent(v, d, signed);
@@ -450,11 +448,6 @@ function Debt({ c }: { c: CountryState }) {
 
 // ============ Military ============
 
-const TYPES: { type: UnitType; label: string; help: string }[] = [
-  { type: "army", label: "Army", help: "Fights on land and captures provinces." },
-  { type: "navy", label: "Fleet", help: "Carries armies across the sea." },
-  { type: "air", label: "Air force", help: "Supports nearby battles." },
-];
 
 export function MilitaryScreen() {
   return (
@@ -467,8 +460,9 @@ export function MilitaryScreen() {
           tabs={[
             { id: "overview", label: "Overview" },
             { id: "forces", label: "Forces", hint: "Where your units are and what they're doing" },
+            { id: "generals", label: "Generals", hint: "Commanders who lead your armies" },
+            { id: "types", label: "Unit types", hint: "Every kind of unit and what unlocks it" },
             { id: "budget", label: "Military budget" },
-            { id: "equipment", label: "Equipment" },
           ]}
         >
           {(tab) =>
@@ -478,8 +472,10 @@ export function MilitaryScreen() {
               <Forces c={c} />
             ) : tab === "budget" ? (
               <MilitaryBudget c={c} />
+            ) : tab === "generals" ? (
+              <GeneralsPanel c={c} />
             ) : (
-              <Planned title="Equipment" items={["Rifles, tanks, ships and aircraft as stockpiles", "Factories that produce equipment", "Units that need equipment to reach full strength"]} note="Today a unit's power comes from its strength and your technology level." />
+              <UnitCatalogue c={c} />
             )
           }
         </ScreenFrame>
@@ -496,11 +492,14 @@ function useMyUnits(id: CountryId) {
 function MilitaryOverview({ c }: { c: CountryState }) {
   const units = useMyUnits(c.id);
   const count = (t: UnitType) => units.filter((u) => u.type === t).length;
-  const upkeep = units.reduce((a, u) => a + upkeepPerYear(c, u.type), 0);
+  const upkeep = units.reduce((a, u) => a + upkeepPerYear(c, u.type, u.kind), 0);
   const strength = units.length ? units.reduce((a, u) => a + u.strength, 0) / units.length : 0;
+  const training = units.filter((u) => u.training).length;
   return (
     <>
-    <Recruit c={c} />
+    <div className="grid">
+      <RecruitPanel c={c} />
+    </div>
     <div className="grid">
       <Card title="Forces">
         <Rows
@@ -510,6 +509,7 @@ function MilitaryOverview({ c }: { c: CountryState }) {
             ["Air forces", String(count("air"))],
             ["Total / limit", `${units.length} / ${unitCap(c)}`, "Your population decides how many units you can support"],
             ["Average strength", units.length ? `${Math.round(strength)}%` : "—", "Units lose strength in battle and regain it at home"],
+            ...(training ? ([["In training", String(training), "Can't move yet; defend at half strength"]] as [string, string, string][]) : []),
           ]}
         />
       </Card>
@@ -550,9 +550,8 @@ function Forces({ c }: { c: CountryState }) {
           <tr key={p} className="table__click" onClick={() => select({ kind: "units", province: p, owner: c.id }, { focus: true })} title="Select on the map to give orders">
             <td>{getProvince(p)?.name ?? p}</td>
             <td>
-              {TYPES.filter((t) => list.some((u) => u.type === t.type))
-                .map((t) => `${list.filter((u) => u.type === t.type).length} ${UNIT_STATS[t.type].label.toLowerCase()}`)
-                .join(", ")}
+              {kindSummary(list)}
+              {stackGeneral(state, c.id, list) && <span className="table__sub">Led by {stackGeneral(state, c.id, list)!.name}</span>}
             </td>
             <td className="num">{Math.round(list.reduce((a, u) => a + u.strength, 0) / list.length)}%</td>
             <td>{unitStatus(state, list[0]!)}</td>
@@ -560,32 +559,6 @@ function Forces({ c }: { c: CountryState }) {
         ))}
       </tbody>
     </table>
-  );
-}
-
-function Recruit({ c }: { c: CountryState }) {
-  const s = useGame((x) => x.state);
-  const send = useGame((x) => x.send);
-  return (
-    <div className="grid">
-      <Card title="Recruit (one click)" hint="Armies and air forces are raised at your capital; fleets at your largest port." wide>
-        <div className="choices choices--3">
-          {TYPES.map((t) => {
-            const at = recruitProvince(s, c.id, t.type);
-            const raw = at ? canRecruit(s, GEOGRAPHY, c.id, t.type, at) : t.type === "navy" ? "You have no port to build a fleet in." : "You don't hold your capital right now.";
-            const reason = raw ? plainReason(raw, t.type) : null;
-            return (
-              <button key={t.type} className="choice" disabled={!!reason} title={reason ?? t.help} onClick={() => at && send({ type: "recruit", country: c.id, unitType: t.type, province: at })}>
-                <span className="choice__label">{t.label}</span>
-                <span className="choice__help">{reason ?? `${t.help} Raised in ${getProvince(at!)?.name ?? "your capital"}.`}</span>
-                <span className="choice__cost">{money(recruitCost(c, t.type))}</span>
-              </button>
-            );
-          })}
-        </div>
-        <p className="screen__note">Military money: {money(c.defenseFund)}. Starting forces are estimates sized from defense budgets, not real-world militaries.</p>
-      </Card>
-    </div>
   );
 }
 

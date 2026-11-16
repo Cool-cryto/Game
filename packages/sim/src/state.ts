@@ -8,8 +8,10 @@ import { startingGovernment, type Government } from "./government";
 import { resourceBonus, startingResearch, type Research } from "./tech";
 import { outputMultiplier, type Buildings, type Project } from "./construction";
 import type { Organization, Proposal, Treaty } from "./treaties";
+import type { UnitKind } from "./units";
+import type { General } from "./generals";
 
-export const SAVE_VERSION = 9;
+export const SAVE_VERSION = 10;
 
 /**
  * Difficulty. It never gives computer-run countries free money or units: it changes the player's starting
@@ -182,6 +184,10 @@ export interface Unit {
   travel: { mode: "land" | "sea" | "air"; daysLeft: number; total?: number } | null;
   /** Set while falling back from a lost battle; retreating units don't fight. */
   retreating: boolean;
+  /** What kind of unit within its branch (see units.ts). */
+  kind: UnitKind;
+  /** Days of training left: can't move yet, and defends at half strength. Missing when trained. */
+  training?: number;
 }
 
 export interface War {
@@ -275,6 +281,8 @@ export interface GameState {
   proposals: Proposal[];
   /** Recent news, newest last. */
   events: GameEvent[];
+  /** Military commanders (see generals.ts). */
+  generals: General[];
 }
 
 const DEFAULT_TAX: Record<string, number> = {
@@ -388,6 +396,7 @@ export function createGameState(scenario: Scenario, geo: Geography, seed: number
     organizations: startingOrganizations(scenario, countries),
     proposals: [],
     events: [],
+    generals: [],
   };
   refreshResources(state);
   for (const c of Object.values(countries)) c.capital = largestProvince(state, c.id);

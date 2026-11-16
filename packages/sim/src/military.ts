@@ -5,6 +5,9 @@ import { distanceKm, findLandPath, type Geography } from "./geography";
 import { allied, atWar, friendly, warBetween } from "./diplomacy";
 import { hasAccess } from "./treaties";
 import { logEvent, nameOf, provinceSize, type CountryState, type GameState, type Unit, type UnitType } from "./state";
+import { DEFAULT_KIND, kindOf, kindUnlocked, militaryLevel, UNIT_KINDS, type UnitKind } from "./units";
+import { generalAt, generalBonus, generalsFought, releaseOrphanedGenerals } from "./generals";
+import { supplied } from "./systems";
 
 /**
  * Strategic units. Numbers are game rules: an "army" is an abstract corps, not a
@@ -35,22 +38,37 @@ export function costMultiplier(c: CountryState): number {
   const perPerson = c.population > 0 ? (c.gdp * 1e6) / c.population : 0;
   return Math.max(0.15, Math.min(5, Math.pow(perPerson / 10_000, 0.8)));
 }
-export const recruitCost = (c: CountryState, type: UnitType) => UNIT_STATS[type].recruit * costMultiplier(c);
-export const upkeepPerYear = (c: CountryState, type: UnitType) => recruitCost(c, type) * UPKEEP_SHARE;
+/** Price of recruiting one unit: the branch's base price, times the kind's multiplier, times the country's wage level. */
+export const recruitCost = (c: CountryState, type: UnitType, kind: UnitKind = DEFAULT_KIND[type]) => UNIT_STATS[type].recruit * UNIT_KINDS[kind].cost * costMultiplier(c);
+export const upkeepPerYear = (c: CountryState, type: UnitType, kind: UnitKind = DEFAULT_KIND[type]) => recruitCost(c, type, kind) * UPKEEP_SHARE;
 /** Most units a country's population can field. */
 /** How many units a country can support: grows with population; conscription raises it (see government.ts). */
 export const unitCap = (c: CountryState) => (c.active ? Math.floor((1 + Math.floor(Math.sqrt(c.population / 1e6))) * conscriptionCap(c)) : 0);
 const conscriptionCap = (c: CountryState) => ({ volunteer: 1, limited: 1.3, mass: 1.7 })[c.government?.laws.conscription ?? "volunteer"];
 export const unitsOf = (s: GameState, c: CountryId) => Object.values(s.units).filter((u) => u.owner === c);
-export function combatPower(s: GameState, u: Unit) {
+/** Fuel: units that burn it fight at 60-100% depending on how much of its energy the country is getting. */
+export function fuelFactor(s: GameState, u: Unit, logistics = false): number {
+  if (!kindOf(u).fuel) return 1;
   const c = s.countries[u.owner];
-  const m = techMods(c);
-  const typeBonus = u.type === "army" ? m.armyPower : u.type === "navy" ? m.fleetPower : 0;
-  return (u.strength / 100) * UNIT_STATS[u.type].power * (1 + 0.08 * (c?.research?.levels.military ?? c?.techLevel ?? 1)) * (1 + typeBonus + m.unitPower);
+  const energy = c ? supplied(c.resources.energy) : 1;
+  return 1 - (1 - energy) * (logistics ? 0.2 : 0.4);
 }
 
-function addUnit(s: GameState, owner: CountryId, type: UnitType, province: ProvinceId, strength: number): Unit {
-  const u: Unit = { id: s.nextId++, owner, type, province, strength, path: [], travel: null, retreating: false };
+/**
+ * A unit's fighting power. `role` picks attack or defense (both averaged when unspecified, e.g. for comparing
+ * armies). Strength, kind, military technology, fuel and training all count.
+ */
+export function combatPower(s: GameState, u: Unit, role?: "attack" | "defense") {
+  const c = s.countries[u.owner];
+  const m = techMods(c);
+  const k = kindOf(u);
+  const typeBonus = u.type === "army" ? m.armyPower : u.type === "navy" ? m.fleetPower : 0;
+  const base = role === "attack" ? k.attack : role === "defense" ? k.defense : (k.attack + k.defense) / 2;
+  return (u.strength / 100) * base * UNIT_STATS[u.type].power * (1 + 0.08 * militaryLevel(c)) * (1 + typeBonus + m.unitPower) * fuelFactor(s, u) * (u.training ? 0.5 : 1);
+}
+
+function addUnit(s: GameState, owner: CountryId, type: UnitType, province: ProvinceId, strength: number, kind: UnitKind = DEFAULT_KIND[type]): Unit {
+  const u: Unit = { id: s.nextId++, owner, type, kind, province, strength, path: [], travel: null, retreating: false };
   s.units[u.id] = u;
   return u;
 }
@@ -72,31 +90,41 @@ export function createStartingMilitaries(s: GameState, geo: Geography) {
     const navies = port && n >= 4 ? Math.max(1, Math.floor(n * 0.15)) : 0;
     const air = n >= 3 ? Math.max(1, Math.floor(n * 0.2)) : 0;
     const armies = n - navies - air;
-    for (let i = 0; i < armies; i++) addUnit(s, c.id, "army", owned[i % Math.min(owned.length, 4)]!.id, 100);
-    for (let i = 0; i < air; i++) addUnit(s, c.id, "air", c.capital, 100);
-    for (let i = 0; i < navies; i++) addUnit(s, c.id, "navy", port!.id, 100);
+    // A mix of kinds the country's military technology allows (estimated, like the numbers).
+    const lvl = militaryLevel(c);
+    const armyKind = (i: number): UnitKind => (lvl >= 4 && i % 5 === 4 ? "tanks" : lvl >= 1 && i % 4 === 3 ? "artillery" : "infantry");
+    const airKind = (i: number): UnitKind => (lvl >= 3 && i % 3 === 2 ? "bomber" : "fighter");
+    const navyKind = (i: number): UnitKind => (lvl >= 3 && i % 3 === 1 ? "cruiser" : lvl >= 2 && i % 4 === 3 ? "submarine" : "destroyer");
+    for (let i = 0; i < armies; i++) addUnit(s, c.id, "army", owned[i % Math.min(owned.length, 4)]!.id, 100, armyKind(i));
+    for (let i = 0; i < air; i++) addUnit(s, c.id, "air", c.capital, 100, airKind(i));
+    for (let i = 0; i < navies; i++) addUnit(s, c.id, "navy", port!.id, 100, navyKind(i));
   }
 }
 
 // ---------- Recruiting ----------
 
-export function canRecruit(s: GameState, geo: Geography, country: CountryId, type: UnitType, province: ProvinceId): string | null {
+export function canRecruit(s: GameState, geo: Geography, country: CountryId, type: UnitType, province: ProvinceId, kind: UnitKind = DEFAULT_KIND[type]): string | null {
   const c = s.countries[country];
   const p = s.provinces[province];
   if (!c?.active) return "That country can't raise forces.";
+  if (!UNIT_KINDS[kind] || UNIT_KINDS[kind].type !== type) return "Unknown unit type.";
+  if (!kindUnlocked(c, kind)) return `${UNIT_KINDS[kind].label} need military research level ${UNIT_KINDS[kind].tech}.`;
   if (!p || p.owner !== country || p.controller !== country) return "You can only recruit in provinces you own and hold.";
   if (type === "navy" && !geo.provinces[province]?.coastal) return "Fleets can only be built in coastal provinces.";
   if (unitsOf(s, country).length >= unitCap(c)) return `Your population supports at most ${unitCap(c)} units.`;
-  const cost = recruitCost(c, type);
+  const cost = recruitCost(c, type, kind);
   if (c.defenseFund < cost) return `Not enough defense funds (needs $${Math.round(cost).toLocaleString("en-US")}M).`;
   return null;
 }
 
-export function recruit(s: GameState, country: CountryId, type: UnitType, province: ProvinceId): Unit {
+export function recruit(s: GameState, country: CountryId, type: UnitType, province: ProvinceId, kind: UnitKind = DEFAULT_KIND[type]): Unit {
   const c = s.countries[country]!;
-  c.defenseFund -= recruitCost(c, type);
-  // New units start a little under strength and fill up at home; a military base trains them to full strength.
-  return addUnit(s, country, type, province, s.provinces[province]?.buildings?.base ? 100 : 75);
+  c.defenseFund -= recruitCost(c, type, kind);
+  // New units train before they can move; a military base trains them to full strength and 30% faster.
+  const base = s.provinces[province]?.buildings?.base ?? 0;
+  const u = addUnit(s, country, type, province, base ? 100 : 75, kind);
+  u.training = Math.max(1, Math.round(UNIT_KINDS[kind].trainDays * (base ? 0.7 : 1)));
+  return u;
 }
 
 // ---------- Movement ----------
@@ -118,10 +146,18 @@ export function canEnter(s: GameState, country: CountryId, p: ProvinceId): boole
 export type Plan = { path: ProvinceId[]; mode: "land" | "sea" | "air" } | { error: string };
 
 /** Work out how a unit would get to a province. */
+/** Paratroopers can be dropped this far into enemy land. */
+export const AIRDROP_KM = 1200;
+
 export function planMove(s: GameState, geo: Geography, u: Unit, to: ProvinceId): Plan {
   if (u.province === to) return { error: "Already there." };
   const target = s.provinces[to];
   if (!target) return { error: "Unknown province." };
+  if (u.training) return { error: `Still training (${u.training} days left).` };
+  // Paratroopers drop by air onto enemy land in range, if the country has transport aircraft.
+  if (kindOf(u).airborne && atWar(s, u.owner, target.controller) && distanceKm(geo, u.province, to) <= AIRDROP_KM) {
+    if (Object.values(s.units).some((x) => x.owner === u.owner && x.kind === "transportPlane")) return { path: [to], mode: "air" };
+  }
   if (u.type === "air") {
     if (!friendly(s, u.owner, target.controller)) return { error: "Air wings can only be based in provinces you or your allies hold." };
     return { path: [to], mode: "air" };
@@ -144,7 +180,9 @@ export function planMove(s: GameState, geo: Geography, u: Unit, to: ProvinceId):
 }
 
 function legDays(s: GameState, geo: Geography, u: Unit, mode: "land" | "sea" | "air", next: ProvinceId): number {
-  const km = distanceKm(geo, u.province, next);
+  // The kind's speed, and a logistician general leading the stack.
+  const g = generalAt(s, u.owner, u.province);
+  const km = distanceKm(geo, u.province, next) / (kindOf(u).speed * (g?.trait === "logistics" ? 1.15 : 1));
   if (mode === "air") return Math.max(1, Math.ceil(km / AIR_KM_PER_DAY));
   const m = techMods(s.countries[u.owner]);
   const port = s.provinces[u.province]?.buildings?.port ?? 0;
@@ -194,6 +232,11 @@ export function stalled(s: GameState, u: Unit): boolean {
 
 export function advanceMovement(s: GameState, geo: Geography) {
   for (const u of Object.values(s.units)) {
+    if (u.training) {
+      u.training -= 1;
+      if (u.training <= 0) u.training = undefined;
+      continue;
+    }
     if (!u.travel || !u.path.length) continue;
     if (stalled(s, u)) continue;
     u.travel.daysLeft -= 1;
@@ -231,6 +274,9 @@ export function advanceMovement(s: GameState, geo: Geography) {
 export function resolveBattles(s: GameState, geo: Geography) {
   if (!s.wars.length) return;
   const byPlace = new Map<string, Unit[]>();
+  // Air wings and carriers that can support a battle (ready, not flying somewhere).
+  const supporters = Object.values(s.units).filter((u) => (u.type === "air" || kindOf(u).carrier) && !u.travel && !u.training);
+  const leaders = new Set<number>();
   for (const u of Object.values(s.units)) {
     if (u.type === "air" || u.retreating || (u.travel && !stalled(s, u))) continue;
     const k = `${u.province}#${u.type}`;
@@ -246,23 +292,9 @@ export function resolveBattles(s: GameState, geo: Geography) {
     const sideA = units.filter((u) => friendly(s, u.owner, first));
     const sideB = units.filter((u) => atWar(s, u.owner, first));
     if (!sideA.length || !sideB.length) continue;
-    const powerOf = (side: Unit[]) => {
-      let p = side.reduce((sum, u) => sum + combatPower(s, u), 0);
-      const holder = s.provinces[province]!.controller;
-      // Defending your own ground: +20%, and +15% per fortification level.
-      if (side.some((u) => friendly(s, u.owner, holder))) p *= 1.2 + 0.15 * (s.provinces[province]!.buildings?.fort ?? 0);
-      const air = Object.values(s.units).filter(
-        (a) =>
-          a.type === "air" &&
-          !a.travel &&
-          friendly(s, a.owner, side[0]!.owner) &&
-          // An airbase extends the range by 40% per level.
-          distanceKm(geo, a.province, province) <= AIR_RANGE_KM * (1 + 0.4 * (s.provinces[a.province]?.buildings?.airbase ?? 0)),
-      ).length;
-      return p * (1 + Math.min(3, air) * 0.15 * (1 + techMods(s.countries[side[0]!.owner]).airSupport));
-    };
-    const pa = powerOf(sideA);
-    const pb = powerOf(sideB);
+    const branch = key.split("#")[1] as UnitType;
+    const pa = sidePower(s, geo, province, branch, sideA, sideB, supporters, leaders);
+    const pb = sidePower(s, geo, province, branch, sideB, sideA, supporters, leaders);
     const war = warBetween(s, sideA[0]!.owner, sideB[0]!.owner);
     const hit = (side: Unit[], ratio: number) => {
       for (const u of side) {
@@ -286,6 +318,60 @@ export function resolveBattles(s: GameState, geo: Geography) {
       }
     }
   }
+  generalsFought(s, leaders);
+  releaseOrphanedGenerals(s);
+}
+
+/** Can this air wing (or carrier) support a battle in `province`? Airbases extend an air wing's range 40% per level. */
+function inRange(s: GameState, geo: Geography, a: Unit, province: ProvinceId): boolean {
+  if (a.type !== "air") return a.province === province; // a carrier supports battles where it is
+  return distanceKm(geo, a.province, province) <= AIR_RANGE_KM * (1 + 0.4 * (s.provinces[a.province]?.buildings?.airbase ?? 0));
+}
+
+/**
+ * One side's power in a battle:
+ * - each unit attacks or defends (defenders are the side holding the province) with its kind's numbers;
+ * - anti-tank units blunt enemy armour (up to -30%); submarines hit hard unless the enemy has destroyers;
+ * - generals add skill and trait bonuses;
+ * - defenders get +20% for home ground and +15% per fortification level (land battles);
+ * - air support from air wings in range and carriers present, minus what enemy fighters and anti-air cancel (up to +60%).
+ */
+function sidePower(s: GameState, geo: Geography, province: ProvinceId, branch: UnitType, side: Unit[], other: Unit[], supporters: Unit[], leaders: Set<number>): number {
+  const holder = s.provinces[province]!.controller;
+  const defending = side.some((u) => friendly(s, u.owner, holder));
+  const role = defending ? "defense" : "attack";
+  const myArmored = side.filter((u) => kindOf(u).armored).length;
+  const theirAT = other.filter((u) => kindOf(u).antiArmor).length;
+  const armorFactor = myArmored ? 1 - 0.3 * Math.min(1, theirAT / myArmored) : 1;
+  const theyHuntSubs = other.some((u) => kindOf(u).antiSub);
+  let p = 0;
+  for (const u of side) {
+    const k = kindOf(u);
+    let v = combatPower(s, u, role);
+    if (k.armored) v *= armorFactor;
+    if (k.submarine) v *= theyHuntSubs ? 0.7 : 1.4;
+    const g = generalAt(s, u.owner, province);
+    if (g) leaders.add(g.id);
+    v *= generalBonus(g, u, !defending, !!k.armored);
+    p += v;
+  }
+  if (defending) p *= branch === "army" ? 1.2 + 0.15 * (s.provinces[province]!.buildings?.fort ?? 0) : 1.1;
+  // Air support.
+  const owner = side[0]!.owner;
+  const enemy = other[0]!.owner;
+  const coastal = !!geo.provinces[province]?.coastal;
+  let support = 0;
+  let cancelled = 0;
+  for (const a of supporters) {
+    const k = kindOf(a);
+    if (friendly(s, a.owner, owner) && inRange(s, geo, a, province)) {
+      if (a.type === "navy" && branch === "army" && !coastal) continue;
+      support += ((branch === "navy" ? k.seaSupport : k.landSupport) ?? 0) * (a.strength / 100);
+    } else if (friendly(s, a.owner, enemy) && a.type === "air" && inRange(s, geo, a, province)) cancelled += (k.airDefense ?? 0) * (a.strength / 100);
+  }
+  if (branch === "army") cancelled += other.filter((u) => kindOf(u).antiAir).length;
+  support = Math.min(0.6, Math.max(0, support * (1 + techMods(s.countries[owner]).airSupport) - 0.12 * cancelled));
+  return p * (1 + support);
 }
 
 /** Fall back to the nearest province held by our side; with nowhere to go, the unit is destroyed. */
@@ -365,8 +451,10 @@ export function advanceSieges(s: GameState) {
     if (armies.some((u) => friendly(s, u.owner, p.controller))) continue;
     const days = siegeDays(p.infrastructure, p.buildings?.fort ?? 0, p.areaKm2);
     if (!p.siege || p.siege.by !== besieger.owner) p.siege = { by: besieger.owner, progress: 0 };
-    const force = Math.min(3, armies.filter((u) => friendly(s, u.owner, besieger.owner)).reduce((a, u) => a + u.strength / 100, 0));
-    p.siege.progress += force / days;
+    // Special forces occupy faster, and so does a siege specialist leading the stack.
+    const force = Math.min(3, armies.filter((u) => friendly(s, u.owner, besieger.owner)).reduce((a, u) => a + (u.strength / 100) * (kindOf(u).occupation ?? 1), 0));
+    const siegeGeneral = generalAt(s, besieger.owner, id)?.trait === "siege" ? 1.3 : 1;
+    p.siege.progress += (force * siegeGeneral) / days;
     if (p.siege.progress >= 1) captureProvince(s, id, besieger.owner);
   }
 }
@@ -395,13 +483,14 @@ export function enforceUnitCaps(s: GameState) {
  * Upkeep comes out of the defense fund. Units at home and fully paid regain
  * strength; if the fund runs dry, every unit weakens.
  */
-export function militaryMonthly(s: GameState) {
+export function militaryMonthly(s: GameState, geo?: Geography) {
   const upkeep = new Map<CountryId, number>();
   for (const u of Object.values(s.units)) {
     const c = s.countries[u.owner];
     if (!c) continue;
-    upkeep.set(u.owner, (upkeep.get(u.owner) ?? 0) + upkeepPerYear(c, u.type) / 12);
+    upkeep.set(u.owner, (upkeep.get(u.owner) ?? 0) + upkeepPerYear(c, u.type, u.kind) / 12);
   }
+  strategicBombing(s, geo);
   for (const [id, cost] of upkeep) s.countries[id]!.defenseFund -= cost;
   enforceUnitCaps(s);
   for (const u of Object.values(s.units)) {
@@ -417,5 +506,26 @@ export function militaryMonthly(s: GameState) {
     // Military bases: +50% recovery per level for any unit stationed there.
     const base = 0.5 * (p?.buildings?.base ?? 0);
     if (home && !u.travel && u.strength < 100) u.strength = Math.min(100, u.strength + 10 * (1 + techMods(c).recovery + port + base));
+  }
+}
+
+/**
+ * Strategic bombers at war bomb the most populous enemy-held province in range once a month: its infrastructure
+ * drops (by up to 0.15 a wing at full strength). Enemy fighters within range halve the damage.
+ */
+export function strategicBombing(s: GameState, geo?: Geography) {
+  if (!s.wars.length || !geo) return;
+  const bombers = Object.values(s.units).filter((u) => u.kind === "strategicBomber" && !u.travel && !u.training);
+  for (const b of bombers) {
+    let target: { id: ProvinceId; pop: number } | null = null;
+    for (const p of Object.values(s.provinces)) {
+      if (!atWar(s, b.owner, p.controller) || p.population <= 0) continue;
+      if (distanceKm(geo, b.province, p.id) > AIR_RANGE_KM * (1 + 0.4 * (s.provinces[b.province]?.buildings?.airbase ?? 0))) continue;
+      if (!target || p.population > target.pop) target = { id: p.id, pop: p.population };
+    }
+    if (!target) continue;
+    const p = s.provinces[target.id]!;
+    const fighters = Object.values(s.units).some((f) => f.type === "air" && kindOf(f).airDefense && friendly(s, f.owner, p.controller) && distanceKm(geo, f.province, p.id) <= AIR_RANGE_KM);
+    p.infrastructure = Math.max(0, p.infrastructure - 0.15 * (b.strength / 100) * (fighters ? 0.5 : 1));
   }
 }

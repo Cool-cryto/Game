@@ -306,3 +306,15 @@ Serverless platforms are not a good fit, because players keep a connection open.
 - `construction.ts`: `farm`, `powerPlant`, `mine` (`outputMultiplier`, used by `rawProduction`), `lab` (research
   speed in `investment`, `labBonus` for the UI), `base` (recovery in `militaryMonthly`, full-strength recruits in
   `recruit`), `airbase` (air-support range in `resolveBattles`).
+
+### Military depth (Stage 20)
+
+- `units.ts`: `UNIT_KINDS` (stats per kind), `KINDS_OF`, `DEFAULT_KIND`, `kindOf`, `kindUnlocked`. `Unit.kind` and
+  `Unit.training` (days left).
+- `military.ts`: `recruitCost`/`upkeepPerYear` take a kind; `combatPower(s, u, role)`; `fuelFactor`; `sidePower` (attack
+  vs defense, counters, generals, home ground, air support from `supporters`); `strategicBombing` (monthly); paratrooper
+  drops in `planMove` (`AIRDROP_KM`).
+- `generals.ts`: `GameState.generals` (replaced, never edited in place, so `StateDiffer` sends it whole when it changes);
+  `generalAt`, `generalBonus`, `generalsFought`, `releaseOrphanedGenerals`.
+- Commands: `recruit` (`kind`, `count`), `hireGeneral`, `assignGeneral`, `dismissGeneral`.
+- UI: `apps/web/src/ui/screens/MilitaryForces.tsx` (recruitment, unit catalogue, generals).

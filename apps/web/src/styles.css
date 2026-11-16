@@ -4216,3 +4216,129 @@ button.infobar__country--empty {
   font-size: 12px;
   color: var(--text-dim);
 }
+
+/* ----- Recruitment by unit type, generals ----- */
+.seg-row {
+  display: inline-flex;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.kinds {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.kind {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "name cost" "stats stats";
+  gap: 2px 8px;
+  padding: 8px 10px;
+  text-align: left;
+  border-radius: 8px;
+  border: 1px solid var(--line, var(--border));
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.kind:hover {
+  border-color: rgba(255, 214, 120, 0.45);
+}
+.kind.is-on {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.kind.is-locked {
+  opacity: 0.55;
+}
+.kind__name {
+  grid-area: name;
+  font-weight: 600;
+  font-size: 13px;
+}
+.kind__cost {
+  grid-area: cost;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.kind__stats {
+  grid-area: stats;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.kind__summary {
+  margin: 10px 0 8px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+.recruit-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.recruit-row input[type="number"] {
+  width: 56px;
+  margin-left: 4px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-solid);
+  color: var(--text);
+}
+.recruit-row .btn {
+  width: auto;
+}
+.table__sub {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-dim);
+}
+tr.is-locked {
+  opacity: 0.55;
+}
+.generals {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.general {
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line, var(--border));
+  background: rgba(255, 255, 255, 0.02);
+}
+.general__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.general__rank {
+  font-size: 12px;
+  color: var(--accent);
+}
+.general__meta {
+  margin: 4px 0 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.general__cmd {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.general__cmd select {
+  max-width: 100%;
+  background: var(--surface-solid);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 6px;
+}

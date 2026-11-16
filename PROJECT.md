@@ -150,7 +150,13 @@ Built: scenario system; **End of the Cold War (1991)** with the Soviet Union, Yu
 browser, export/import, play, host online); server support for scenarios and custom worlds; borders computed from the
 live map.
 
-### Stage 19 — Overhaul Stage C: economy ✅ (current)
+### Stage 20 — Overhaul Stage D: military depth ✅ (current)
+Built: 22 unit types across army, air force and navy, each with attack, defense, speed, price, training time, a
+research unlock and fuel use; recruiting by type and quantity with training time; counters (anti-tank, anti-air,
+destroyers against submarines), fuel shortages, air support by type, strategic bombing and paratrooper drops;
+generals with skill, traits, experience and promotion. The AI uses all of it. Save version 10.
+
+### Stage 19 — Overhaul Stage C: economy ✅
 Built: a monthly ledger on the Economy screen (taxes, trade, every spending line, interest, construction, net
 change); budgets keep a 5% reserve, so the treasury grows in peacetime; trade earns or costs the state money at world
 prices (capped at ±2% of GDP a year); the AI spends savings above 25% of GDP. Six new buildings: farms, power plants,
