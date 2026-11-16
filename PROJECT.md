@@ -27,7 +27,7 @@ What was asked for at the start, and where each item stands today.
 | Historical scenarios | 🟡 One so far | End of the Cold War (1991). More need more data (see §7) |
 | Custom worlds | ✅ Done | World editor: paint provinces, create countries, save/share/play/host |
 | Economies | ✅ Done | GDP, taxes, budgets, debt, growth with explanations |
-| Governments | 🟡 Partly | Stability, tax and spending policy; **no government types yet** (see §7) |
+| Governments | ✅ Done | Real government types (V-Dem + Wikidata), party blocs, laws, elections |
 | Populations | ✅ Done | Country and province populations that grow over time |
 | Resources | ✅ Done | Food, energy, minerals with a world market (deposits are game-generated) |
 | Technology | ✅ Done | Technology levels from research spending |
@@ -150,7 +150,18 @@ Built: scenario system; **End of the Cold War (1991)** with the Soviet Union, Yu
 browser, export/import, play, host online); server support for scenarios and custom worlds; borders computed from the
 live map.
 
-### Stage 10 — Top navigation ✅ (current)
+### Stage 11 — Government & elections ✅ (current)
+Built: every country starts with its real kind of government for the scenario's year: V-Dem "Regimes of the World"
+(liberal democracy, electoral democracy, electoral autocracy, closed autocracy; CC BY-SA 4.0) plus monarchy or republic
+from Wikidata (CC0), giving types such as constitutional monarchy, absolute monarchy or one-party rule. Four party blocs
+(Left, Centre, Right, Nationalist) with game-generated popularity that follows the economy, taxes, war and stability;
+elections every four years (free in democracies, managed in electoral autocracies, none in closed autocracies) and
+early elections; laws for conscription (raises the unit limit), the economic system and the press, each with
+trade-offs and a cooldown. Government feeds growth, stability, research and the unit limit; the AI adjusts conscription
+for war and peace and newly elected AI governments nudge policy. Government screen (overview, parties & elections, laws,
+stability), a Government map mode, government in country panels. Old saves and server rooms upgrade automatically.
+
+### Stage 10 — Top navigation ✅
 Built: a permanent top navigation (World, Country, Economy, Military, Diplomacy, Government, Research, Construction,
 Statistics, More) with search, Play online and Settings on the right; an information bar with flag, treasury, rank,
 date, pause and speed; one management screen at a time, each with tabs, tooltips and "Back to map"; the map keeps its
@@ -184,11 +195,15 @@ data) had never been uploaded to GitHub, so a fresh download didn't build.
 | Flags | `flag-icons` | MIT |
 | 1991 population | World Bank, via github.com/datasets/population | Public domain (ODC-PDDL) |
 | 1991 GDP | World Bank, via github.com/datasets/gdp | CC BY 4.0 (credited in the game) |
+| Kind of government (1991, 2020) | V-Dem Regimes of the World, via Our World in Data | CC BY-SA 4.0 (credited in the game) |
+| Monarchy or republic | Wikidata | CC0 |
 
 Estimated or game-generated (always labelled in the game):
 - Province populations (split from country totals by cities and land).
 - Resource deposits (food, energy, minerals) — game-generated, not real data.
 - Starting militaries — sized from defense budgets, not real armies.
+- Party blocs and their popularity, starting laws and election dates — game-generated; ~60 small places without V-Dem
+  data have an estimated kind of government (labelled).
 - 1991 GDP for 48 places with no World Bank figure (mostly territories, plus e.g. the Baltic states, Belarus, Iran).
 
 ---
@@ -217,15 +232,13 @@ bandwidth 5× too high, and an editor race that wiped a newly created country.
 ## 7. What is still left to build
 
 ### Next steps (recommended order)
-0. **Systems the new screens are waiting for** (each screen already has its place): government types, parties and
-   elections; a technology tree; buildings (factories, railways, ports); equipment; treaties and organizations;
+0. **Systems the new screens are waiting for** (each screen already has its place): a technology tree; buildings (factories, railways, ports); equipment; treaties and organizations;
    intelligence.
 1. **Hosting on the internet** so friends anywhere can play online. Needs an account with a host that runs a long-lived
    Node.js app with a persistent disk (e.g. Fly.io, Railway, Render or a small VPS) and HTTPS. Steps are in
    [docs/HOSTING.md](docs/HOSTING.md). The project is ready to deploy (Dockerfile, Railway settings, proxy-safe sign-in
    limit, connection keep-alive). *Waiting on: you creating a hosting account.*
-2. **Government types** (democracy, monarchy, one-party state…) with real effects, using an openly licensed dataset
-   (e.g. V-Dem or Polity — licences to be checked) rather than invented labels.
+2. **Changing the kind of government**: reforms, coups and revolutions (governments, parties, laws and elections exist).
 3. **Naval warfare**: fleet battles, blockades, AI sea invasions.
 4. **More historical scenarios** (e.g. 1936, 1914). These need historical borders that don't follow today's provinces and
    reliable open economic data for those years; the project currently has neither.

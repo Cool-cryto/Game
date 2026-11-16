@@ -185,6 +185,16 @@ Behind a host's proxy set `TRUST_PROXY=1` so the sign-in limit sees each player'
 The server pings every WebSocket every 25 s so proxies don't close quiet connections, and closes ones that stop answering.
 Serverless platforms are not a good fit, because players keep a connection open. Step-by-step: [HOSTING.md](HOSTING.md).
 
+### Government (Stage 11)
+
+- `packages/sim/src/government.ts` – `Government` on every country: `regime` (V-Dem), `monarchy`, `source`
+  (data / estimate / custom), ruling bloc, bloc `support`, `laws`, election schedule. `governmentEffects` feeds
+  `growthBreakdown` and `stabilityBreakdown` (a "government" line), research speed and `unitCap` (conscription).
+  `politicsMonthly` runs after the economy: support drifts, elections happen. Commands: `setLaw`, `callElection`.
+- Data: `apps/web/scripts/build-government.mjs` writes `regime` / `monarchy` (and `regimeEstimated`) onto scenario
+  countries. Save version 5; `deserialize(text, scenarioCountries)` upgrades version-4 saves (the server passes each
+  room's scenario).
+
 ### Interface layout (Stage 10)
 
 - `apps/web/src/ui/nav/TopNav.tsx` – the navigation bar (ten sections, search, Play online, Settings) and the information

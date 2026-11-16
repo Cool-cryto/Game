@@ -11,6 +11,8 @@ sources into `.cache/` (not committed) on first run.
 | src/data/countries.json | `world-countries` npm package (mledoze/countries) | ODbL 1.0, attribution shown in the app footer |
 | src/data/scenario-cold-war-1991.json (population, GDP) | World Bank population (ODC-PDDL) and GDP in current US$ (CC BY 4.0), via github.com/datasets/population and /gdp; built by `scripts/build-scenarios.mjs` | Population public domain; GDP CC BY 4.0, credit: World Bank |
 | ../flags/*.svg | `flag-icons` npm package | MIT |
+| Government in src/data/scenario-*.json (`regime`) | V-Dem "Regimes of the World" (Lührmann, Tannenberg & Lindberg), V-Dem dataset (Coppedge et al.), as published by Our World in Data (`political-regime.csv`), for 2020 and 1991; built by `scripts/build-government.mjs` | CC BY-SA 4.0, credit: V-Dem, processed by Our World in Data. The `regime` values are an adaptation and are also CC BY-SA 4.0 |
+| Government in src/data/scenario-*.json (`monarchy`) | Wikidata: form of government is a kind of monarchy, or head-of-state office is a kind of monarch; changes since 1991/2020 corrected by hand in the script | CC0 |
 
 Notes:
 - Country ids are ISO 3166-1 alpha-3 (e.g. `FRA`). Natural Earth codes that differ are mapped in `CODE_MAP`;
@@ -21,3 +23,7 @@ Notes:
 - Province ids are Natural Earth `adm1_code` values (e.g. `DEU-1591`).
 - 1991 scenario: missing World Bank figures are estimated from today's per-person values scaled by the world average's change since 1991; the scenario's data note lists how many.
 - The Soviet Union and Yugoslavia have no flag image (placeholder); Czechoslovakia uses the Czech flag, which is the same design.
+- Governments: the Soviet Union, Yugoslavia and Czechoslovakia use V-Dem's series for Russia, Serbia and Czechia (V-Dem
+  records them that way). Places V-Dem doesn't cover are estimates (an electoral democracy; Brunei, Vatican City and
+  Macau as closed autocracies) and are labelled as estimates in the game. Parties are broad game blocs with
+  game-generated popularity; starting laws are game defaults; election dates follow the game's own schedule.

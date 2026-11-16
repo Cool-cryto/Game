@@ -3412,3 +3412,18 @@ button.infobar__country:hover .infobar__name {
     padding: 0;
   }
 }
+
+/* Government screen */
+.gov-title {
+  margin: 0 0 8px;
+  font-size: 17px;
+  font-weight: 650;
+}
+.laws {
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+}
+.choice.is-active .choice__cost {
+  color: var(--accent);
+}

@@ -4,8 +4,9 @@ import { createStartingMilitaries } from "./military";
 import { refreshResources } from "./systems";
 import type { RngState } from "./rng";
 import type { Geography } from "./geography";
+import { startingGovernment, type Government } from "./government";
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 /** Spending categories the player controls, each as a share of GDP per year. */
 export type BudgetCategory = "infrastructure" | "research" | "welfare" | "defense";
@@ -59,6 +60,8 @@ export interface CountryState {
   defenseFund: number;
   /** Seat of government: the most populous province owned. Null once a country has no provinces. */
   capital: ProvinceId | null;
+  /** Kind of government, ruling bloc, party support, laws and elections (see government.ts). */
+  government: Government;
   history: { gdp: number[]; population: number[] };
 }
 
@@ -100,7 +103,7 @@ export interface PeaceOffer {
   expiresTick: number;
 }
 
-export type EventKind = "war" | "peace" | "battle" | "occupation" | "alliance" | "annexation" | "diplomacy" | "military";
+export type EventKind = "war" | "peace" | "battle" | "occupation" | "alliance" | "annexation" | "diplomacy" | "military" | "politics";
 
 export interface GameEvent {
   tick: number;
@@ -219,6 +222,7 @@ export function createGameState(scenario: Scenario, geo: Geography, seed: number
       resources: emptyResources(),
       defenseFund: 0,
       capital: null,
+      government: startingGovernment(id, c, id.startsWith("C-")),
       history: { gdp: [], population: [] },
     };
   }

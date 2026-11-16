@@ -24,9 +24,8 @@ import { useUi } from "../../state/uiStore";
 import { formatCompact, formatDate, formatInt, formatMoneyMillions, formatPercent } from "../format";
 import { BUDGET_LABEL, Meter, PolicySlider } from "../InfoPanel";
 import { Relations, SimpleWar } from "../simple/SimpleHud";
-import { currentFocus, currentTaxLevel, FOCUSES, TAX_LEVELS } from "../simple/focus";
 import { Sparkline } from "../Sparkline";
-import { ProvinceList, StabilityCard, useAvgInfrastructure } from "./CoreScreens";
+import { ProvinceList, useAvgInfrastructure } from "./CoreScreens";
 import { Card, NeedCountry, Planned, Rows, ScreenFrame } from "./Screen";
 
 const money = formatMoneyMillions;
@@ -134,69 +133,6 @@ function AlliancesTab({ me }: { me: CountryId }) {
         ) : (
           <p className="screen__note">No allies yet. Improve relations with a country in Relations, then propose an alliance.</p>
         )}
-      </Card>
-    </div>
-  );
-}
-
-// ============ Government ============
-
-export function GovernmentScreen() {
-  return (
-    <NeedCountry>
-      {(c) => (
-        <ScreenFrame
-          id="government"
-          title="Government"
-          subtitle="Stability and national policy"
-          tabs={[
-            { id: "stability", label: "Stability" },
-            { id: "policy", label: "Policies" },
-            { id: "politics", label: "Parties, laws & elections" },
-          ]}
-        >
-          {(tab) =>
-            tab === "stability" ? (
-              <div className="grid">
-                <StabilityCard c={c} />
-                <Card title="What raises stability">
-                  <p className="screen__note">Welfare spending, moderate taxes, a growing economy and enough food. Debt and high taxes lower it.</p>
-                </Card>
-              </div>
-            ) : tab === "policy" ? (
-              <PolicyTab c={c} />
-            ) : (
-              <Planned
-                title="Politics"
-                items={["Political parties and their popularity", "Laws (conscription, trade, economy) with real effects", "Elections, or how power changes hands in each system", "Government types (democracy, monarchy, one-party state…)"]}
-                note="Government types will use openly licensed political data rather than invented labels."
-              />
-            )
-          }
-        </ScreenFrame>
-      )}
-    </NeedCountry>
-  );
-}
-
-function PolicyTab({ c }: { c: CountryState }) {
-  const setScreen = useUi((s) => s.setScreen);
-  const setTab = useUi((s) => s.setTab);
-  const focus = FOCUSES.find((f) => f.id === currentFocus(c));
-  const tax = TAX_LEVELS.find((t) => t.id === currentTaxLevel(c))!;
-  return (
-    <div className="grid">
-      <Card title="National policy">
-        <Rows rows={[["Focus", focus?.label ?? "Custom"], ["Taxes", `${tax.label} (${formatPercent(c.taxRate, 0)} of GDP)`]]} />
-        <button
-          className="btn btn--ghost btn--small"
-          onClick={() => {
-            setTab("economy", "budget");
-            setScreen("economy");
-          }}
-        >
-          Change in Economy ›
-        </button>
       </Card>
     </div>
   );
@@ -467,7 +403,7 @@ function PopulationTab() {
   );
 }
 
-const NEWS_ICON: Record<GameEvent["kind"], string> = { war: "⚔", peace: "☮", battle: "✕", occupation: "⚑", alliance: "⛓", annexation: "⚠", diplomacy: "✉", military: "▲" };
+const NEWS_ICON: Record<GameEvent["kind"], string> = { war: "⚔", peace: "☮", battle: "✕", occupation: "⚑", alliance: "⛓", annexation: "⚠", diplomacy: "✉", military: "▲", politics: "◆" };
 
 function NewsTab() {
   const events = useGame((s) => s.state.events);

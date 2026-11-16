@@ -92,6 +92,12 @@ export interface Scenario {
       incomeGroup: string | null;
       /** Map color (#rrggbb) for countries made in the world editor. */
       color?: string;
+      /** Kind of government in the scenario's year (V-Dem "Regimes of the World"); null where there's no data. */
+      regime?: "liberal_democracy" | "electoral_democracy" | "electoral_autocracy" | "closed_autocracy" | null;
+      /** Head of state is a monarch (Wikidata). */
+      monarchy?: boolean;
+      /** The regime is an estimate (no V-Dem data for this place). */
+      regimeEstimated?: boolean;
     }
   >;
 }

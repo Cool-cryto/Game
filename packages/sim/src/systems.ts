@@ -1,3 +1,4 @@
+import { governmentEffects, governmentGrowth, governmentStability } from "./government";
 import { RESOURCES, type CountryId, type ResourceId } from "@gs/shared";
 import {
   ADMIN_COST,
@@ -41,13 +42,14 @@ export function runMonthly(state: GameState): void {
     if (c.active && (!agg.get(c.id) || c.population <= 0)) c.active = false;
   }
   worldMarket(state, agg);
+  const warring = new Set(state.wars.flatMap((w) => [...w.attackers, ...w.defenders]));
   for (const c of Object.values(state.countries)) {
     if (!c.active) continue;
     const a = agg.get(c.id)!;
     economy(c, a);
     const provinces = (owned.get(c.id) ?? []).map((id) => state.provinces[id]!);
     investment(c, provinces);
-    society(c, provinces);
+    society(c, provinces, warring.has(c.id));
     recordHistory(c);
   }
 }
@@ -127,6 +129,7 @@ export function growthBreakdown(c: CountryState, infrastructure: number) {
     taxes: -Math.max(0, c.taxRate - 0.25) * 0.08,
     stability: ((c.stability - 50) / 50) * 0.01,
     debt: -Math.min(0.03, debtRatio(c) * 0.02),
+    government: governmentGrowth(c, false),
   };
   const total = Object.values(parts).reduce((a, b) => a + b, 0);
   return { parts, total };
@@ -157,7 +160,7 @@ function investment(c: CountryState, provinces: ProvinceState[]) {
 
   // Research.
   if (c.techLevel < MAX_TECH) {
-    c.researchProgress += c.budget.research / 0.03 / (12 * yearsPerTechLevel(c.techLevel));
+    c.researchProgress += (c.budget.research / 0.03 / (12 * yearsPerTechLevel(c.techLevel))) * (1 + governmentEffects(c, false).research);
     while (c.researchProgress >= 1 && c.techLevel < MAX_TECH) {
       c.researchProgress -= 1;
       c.techLevel += 1;
@@ -167,7 +170,7 @@ function investment(c: CountryState, provinces: ProvinceState[]) {
 }
 
 /** Where stability is heading, broken down so the UI can explain it. */
-export function stabilityBreakdown(c: CountryState) {
+export function stabilityBreakdown(c: CountryState, atWar = false) {
   const food = supplied(c.resources.food);
   const parts = {
     base: 55,
@@ -176,13 +179,14 @@ export function stabilityBreakdown(c: CountryState) {
     growth: clamp(c.gdpGrowth * 500, -10, 10),
     food: food < 1 ? -(1 - food) * 40 : 0,
     debt: -Math.min(20, debtRatio(c) * 20),
+    government: governmentStability(c, atWar),
   };
   const target = clamp(Object.values(parts).reduce((a, b) => a + b, 0), 0, 100);
   return { parts, target };
 }
 
-function society(c: CountryState, provinces: ProvinceState[]) {
-  c.stability = clamp(c.stability + (stabilityBreakdown(c).target - c.stability) * 0.1, 0, 100);
+function society(c: CountryState, provinces: ProvinceState[], atWar: boolean) {
+  c.stability = clamp(c.stability + (stabilityBreakdown(c, atWar).target - c.stability) * 0.1, 0, 100);
 
   // Population: poorer countries grow faster; hunger and unrest slow growth.
   const perPerson = (c.gdp * 1e6) / c.population;

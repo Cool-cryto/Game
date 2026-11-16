@@ -12,6 +12,7 @@ const ICON: Record<GameEvent["kind"], string> = {
   annexation: "⚠",
   diplomacy: "✉",
   military: "▲",
+  politics: "◆",
 };
 
 /**

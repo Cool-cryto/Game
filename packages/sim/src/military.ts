@@ -31,7 +31,9 @@ export function costMultiplier(c: CountryState): number {
 export const recruitCost = (c: CountryState, type: UnitType) => UNIT_STATS[type].recruit * costMultiplier(c);
 export const upkeepPerYear = (c: CountryState, type: UnitType) => recruitCost(c, type) * UPKEEP_SHARE;
 /** Most units a country's population can field. */
-export const unitCap = (c: CountryState) => (c.active ? 1 + Math.floor(Math.sqrt(c.population / 1e6)) : 0);
+/** How many units a country can support: grows with population; conscription raises it (see government.ts). */
+export const unitCap = (c: CountryState) => (c.active ? Math.floor((1 + Math.floor(Math.sqrt(c.population / 1e6))) * conscriptionCap(c)) : 0);
+const conscriptionCap = (c: CountryState) => ({ volunteer: 1, limited: 1.3, mass: 1.7 })[c.government?.laws.conscription ?? "volunteer"];
 export const unitsOf = (s: GameState, c: CountryId) => Object.values(s.units).filter((u) => u.owner === c);
 export const combatPower = (s: GameState, u: Unit) => (u.strength / 100) * UNIT_STATS[u.type].power * (1 + 0.08 * (s.countries[u.owner]?.techLevel ?? 1));
 

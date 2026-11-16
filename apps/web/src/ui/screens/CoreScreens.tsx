@@ -7,6 +7,7 @@ import {
   canRecruit,
   debtRatio,
   growthBreakdown,
+  governmentLabel,
   isAtWar,
   MAX_INFRASTRUCTURE,
   recruitCost,
@@ -124,6 +125,7 @@ function CountryOverview({ c }: { c: CountryState }) {
             ["Treasury", <span className={c.treasury < 0 ? "neg" : undefined}>{money(c.treasury)}</span>],
             ["Stability", `${Math.round(c.stability)} / 100`],
             ["Technology", `Level ${c.techLevel}`],
+            ["Government", governmentLabel(c.government)],
           ]}
         />
       </Card>
@@ -548,7 +550,8 @@ function MilitaryBudget({ c }: { c: CountryState }) {
 // ============ Shared: stability (used by Government) ============
 
 export function StabilityCard({ c }: { c: CountryState }) {
-  const b = stabilityBreakdown(c);
+  const war = useGame((s) => isAtWar(s.state, c.id));
+  const b = stabilityBreakdown(c, war);
   return (
     <Card title="Stability" hint="How content and orderly your country is. Low stability slows growth.">
       <Meter value={c.stability} max={100} label={`${Math.round(c.stability)} / 100`} tone={c.stability < 35 ? "bad" : c.stability < 55 ? "mid" : "good"} />

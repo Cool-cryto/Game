@@ -14,6 +14,7 @@ import {
   type GameState,
   type UnitType,
   type War,
+  governmentLabel,
 } from "@gs/sim";
 import { flagUrl, GEOGRAPHY, getCountry } from "../../data/countries";
 import { playerCountry, useGame } from "../../state/gameStore";
@@ -246,6 +247,10 @@ export function SimpleCountryView({ id, onDetails }: { id: CountryId; onDetails:
             <Big label="People" value={formatCompact(c.population)} />
             <Big label="Economy" value={`#${economyRank(s, id)} in the world`} />
           </div>
+          <p className="panel__small" data-testid="government-line" title={c.government.source === "estimate" ? "Estimate: no V-Dem data for this place" : "V-Dem Regimes of the World; monarchy from Wikidata"}>
+            Government: <strong>{governmentLabel(c.government)}</strong>
+            {c.government.source === "estimate" ? " (estimate)" : ""}
+          </p>
           {!me && c.controller !== "human" && (
             <div className="slead">
               <p>

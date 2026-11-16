@@ -20,7 +20,8 @@ export type MapModeId =
   | "energy"
   | "minerals"
   | "diplomacy"
-  | "wars";
+  | "wars"
+  | "government";
 
 export interface MapModeContext {
   info: CountryInfo | undefined;
@@ -42,6 +43,12 @@ export type MapMode =
   | { id: MapModeId; label: string; group: string; level: "province"; provinceColor: (p: ProvinceState) => string; legend: Legend };
 
 export const NO_DATA = "#4a525c";
+const REGIME_COLORS: Record<CountryState["government"]["regime"], string> = {
+  liberal_democracy: "#3f86b8",
+  electoral_democracy: "#5fa79a",
+  electoral_autocracy: "#c29a55",
+  closed_autocracy: "#a9564c",
+};
 const POLITICAL = ["#4f7397", "#6f9461", "#a9884f", "#86689a", "#a2615a", "#4f918b", "#958c56", "#6675a3"];
 
 const REGION_COLORS: Record<string, string> = {
@@ -214,6 +221,22 @@ export const MAP_MODES: Record<MapModeId, MapMode> = {
       title: "Wars",
       note: "Each war has its own color: attackers solid, defenders lighter. Striped provinces are occupied.",
       items: [{ label: "At peace", color: "#3a4250" }],
+    },
+  ),
+  government: countryMode(
+    "government",
+    "Government",
+    "World",
+    (_id, { state }) => (state?.active ? REGIME_COLORS[state.government.regime] : NO_DATA),
+    {
+      title: "Government",
+      note: "V-Dem Regimes of the World (CC BY-SA 4.0). Places without V-Dem data show an estimate.",
+      items: [
+        { label: "Liberal democracy", color: REGIME_COLORS.liberal_democracy },
+        { label: "Electoral democracy", color: REGIME_COLORS.electoral_democracy },
+        { label: "Electoral autocracy", color: REGIME_COLORS.electoral_autocracy },
+        { label: "Closed autocracy", color: REGIME_COLORS.closed_autocracy },
+      ],
     },
   ),
   food: resourceMode("food", "Food"),
