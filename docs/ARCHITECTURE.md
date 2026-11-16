@@ -213,6 +213,16 @@ Serverless platforms are not a good fit, because players keep a connection open.
   population-weighted level), railways in `legDays` and infrastructure growth, ports in sea `legDays` and fleet recovery,
   forts in battle defence and `siegeDays`. Command: `build`. Province sync compares `buildings`. Save version 7.
 
+### Faster war (Stage 15)
+
+- `military.ts`: `advanceMovement` calls `captureProvince` when an army enters an undefended, unfortified enemy
+  province; `siegeDays` is 0 without a fort (`advanceSieges` then captures at once). Speeds: 50 km/day on land, 800 at
+  sea, 1,600 in the air (before tech, infrastructure and railways).
+- `diplomacy.ts`: `capitalsFallen` (first step of `checkCapitulations`) annexes a country whose capital an enemy holds.
+- `ai.ts`: `aiDaily` keeps one army at the capital in wartime.
+- `apps/web/src/map/overlay.ts`: markers drawn at 1.4×, routes with arrow and ring, `clickMarker` (select + ready to move).
+- `apps/web/src/map/keyPan.ts`: W/A/S/D and arrow keys pan the flat map (d3 `translateBy`) and turn the globe.
+
 ### Treaties and organizations (Stage 14)
 
 - `packages/sim/src/treaties.ts` – `GameState.treaties` (type, sorted pair, since), `organizations` (kind economic /

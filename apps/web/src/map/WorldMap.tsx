@@ -1,14 +1,15 @@
 import { useEditor } from "../state/editor";
 import { useEffect, useRef, useState } from "react";
 import { select } from "d3-selection";
-import { zoom as d3zoom, zoomIdentity, type ZoomTransform } from "d3-zoom";
+import { zoom as d3zoom, zoomIdentity, zoomTransform, type ZoomTransform } from "d3-zoom";
+import { startKeyPan } from "./keyPan";
 import "d3-transition";
 import type { CountryId, ProvinceId } from "@gs/shared";
 import { createWorldFrame, projectCities, type Bounds, type CityPoint, type CountryShape, type ProvinceShape } from "./geo";
 import { MAP_MODES, NO_DATA } from "./mapModes";
 import type { DetailLevel, WorkerRequest, WorkerResponse } from "./workerProtocol";
 import { COUNTRIES, getCountry, getProvince, loadCities } from "../data/countries";
-import { drawUnitsOverlay, markerAt, politicalColor, previewMove, stackLabel, stripes, type Marker } from "./overlay";
+import { clickMarker, drawUnitsOverlay, markerAt, politicalColor, previewMove, stackLabel, stripes, type Marker } from "./overlay";
 import { ownersRecord, playerCountry, useGame } from "../state/gameStore";
 import { fogOf } from "../state/fog";
 import { sameSelection, useUi, type CameraCommand, type Selection } from "../state/uiStore";
@@ -589,15 +590,14 @@ export function WorldMap() {
         if (hit) useEditor.getState().click(hit.province);
         return;
       }
+      const marker = markerAt(markers, p.x, p.y);
+      const me = playerCountry(useGame.getState().state)?.id;
+      // Clicking your own units (even while others wait for an order) picks them instead.
+      if (marker && (!ui.moveOrder || marker.stack.owner === me)) return clickMarker(marker, me);
       if (ui.moveOrder) {
         const hit = pick(p.x, p.y);
         if (hit) orderMove(ui.moveOrder.units, hit.province);
         ui.setMoveOrder(null);
-        return;
-      }
-      const marker = markerAt(markers, p.x, p.y);
-      if (marker) {
-        ui.select({ kind: "units", province: marker.stack.province, owner: marker.stack.owner });
         return;
       }
       ui.select(selectionAt(p.x, p.y));
@@ -623,6 +623,7 @@ export function WorldMap() {
       if (s) useUi.getState().select(s, { focus: true });
     };
     let unsubUi = () => {};
+    let stopKeys = () => {};
     let ro: ResizeObserver | null = null;
 
     function start() {
@@ -642,6 +643,14 @@ export function WorldMap() {
         if (s.view !== prev.view && s.view === "flat") requestDraw();
         if (s.camera && s.camera !== prev.camera && s.view === "flat") runCamera(s.camera);
       });
+      // W/A/S/D (and arrows) move the camera; d3 counts the move in map units, so divide by the zoom.
+      stopKeys = startKeyPan(
+        (dx, dy) => {
+          const k = zoomTransform(canvas).k;
+          sel.call(zoomBehavior.translateBy, -dx / k, -dy / k);
+        },
+        () => useUi.getState().view === "flat",
+      );
       if (import.meta.env.DEV) installTestHook();
     }
 
@@ -679,6 +688,7 @@ export function WorldMap() {
       canvas.removeEventListener("pointerup", onUp);
       canvas.removeEventListener("dblclick", onDblClick);
       canvas.removeEventListener("contextmenu", onContextMenu);
+      stopKeys();
       cancelAnimationFrame(frameId);
     };
   }, []);

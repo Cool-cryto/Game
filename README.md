@@ -65,7 +65,7 @@ Not built yet: government types, naval battles, trade deals. To put the game onl
 **Moving armies:** click a unit marker on the map (or a row in Military → Forces), press **Move…**, then click a
 province, or right-click a province with your units selected. For tiny places, search for them and press
 **Send units here**. Armies besiege and occupy enemy provinces; in Diplomacy → Wars & peace, **Make peace** offers the
-best terms the enemy would accept. Keyboard: Space pauses, 1-5 set the speed, G switches to the 3D globe, Esc returns
+best terms the enemy would accept. Keyboard: W/A/S/D or the arrow keys move the camera (Shift for faster), Space pauses, 1-5 set the speed, G switches to the 3D globe, Esc returns
 to the map.
 
 ## Playing online with friends

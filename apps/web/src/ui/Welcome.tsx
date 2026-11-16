@@ -5,7 +5,7 @@ import { signIn, signOut } from "../net/online";
 const FEATURES: { title: string; text: string; icon: string }[] = [
   { icon: "🌍", title: "The whole Earth", text: "248 countries and territories, 4,596 provinces and 7,000+ cities on a flat map or a 3D globe." },
   { icon: "📈", title: "Real economies", text: "GDP, taxes, budgets, debt, research and infrastructure, starting from real-world data." },
-  { icon: "⚔️", title: "Armies, fleets, air power", text: "Recruit, march, besiege and invade by sea. Battles weigh technology, home ground and air support." },
+  { icon: "⚔️", title: "Armies, fleets, air power", text: "Recruit, march, take provinces and invade by sea. Take an enemy's capital and the whole country falls." },
   { icon: "🤝", title: "Diplomacy", text: "Relations, alliances, wars that pull in allies, and peace deals that redraw the map." },
   { icon: "🌫️", title: "Fog of war", text: "You only see foreign armies near your land, your units and your allies." },
   { icon: "👥", title: "Play together", text: "A shared Global World, or private servers for up to 50 friends with an invite code." },

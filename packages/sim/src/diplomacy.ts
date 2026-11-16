@@ -255,10 +255,40 @@ export function heldShare(s: GameState, c: CountryId): number {
 }
 
 /**
+ * A country at war whose capital is taken by an enemy falls: the enemy that took the capital annexes it,
+ * except provinces another enemy holds, which go to that enemy.
+ */
+function capitalsFallen(s: GameState) {
+  for (const war of [...s.wars]) {
+    for (const c of [...war.attackers, ...war.defenders]) {
+      const country = s.countries[c];
+      const capital = country?.active && country.capital ? s.provinces[country.capital] : undefined;
+      if (!capital || capital.controller === c || !atWar(s, c, capital.controller)) continue;
+      const taker = capital.controller;
+      logEvent(s, "annexation", `${nameOf(s, taker)} took the capital of ${nameOf(s, c)}, and the whole country has fallen.`, [taker, c]);
+      // Work out who gets what first: once the country is gone, nobody is at war with it any more.
+      const handover = Object.values(s.provinces)
+        .filter((p) => p.owner === c)
+        .map((p) => [p.id, p.controller !== c && atWar(s, c, p.controller) ? p.controller : taker] as const);
+      for (const [id, to] of handover) transferProvince(s, id, to);
+      // Provinces the fallen country held in other countries go back to their owners.
+      for (const p of Object.values(s.provinces)) {
+        if (p.controller === c) {
+          p.controller = p.owner;
+          p.siege = null;
+        }
+      }
+    }
+  }
+}
+
+/**
  * A country that controls under 10% of its people surrenders: if it leads its
  * side the whole war ends; otherwise it signs a separate peace and leaves.
  */
 export function checkCapitulations(s: GameState) {
+  if (!s.wars.length) return;
+  capitalsFallen(s);
   if (!s.wars.length) return;
   // One pass over provinces for everyone at war.
   const fighting = new Set(s.wars.flatMap((w) => [...w.attackers, ...w.defenders]));

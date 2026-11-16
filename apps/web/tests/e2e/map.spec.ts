@@ -322,6 +322,42 @@ test("select your units and march them somewhere", async ({ page }) => {
   await expect(panel(page).getByLabel("Military")).toContainText(/Marching to .* · \d+ days/);
 });
 
+test("click your army on the map, then click where it should go", async ({ page }) => {
+  const errors = await openMap(page);
+  await playAs(page, "France");
+  await page.keyboard.press("Escape");
+  // Zoom to France so its armies show, then find one army's marker and another French province on screen.
+  await searchFor(page, "france");
+  await page.keyboard.press("Escape");
+  const plan = await page.evaluate(() => {
+    const s = (window as unknown as { __gsGame: { getState: () => { state: { units: Record<string, { id: number; owner: string; type: string; province: string }>; provinces: Record<string, { owner: string }> } } } }).__gsGame.getState().state;
+    const m = window.__gsMap!;
+    const army = Object.values(s.units).find((u) => u.owner === "FRA" && u.type === "army" && m.markerOf(u.province, "FRA"));
+    if (!army) return null;
+    // Somewhere in France on screen, away from every unit marker (clicking a marker selects those units instead).
+    const marks = Object.values(s.units)
+      .map((u) => m.markerOf(u.province, u.owner))
+      .filter((x): x is [number, number] => !!x);
+    const clear = (pt: [number, number] | null) => !!pt && pt[0] > 100 && pt[0] < 800 && pt[1] > 150 && pt[1] < 700 && marks.every(([x, y]) => Math.hypot(x - pt[0], y - pt[1]) > 45);
+    const target = Object.keys(s.provinces).find((id) => s.provinces[id]!.owner === "FRA" && id !== army.province && clear(m.screenPointOf("province", id)));
+    return target ? { id: army.id, marker: m.markerOf(army.province, "FRA")!, target, point: m.screenPointOf("province", target)! } : null;
+  });
+  expect(plan).not.toBeNull();
+  await page.mouse.click(plan!.marker[0], plan!.marker[1]);
+  await expect(panel(page)).toContainText("Ready to move");
+  if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/units.png` });
+  await page.mouse.click(plan!.point[0], plan!.point[1]);
+  await expect
+    .poll(() =>
+      page.evaluate((id) => {
+        const s = (window as unknown as { __gsGame: { getState: () => { state: { units: Record<string, { path: string[] }> } } } }).__gsGame.getState().state;
+        return s.units[id]?.path.length ?? 0;
+      }, plan!.id),
+    )
+    .toBeGreaterThan(0);
+  expect(errors).toEqual([]);
+});
+
 test("diplomacy: relations can be improved; alliances need good relations", async ({ page }) => {
   await openMap(page);
   await playAs(page, "Portugal");
@@ -743,5 +779,36 @@ test("treaties and organizations: sign a pact, see your real organizations, foun
   await screen.getByRole("button", { name: "Found" }).click();
   await expect(screen).toContainText("Channel Union");
   await expect(screen.getByRole("button", { name: "Found" })).toBeDisabled(); // one per country
+  expect(errors).toEqual([]);
+});
+
+test("W/A/S/D move the camera on the flat map and the globe, but not while typing", async ({ page }) => {
+  const errors = await openMap(page);
+  const france = () => page.evaluate(() => window.__gsMap!.screenPointOf("country", "FRA"));
+  const before = (await france())!;
+  await page.keyboard.down("d");
+  await page.waitForTimeout(400);
+  await page.keyboard.up("d");
+  const after = (await france())!;
+  expect(after[0]).toBeLessThan(before[0] - 50); // looking further east: France moves left on screen
+  expect(Math.abs(after[1] - before[1])).toBeLessThan(5);
+  // Typing a "d" in the search box doesn't move the map.
+  await page.getByLabel("Search", { exact: true }).click();
+  await page.keyboard.down("d");
+  await page.waitForTimeout(300);
+  await page.keyboard.up("d");
+  expect((await france())![0]).toBeCloseTo(after[0], 0);
+  await page.getByLabel("Search", { exact: true }).fill("");
+  await page.locator("body").click({ position: { x: 5, y: 400 } });
+
+  // The globe turns the same way.
+  await page.getByTestId("view-toggle").click();
+  await page.waitForFunction(() => window.__gsGlobe, null, { timeout: 20_000 });
+  const cam0 = await page.evaluate(() => window.__gsGlobe!.camera());
+  await page.keyboard.down("s");
+  await page.waitForTimeout(400);
+  await page.keyboard.up("s");
+  const cam1 = await page.evaluate(() => window.__gsGlobe!.camera());
+  expect(cam1.lat).toBeLessThan(cam0.lat - 3); // looking further south
   expect(errors).toEqual([]);
 });
