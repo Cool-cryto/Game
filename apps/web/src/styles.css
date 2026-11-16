@@ -3427,3 +3427,111 @@ button.infobar__country:hover .infobar__name {
 .choice.is-active .choice__cost {
   color: var(--accent);
 }
+
+/* Research screen */
+.grid--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.segmented--4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+.tag--now {
+  margin-left: 8px;
+  vertical-align: middle;
+  font-size: 11px;
+  color: var(--accent);
+}
+.tree {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.tree__branch .screen__h3 {
+  margin-top: 0;
+}
+.tree__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  position: relative;
+}
+/* A thin line connecting the technologies of a branch. */
+.tree__list::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  bottom: 14px;
+  width: 1px;
+  background: var(--line-strong);
+}
+.tech {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 8px;
+  align-items: start;
+  padding: 8px 10px 8px 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--card-bg);
+  font-size: 12.5px;
+}
+.tech__level {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-left: 3px;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: var(--screen-bg);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+.tech__body {
+  display: grid;
+  gap: 2px;
+}
+.tech__body span {
+  color: var(--text-dim);
+}
+.tech__state {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.tech--done .tech__level {
+  background: #3f6f57;
+  border-color: #5fa37f;
+  color: #fff;
+}
+.tech--done .tech__state {
+  color: #8fdca8;
+}
+.tech--next {
+  border-color: rgba(255, 214, 120, 0.5);
+}
+.tech--next .tech__level {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.tech--next .tech__state {
+  color: var(--accent);
+}
+.tech--locked {
+  opacity: 0.62;
+}
+@media (max-width: 760px) {
+  .grid--3,
+  .tree {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .segmented--4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

@@ -5,8 +5,9 @@ import { refreshResources } from "./systems";
 import type { RngState } from "./rng";
 import type { Geography } from "./geography";
 import { startingGovernment, type Government } from "./government";
+import { resourceBonus, startingResearch, type Research } from "./tech";
 
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 /** Spending categories the player controls, each as a share of GDP per year. */
 export type BudgetCategory = "infrastructure" | "research" | "welfare" | "defense";
@@ -48,7 +49,10 @@ export interface CountryState {
   budget: Record<BudgetCategory, number>;
   /** 0-100. Low stability slows growth. */
   stability: number;
+  /** Overall technology level: the average of the research branches (see tech.ts). */
   techLevel: number;
+  /** Research branches, their progress and the current focus. */
+  research: Research;
   /** Progress to the next tech level, 0-1. */
   researchProgress: number;
   /** Last month's GDP growth, as a yearly rate (0.02 = 2%). */
@@ -222,6 +226,7 @@ export function createGameState(scenario: Scenario, geo: Geography, seed: number
       resources: emptyResources(),
       defenseFund: 0,
       capital: null,
+      research: startingResearch(active ? startingTechLevel((gdp * 1e6) / c.population!) : 1),
       government: startingGovernment(id, c, id.startsWith("C-")),
       history: { gdp: [], population: [] },
     };
@@ -310,7 +315,7 @@ export function calibrateResources(state: GameState) {
     let need = 0;
     for (const p of Object.values(state.provinces)) {
       const owner = state.countries[p.owner]!;
-      if (owner.active) production += rawProduction(p, owner.techLevel, r);
+      if (owner.active) production += rawProduction(p, owner.research.levels.economy, r) * resourceBonus(owner, r);
     }
     for (const c of Object.values(state.countries)) if (c.active) need += rawNeed(c, r);
     state.resourceScale[r] = production > 0 ? need / production : 1;

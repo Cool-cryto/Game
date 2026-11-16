@@ -7,6 +7,7 @@ import {
   budgetBalance,
   governmentLabel,
   growthBreakdown,
+  resourceBonus,
   MAX_INFRASTRUCTURE,
   MAX_TECH,
   rawProduction,
@@ -243,7 +244,7 @@ export function CountryView({ id }: { id: CountryId }) {
           </section>
 
           <section>
-            <h3>Technology</h3>
+            <h3>Technology (average)</h3>
             <Meter
               value={state.researchProgress}
               max={1}
@@ -344,6 +345,7 @@ export const GROWTH_LABELS: Record<string, string> = {
   stability: "Stability",
   debt: "Debt",
   government: "Government and laws",
+  technology: "Technology",
 };
 export const STABILITY_LABELS: Record<string, string> = {
   base: "Baseline",
@@ -353,6 +355,7 @@ export const STABILITY_LABELS: Record<string, string> = {
   food: "Food shortage",
   debt: "Debt",
   government: "Government and laws",
+  technology: "Technology",
 };
 
 export function Why({ title, parts, format, labels }: { title: string; parts: Record<string, number>; format: (v: number) => string; labels: Record<string, string> }) {
@@ -410,7 +413,7 @@ export function Policies({ country }: { country: CountryState }) {
           {formatPercent(Math.abs(balance))} of GDP · {formatMoneyMillions(Math.abs(balance) * country.gdp)}
         </span>
       </div>
-      {balance < 0 && <p className="panel__small">Deficits add to debt. Debt costs 4% interest a year and lowers growth and stability.</p>}
+      {balance < 0 && <p className="panel__small">Deficits add to debt. Debt costs interest (4% a year, 3% with Global finance) and lowers growth and stability.</p>}
     </section>
   );
 }
@@ -587,7 +590,7 @@ function ProvinceView({ id }: { id: ProvinceId }) {
                   <td>
                     <Pips n={ps.deposits[r]} />
                   </td>
-                  <td>{formatCompact(rawProduction(ps, ownerState.techLevel, r) * scale[r])}</td>
+                  <td>{formatCompact(rawProduction(ps, ownerState.research.levels.economy, r) * resourceBonus(ownerState, r) * scale[r])}</td>
                 </tr>
               ))}
             </tbody>

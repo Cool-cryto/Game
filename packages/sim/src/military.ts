@@ -1,3 +1,4 @@
+import { techMods } from "./tech";
 import type { CountryId, ProvinceId } from "@gs/shared";
 import { nextRandom } from "./rng";
 import { distanceKm, findLandPath, type Geography } from "./geography";
@@ -35,7 +36,12 @@ export const upkeepPerYear = (c: CountryState, type: UnitType) => recruitCost(c,
 export const unitCap = (c: CountryState) => (c.active ? Math.floor((1 + Math.floor(Math.sqrt(c.population / 1e6))) * conscriptionCap(c)) : 0);
 const conscriptionCap = (c: CountryState) => ({ volunteer: 1, limited: 1.3, mass: 1.7 })[c.government?.laws.conscription ?? "volunteer"];
 export const unitsOf = (s: GameState, c: CountryId) => Object.values(s.units).filter((u) => u.owner === c);
-export const combatPower = (s: GameState, u: Unit) => (u.strength / 100) * UNIT_STATS[u.type].power * (1 + 0.08 * (s.countries[u.owner]?.techLevel ?? 1));
+export function combatPower(s: GameState, u: Unit) {
+  const c = s.countries[u.owner];
+  const m = techMods(c);
+  const typeBonus = u.type === "army" ? m.armyPower : u.type === "navy" ? m.fleetPower : 0;
+  return (u.strength / 100) * UNIT_STATS[u.type].power * (1 + 0.08 * (c?.research?.levels.military ?? c?.techLevel ?? 1)) * (1 + typeBonus + m.unitPower);
+}
 
 function addUnit(s: GameState, owner: CountryId, type: UnitType, province: ProvinceId, strength: number): Unit {
   const u: Unit = { id: s.nextId++, owner, type, province, strength, path: [], travel: null, retreating: false };
@@ -125,9 +131,11 @@ export function planMove(s: GameState, geo: Geography, u: Unit, to: ProvinceId):
 function legDays(s: GameState, geo: Geography, u: Unit, mode: "land" | "sea" | "air", next: ProvinceId): number {
   const km = distanceKm(geo, u.province, next);
   if (mode === "air") return Math.max(1, Math.ceil(km / AIR_KM_PER_DAY));
-  if (mode === "sea") return Math.max(2, Math.ceil(km / SEA_KM_PER_DAY));
+  const m = techMods(s.countries[u.owner]);
+  if (mode === "sea") return Math.max(2, Math.ceil(km / (SEA_KM_PER_DAY * (1 + m.seaSpeed))));
   const infra = s.provinces[next]?.infrastructure ?? 0;
-  return Math.max(1, Math.ceil(km / (LAND_KM_PER_DAY * (1 + infra / 10))));
+  const home = s.provinces[next]?.controller === u.owner ? m.ownLandSpeed : 0;
+  return Math.max(1, Math.ceil(km / (LAND_KM_PER_DAY * (1 + infra / 10) * (1 + m.landSpeed + home))));
 }
 
 export function startMove(s: GameState, geo: Geography, u: Unit, path: ProvinceId[], mode: "land" | "sea" | "air") {
@@ -206,7 +214,7 @@ export function resolveBattles(s: GameState, geo: Geography) {
       const air = Object.values(s.units).filter(
         (a) => a.type === "air" && !a.travel && friendly(s, a.owner, side[0]!.owner) && distanceKm(geo, a.province, province) <= AIR_RANGE_KM,
       ).length;
-      return p * (1 + Math.min(3, air) * 0.15);
+      return p * (1 + Math.min(3, air) * 0.15 * (1 + techMods(s.countries[side[0]!.owner]).airSupport));
     };
     const pa = powerOf(sideA);
     const pb = powerOf(sideB);
@@ -330,6 +338,6 @@ export function militaryMonthly(s: GameState) {
     }
     const p = s.provinces[u.province];
     const home = p && (p.controller === u.owner || allied(s, u.owner, p.controller));
-    if (home && !u.travel && u.strength < 100) u.strength = Math.min(100, u.strength + 10);
+    if (home && !u.travel && u.strength < 100) u.strength = Math.min(100, u.strength + 10 * (1 + techMods(c).recovery));
   }
 }

@@ -567,7 +567,7 @@ test.describe("top navigation (first-time player)", () => {
       ["military", ["Overview", "Forces", "Recruit", "Military budget", "Equipment"]],
       ["diplomacy", ["Relations", "Wars & peace", "Alliances", "Treaties & organizations"]],
       ["government", ["Overview", "Parties & elections", "Laws", "Stability"]],
-      ["research", ["Technology", "Research spending", "Technology tree"]],
+      ["research", ["Overview", "Technology tree", "Research spending"]],
       ["construction", ["Infrastructure", "By province", "Buildings"]],
       ["statistics", ["Economy (GDP)", "Population", "GDP per person", "Military spending", "Technology", "Your charts"]],
       ["more", ["Population", "News", "Intelligence", "Settings"]],
@@ -669,4 +669,21 @@ test("government: real starting government, party support, changing a law, early
   await page.getByTestId("nav-world").click();
   await page.getByLabel("Map mode").selectOption("government");
   await expect(page.locator(".legend")).toContainText("Closed autocracy");
+});
+
+test("research: three branches, choosing a focus, and the technology tree", async ({ page }) => {
+  await openMap(page);
+  await playAs(page, "Germany");
+  await page.getByTestId("nav-research").click();
+  const screen = page.getByTestId("screen-research");
+  await expect(screen).toContainText("Economy");
+  await expect(screen).toContainText("Infrastructure");
+  await screen.getByRole("radio", { name: "Military" }).click();
+  await expect(screen.getByRole("radio", { name: "Military" })).toHaveAttribute("aria-checked", "true");
+  await expect(screen).toContainText("Researching now: Military");
+  await screen.getByRole("tab", { name: "Technology tree" }).click();
+  // Germany starts at level 6: Computing (economy 6) is unlocked, Automation (economy 9) is not yet.
+  await expect(screen.getByTestId("tech-computing")).toContainText("Unlocked");
+  await expect(screen.getByTestId("tech-automation")).toContainText("Next");
+  await expect(screen.getByTestId("tech-ai")).toContainText("Level 15");
 });

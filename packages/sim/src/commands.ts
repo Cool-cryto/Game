@@ -1,3 +1,4 @@
+import { BRANCHES, type ResearchFocus } from "./tech";
 import { canCallElection, canChangeLaw, changeLaw, type LawId } from "./government";
 import type { CountryId, ProvinceId } from "@gs/shared";
 import type { Geography } from "./geography";
@@ -35,7 +36,8 @@ export type Command =
   | { type: "proposeAlliance"; country: CountryId; target: CountryId }
   | { type: "breakAlliance"; country: CountryId; target: CountryId }
   | { type: "setLaw"; country: CountryId; law: LawId; value: string }
-  | { type: "callElection"; country: CountryId };
+  | { type: "callElection"; country: CountryId }
+  | { type: "setResearchFocus"; country: CountryId; focus: ResearchFocus };
 
 export const TAX_RANGE = [0.05, 0.6] as const;
 export const BUDGET_RANGE = [0, 0.3] as const;
@@ -122,6 +124,9 @@ export function validateCommand(s: GameState, geo: Geography, cmd: Command): str
       return canChangeLaw(s, c, cmd.law, cmd.value);
     case "callElection":
       return canCallElection(s, c);
+    case "setResearchFocus":
+      if (cmd.focus !== "balanced" && !BRANCHES.includes(cmd.focus)) return "Unknown research branch.";
+      return null;
   }
 }
 
@@ -225,6 +230,9 @@ export function applyCommand(s: GameState, geo: Geography, cmd: Command): string
       // The vote happens in a month.
       c.government.nextElection = s.tick + 30;
       logEvent(s, "politics", `${c.name} called an early election, to be held in a month.`, [cmd.country]);
+      break;
+    case "setResearchFocus":
+      c.research.focus = cmd.focus;
       break;
   }
   return null;
