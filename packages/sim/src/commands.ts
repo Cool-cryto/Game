@@ -37,6 +37,7 @@ import {
 } from "./diplomacy";
 import { canRecruit, planMove, recruit, recruitCost, startMove, unitCap, unitsOf, UNIT_STATS } from "./military";
 import { DEFAULT_KIND, type UnitKind } from "./units";
+import { guaranteesBy, hasGuarantee, hasSanction, MAX_GUARANTEES, MIN_AID_SHARE, sanctionKey } from "./statecraft";
 import { dismissGeneral, generalCap, generalCost, generalsOf, hireGeneral, releaseOrphanedGenerals, TRAITS, updateGeneral } from "./generals";
 import { DIFFICULTIES, DIFFICULTY_RULES, type Difficulty } from "./state";
 import { BUDGET_CATEGORIES, logEvent, nameOf, type BudgetCategory, type GameState, type PeaceTerms, type UnitType } from "./state";
@@ -76,7 +77,13 @@ export type Command =
   | { type: "answerProposal"; country: CountryId; proposalId: number; accept: boolean }
   | { type: "joinOrganization"; country: CountryId; org: string }
   | { type: "leaveOrganization"; country: CountryId; org: string }
-  | { type: "foundOrganization"; country: CountryId; name: string; kind: OrgKind };
+  | { type: "foundOrganization"; country: CountryId; name: string; kind: OrgKind }
+  | { type: "sanction"; country: CountryId; target: CountryId }
+  | { type: "liftSanction"; country: CountryId; target: CountryId }
+  /** Send `amount` (millions) of economic aid (from the treasury) or military aid (from the army fund). */
+  | { type: "sendAid"; country: CountryId; target: CountryId; aid: "economic" | "military"; amount: number }
+  | { type: "guarantee"; country: CountryId; target: CountryId }
+  | { type: "revokeGuarantee"; country: CountryId; target: CountryId };
 
 export const TAX_RANGE = [0.05, 0.6] as const;
 export const BUDGET_RANGE = [0, 0.3] as const;
@@ -161,6 +168,8 @@ export function validateCommand(s: GameState, geo: Geography, cmd: Command): str
       return null;
     }
     case "declareWar":
+      if (c.overlord) return `You are a puppet of ${nameOf(s, c.overlord)} and can't declare war on your own.`;
+      if (target!.overlord === cmd.country) return `${target!.name} is your puppet state.`;
       if (atWar(s, cmd.country, cmd.target)) return `Already at war with ${target!.name}.`;
       if (sameDefenseOrg(s, cmd.country, cmd.target)) return `${target!.name} is a fellow member of ${defenseOrgOf(s, cmd.country)!.name}. Leave it first.`;
       if (allied(s, cmd.country, cmd.target)) return `Break your alliance with ${target!.name} first.`;
@@ -171,6 +180,7 @@ export function validateCommand(s: GameState, geo: Geography, cmd: Command): str
       if (!war) return "That war is over.";
       const side = sideOf(war, cmd.country);
       if (!side || war[side][0] !== cmd.country) return "Only the leader of a side can negotiate peace.";
+      if (!["white", "occupied", "reparations", "puppet"].includes(cmd.terms)) return "Unknown peace terms.";
       return null;
     }
     case "answerOffer": {
@@ -230,6 +240,30 @@ export function validateCommand(s: GameState, geo: Geography, cmd: Command): str
     case "foundOrganization":
       if (typeof cmd.name !== "string") return "Give it a name.";
       return canFoundOrg(s, cmd.country, cmd.name, cmd.kind);
+    case "sanction":
+      if (hasSanction(s, cmd.country, cmd.target)) return `You already sanction ${target!.name}.`;
+      if (allied(s, cmd.country, cmd.target)) return `You can't sanction an ally.`;
+      return null;
+    case "liftSanction":
+      return hasSanction(s, cmd.country, cmd.target) ? null : `You don't sanction ${target!.name}.`;
+    case "sendAid": {
+      if (cmd.aid !== "economic" && cmd.aid !== "military") return "Unknown kind of aid.";
+      if (!Number.isFinite(cmd.amount) || cmd.amount < MIN_AID_SHARE * c.gdp) return `Aid must be at least ${(MIN_AID_SHARE * 100).toFixed(1)}% of your GDP.`;
+      if (atWar(s, cmd.country, cmd.target)) return "You're at war with them.";
+      const wait = cooldownLeft(s, cmd.country, cmd.target);
+      if (wait) return `Wait ${wait} more days before another diplomatic action towards ${target!.name}.`;
+      if (cmd.aid === "economic" && cmd.amount > Math.max(0, c.treasury)) return "You don't have that much in the treasury.";
+      if (cmd.aid === "military" && cmd.amount > Math.max(0, c.defenseFund)) return "You don't have that much military money.";
+      return null;
+    }
+    case "guarantee":
+      if (hasGuarantee(s, cmd.country, cmd.target)) return `You already guarantee ${target!.name}.`;
+      if (atWar(s, cmd.country, cmd.target)) return "You're at war with them.";
+      if (guaranteesBy(s, cmd.country).length >= MAX_GUARANTEES) return `You can guarantee at most ${MAX_GUARANTEES} countries.`;
+      if (relation(s, cmd.country, cmd.target) < 0) return "Relations must be at least neutral.";
+      return null;
+    case "revokeGuarantee":
+      return hasGuarantee(s, cmd.country, cmd.target) ? null : `You don't guarantee ${target!.name}.`;
   }
 }
 
@@ -423,6 +457,45 @@ export function applyCommand(s: GameState, geo: Geography, cmd: Command): string
       break;
     case "foundOrganization":
       foundOrg(s, cmd.country, cmd.name, cmd.kind);
+      break;
+    case "sanction":
+      s.sanctions = [...(s.sanctions ?? []), sanctionKey(cmd.country, cmd.target)];
+      // Trade agreements between the two end.
+      if (hasTreaty(s, cmd.country, cmd.target, "trade")) cancelTreaty(s, cmd.country, cmd.target, "trade");
+      adjustRelation(s, cmd.country, cmd.target, -30);
+      logEvent(s, "diplomacy", `${c.name} imposed sanctions on ${nameOf(s, cmd.target)}.`, [cmd.country, cmd.target]);
+      break;
+    case "liftSanction":
+      s.sanctions = (s.sanctions ?? []).filter((k) => k !== sanctionKey(cmd.country, cmd.target));
+      adjustRelation(s, cmd.country, cmd.target, 10);
+      logEvent(s, "diplomacy", `${c.name} lifted its sanctions on ${nameOf(s, cmd.target)}.`, [cmd.country, cmd.target]);
+      break;
+    case "sendAid": {
+      const t = s.countries[cmd.target]!;
+      if (cmd.aid === "economic") {
+        c.treasury -= cmd.amount;
+        t.treasury += cmd.amount;
+        c.monthAid = (c.monthAid ?? 0) - cmd.amount;
+        t.monthAid = (t.monthAid ?? 0) + cmd.amount;
+      } else {
+        c.defenseFund -= cmd.amount;
+        t.defenseFund += cmd.amount;
+      }
+      // Relations improve with what it means to them: +25 for aid worth 5% of their GDP.
+      adjustRelation(s, cmd.country, cmd.target, Math.min(25, Math.max(3, (cmd.amount / Math.max(1, t.gdp)) * 500)));
+      s.diplomacyCooldown[`${cmd.country}>${cmd.target}`] = s.tick;
+      logEvent(s, "diplomacy", `${c.name} sent ${cmd.aid} aid to ${t.name}.`, [cmd.country, cmd.target]);
+      break;
+    }
+    case "guarantee":
+      s.guarantees = [...(s.guarantees ?? []), sanctionKey(cmd.country, cmd.target)];
+      adjustRelation(s, cmd.country, cmd.target, 10);
+      logEvent(s, "diplomacy", `${c.name} guaranteed the independence of ${nameOf(s, cmd.target)}.`, [cmd.country, cmd.target]);
+      break;
+    case "revokeGuarantee":
+      s.guarantees = (s.guarantees ?? []).filter((k) => k !== sanctionKey(cmd.country, cmd.target));
+      adjustRelation(s, cmd.country, cmd.target, -15);
+      logEvent(s, "diplomacy", `${c.name} withdrew its guarantee of ${nameOf(s, cmd.target)}.`, [cmd.country, cmd.target]);
       break;
   }
   return null;

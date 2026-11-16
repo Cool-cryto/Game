@@ -9,6 +9,10 @@ import { allied, alliesOf, atWar, declareWar, isAtWar, makePeace, pairKey, relat
 import { canEnter, canRecruit, combatPower, recruit, startMove, unitCap } from "./military";
 import { DIFFICULTY_RULES, difficultyOf } from "./state";
 import { DEFAULT_KIND, kindUnlocked, type UnitKind } from "./units";
+import { personalityOf } from "./personality";
+import { guaranteesBy, hasGuarantee, hasSanction, sanctionKey } from "./statecraft";
+import { adjustRelation } from "./diplomacy";
+import type { PeaceTerms } from "./state";
 import { generalCap, generalCost, generalsOf, hireGeneral, updateGeneral } from "./generals";
 import type { Unit } from "./state";
 import { budgetBalance, defaultBudget, logEvent, nameOf, type CountryState, type GameState, type ProvinceState, type UnitType } from "./state";
@@ -89,7 +93,9 @@ function economyPolicy(s: GameState, c: CountryState) {
 
 function buildForces(s: GameState, geo: Geography, c: CountryState, units: { all: number; navy: number; air: number }, coast: ProvinceId | null) {
   if (!c.capital) return;
-  const target = Math.ceil(unitCap(c) * (isAtWar(s, c.id) ? 1 : difficultyOf(s).aiPeaceArmy));
+  // Peacetime army: the personality's share, nudged by difficulty (Normal = no change).
+  const peace = Math.min(1, personalityOf(c).peaceArmy + (difficultyOf(s).aiPeaceArmy - DIFFICULTY_RULES.normal.aiPeaceArmy));
+  const target = Math.ceil(unitCap(c) * (isAtWar(s, c.id) ? 1 : peace));
   if (units.all >= target) return;
   const port = geo.provinces[c.capital]?.coastal ? c.capital : coast;
   let type: UnitType = "army";
@@ -135,6 +141,46 @@ function aiGenerals(s: GameState, c: CountryState, armies: Unit[]) {
   }
 }
 
+/** What a peace offer asks for, in words. */
+export const PEACE_DEMANDS: Record<PeaceTerms, string> = {
+  white: "with no border changes",
+  occupied: "if you give up the provinces they occupy",
+  reparations: "if you pay reparations (5% of your GDP)",
+  puppet: "if you become their puppet state",
+};
+
+/**
+ * Sanctions, guarantees and aid. Countries sanction neighbours they detest and lift sanctions once tempers cool;
+ * friendly countries guarantee small neighbours; rich friendly ones send aid now and then.
+ */
+function statecraft(s: GameState, c: CountryState, neighbors: Set<CountryId>, friendliness: number) {
+  for (const n of neighbors) {
+    const other = s.countries[n];
+    if (!other?.active || atWar(s, c.id, n)) continue;
+    const rel = relation(s, c.id, n);
+    if (rel <= -80 && !hasSanction(s, c.id, n) && !allied(s, c.id, n) && nextRandom(s.rng) < 0.03) {
+      s.sanctions = [...(s.sanctions ?? []), sanctionKey(c.id, n)];
+      logEvent(s, "diplomacy", `${c.name} imposed sanctions on ${other.name}.`, [c.id, n]);
+    } else if (rel > -40 && hasSanction(s, c.id, n)) {
+      s.sanctions = s.sanctions.filter((k) => k !== sanctionKey(c.id, n));
+      logEvent(s, "diplomacy", `${c.name} lifted its sanctions on ${other.name}.`, [c.id, n]);
+    }
+    if (rel >= 50 && other.gdp < 0.5 * c.gdp && !hasGuarantee(s, c.id, n) && guaranteesBy(s, c.id).length < 2 && nextRandom(s.rng) < 0.02 * friendliness) {
+      s.guarantees = [...(s.guarantees ?? []), sanctionKey(c.id, n)];
+      adjustRelation(s, c.id, n, 10);
+      logEvent(s, "diplomacy", `${c.name} guaranteed the independence of ${other.name}.`, [c.id, n]);
+    }
+    if (rel >= 40 && other.gdp < 0.3 * c.gdp && c.treasury > 0.15 * c.gdp && nextRandom(s.rng) < 0.01 * friendliness) {
+      const amount = 0.002 * c.gdp;
+      c.treasury -= amount;
+      other.treasury += amount;
+      c.monthAid = (c.monthAid ?? 0) - amount;
+      other.monthAid = (other.monthAid ?? 0) + amount;
+      adjustRelation(s, c.id, n, Math.min(25, Math.max(3, (amount / Math.max(1, other.gdp)) * 500)));
+    }
+  }
+}
+
 /** Military power of a country and its allies. */
 export function powerOf(s: GameState, c: CountryId, withAllies = true): number {
   const members = withAllies ? [c, ...alliesOf(s, c)] : [c];
@@ -144,27 +190,37 @@ export function powerOf(s: GameState, c: CountryId, withAllies = true): number {
 }
 
 function diplomacy(s: GameState, c: CountryState, neighbors: Set<CountryId>, sidePower: (c: CountryId) => number) {
+  const me = personalityOf(c);
+  // Rivalries flare between neighbours now and then (more often for aggressive countries).
+  if (neighbors.size && nextRandom(s.rng) < me.rivalry) {
+    const list = [...neighbors].filter((n) => s.countries[n]?.active && !allied(s, c.id, n));
+    const rival = list[Math.floor(nextRandom(s.rng) * list.length)];
+    if (rival) adjustRelation(s, c.id, rival, -12);
+  }
+  statecraft(s, c, neighbors, me.friendliness);
   // Friendly neighbours may sign a defensive alliance.
   for (const n of neighbors) {
     const other = s.countries[n];
     if (!other?.active || allied(s, c.id, n) || atWar(s, c.id, n)) continue;
-    if (relation(s, c.id, n) >= 55 && alliesOf(s, c.id).length < 3 && nextRandom(s.rng) < 0.05) {
+    if (relation(s, c.id, n) >= 55 && alliesOf(s, c.id).length < 3 && nextRandom(s.rng) < 0.05 * me.friendliness) {
       if (other.controller === "ai") {
         s.alliances.push(pairKey(c.id, n));
         logEvent(s, "alliance", `${nameOf(s, c.id)} and ${nameOf(s, n)} formed an alliance.`, [c.id, n]);
       }
     }
   }
-  // War: rarely, attack a hostile neighbour that is much weaker (allies included).
-  if (isAtWar(s, c.id) || c.stability < 45) return;
+  // War: attack a hostile neighbour that is much weaker (allies included). Personality sets how readily; against a
+  // human player the difficulty shifts it further. Puppets follow their overlord and never start wars.
+  if (isAtWar(s, c.id) || c.stability < 45 || c.overlord) return;
   const mine = sidePower(c.id);
   for (const n of neighbors) {
     const other = s.countries[n];
-    // Difficulty sets how readily the AI turns on human players; between computer countries the rules never change.
-    const rules = other?.controller === "human" ? difficultyOf(s) : DIFFICULTY_RULES.normal;
-    if (!other?.active || relation(s, c.id, n) > rules.aiHostility || allied(s, c.id, n) || hasTreaty(s, c.id, n, "nonAggression")) continue;
-    if (mine < rules.aiWarRatio * sidePower(n) || mine === 0) continue;
-    if (nextRandom(s.rng) < 0.015 * rules.aiWarChance) {
+    const diff = other?.controller === "human" ? difficultyOf(s) : DIFFICULTY_RULES.normal;
+    const hostility = me.hostility + (diff.aiHostility - DIFFICULTY_RULES.normal.aiHostility);
+    const ratio = me.warRatio * (diff.aiWarRatio / DIFFICULTY_RULES.normal.aiWarRatio);
+    if (!other?.active || other.overlord === c.id || relation(s, c.id, n) > hostility || allied(s, c.id, n) || hasTreaty(s, c.id, n, "nonAggression")) continue;
+    if (mine < ratio * sidePower(n) || mine === 0) continue;
+    if (nextRandom(s.rng) < 0.015 * me.warChance * diff.aiWarChance) {
       declareWar(s, c.id, n);
       return;
     }
@@ -181,7 +237,18 @@ function peaceTalks(s: GameState, war: (typeof s.wars)[number]) {
     const other = s.countries[war[otherSide][0]!];
     if (!leader || !other || leader.controller !== "ai" || !s.wars.includes(war)) continue;
     const score = warScore(s, war, side);
-    const terms = score >= 0.2 ? "occupied" : months >= 18 && Math.abs(score) < 0.15 ? "white" : null;
+    // A crushing win over a smaller country: make it a puppet. Economic countries prefer reparations to land.
+    const style = leader.personality;
+    const terms: PeaceTerms | null =
+      score >= 0.5 && other.gdp < 0.6 * leader.gdp && (style === "aggressive" || style === "balanced")
+        ? "puppet"
+        : score >= 0.2
+          ? style === "economic"
+            ? "reparations"
+            : "occupied"
+          : months >= 18 && Math.abs(score) < 0.15
+            ? "white"
+            : null;
     if (!terms) continue;
     if (other.controller === "human") {
       // At most one offer every 6 months, so the player isn't pestered.
@@ -191,7 +258,7 @@ function peaceTalks(s: GameState, war: (typeof s.wars)[number]) {
       if (!s.offers.some((o) => o.warId === war.id && o.from === leader.id)) {
         s.diplomacyCooldown[key] = s.tick;
         s.offers.push({ id: s.nextId++, warId: war.id, from: leader.id, to: other.id, terms, expiresTick: s.tick + 60 });
-        logEvent(s, "diplomacy", `${leader.name} offers peace${terms === "occupied" ? " if you give up the provinces they occupy" : " with no border changes"}.`, [leader.id, other.id]);
+        logEvent(s, "diplomacy", `${leader.name} offers peace ${PEACE_DEMANDS[terms]}.`, [leader.id, other.id]);
       }
     } else if (wouldAcceptPeace(s, war, other.id, terms)) {
       makePeace(s, war, terms, side);

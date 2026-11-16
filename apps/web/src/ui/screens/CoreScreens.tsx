@@ -19,6 +19,7 @@ import {
   type Ledger as LedgerData,
   type UnitType,
   tradeGrowth,
+  sanctionGrowth,
   RESOURCE_PRICE,
   TRADE_STATE_SHARE,
 } from "@gs/sim";
@@ -277,7 +278,7 @@ function EconomyOverview({ c }: { c: CountryState }) {
       </Card>
       <Ledger c={c} />
       <Card title="Why is the economy growing at this rate?" wide>
-        <Why title="Show the breakdown" parts={growthBreakdown(c, infra, factories, tradeGrowth(useGame.getState().state, c.id)).parts} format={(v) => pct(v, 2, true)} labels={GROWTH_LABELS} />
+        <Why title="Show the breakdown" parts={growthBreakdown(c, infra, factories, tradeGrowth(useGame.getState().state, c.id), sanctionGrowth(useGame.getState().state, c.id)).parts} format={(v) => pct(v, 2, true)} labels={GROWTH_LABELS} />
       </Card>
     </div>
   );
@@ -293,6 +294,8 @@ const LEDGER_ROWS: [keyof Omit<LedgerData, "net">, string, string?][] = [
   ["defense", "Defense", "Goes into the army fund for recruiting and upkeep"],
   ["interest", "Interest on debt"],
   ["construction", "Construction", "Paid when each building was ordered"],
+  ["tribute", "Tribute", "Paid to your overlord, or received from your puppet states"],
+  ["aid", "Aid and reparations", "Sent (−) or received (+)"],
 ];
 
 /** Last month's money, line by line, from the simulation's own ledger. */
@@ -593,6 +596,12 @@ export function StabilityCard({ c }: { c: CountryState }) {
     <Card title="Stability" hint="How content and orderly your country is. Low stability slows growth.">
       <Meter value={c.stability} max={100} label={`${Math.round(c.stability)} / 100`} tone={c.stability < 35 ? "bad" : c.stability < 55 ? "mid" : "good"} />
       <Why title={`Heading towards ${Math.round(b.target)}. Why?`} parts={b.parts} format={(v) => (v > 0 ? `+${v.toFixed(0)}` : v.toFixed(0))} labels={STABILITY_LABELS} />
+      {c.stability < 20 && (
+        <p className="screen__note neg" data-testid="crisis-warning">
+          Political crisis{c.crisisMonths ? ` (${c.crisisMonths} month${c.crisisMonths === 1 ? "" : "s"})` : ""}: below 20 for three months risks a military coup; an
+          autocracy below 15 for four months risks revolution; below 12 for six months a distant region may break away. Raise welfare, cut taxes or end the war.
+        </p>
+      )}
     </Card>
   );
 }

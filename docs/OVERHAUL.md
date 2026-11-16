@@ -154,9 +154,48 @@ resources (oil, steel…) would be game-generated deposits like the existing one
 - Not yet: stockpiled equipment and the named resources (oil, steel, aluminium…); terrain and weather in battles
   (no terrain data yet).
 
-### Stage E — Diplomacy, politics, AI
-Sanctions, aid, guarantees, puppets and reparations in peace deals; coups, revolutions and civil wars; AI
-personalities (aggressive, defensive, economic, diplomatic, balanced) and a livelier but still balanced world.
+### Stage E — Diplomacy, politics, AI ✅
+- **AI personalities** (`personality.ts`): aggressive, defensive, economic, diplomatic or balanced. They are
+  game-generated, weighted a little by the kind of government, and shown in country panels. Personality sets:
+  - how readily a country goes to war (chance, strength ratio, hostility)
+  - its peacetime army size
+  - how often it builds, and whether it fortifies borders in peacetime
+  - its friendliness (alliances, guarantees, aid)
+  - how often rivalries flare with neighbours
+
+  Difficulty still shifts behaviour towards human players on top of personality.
+- **A livelier world:** in a 20-year run, 8 wars, 199 ownership changes, 8 puppet states, 5 sanctions and 59
+  guarantees. Treasuries still stay between −39% and +73% of GDP, and GDP grows 3.43%/yr. The world was almost
+  frozen before (0–1 wars).
+- **Statecraft** (`statecraft.ts`), with buttons in every country panel:
+  - Sanctions: −0.15% growth a year for the target (up to −1%) and −0.03% for the sanctioner; they end trade
+    agreements and anger the target.
+  - Economic and military aid: money or army funds; relations improve with what the aid means to them.
+  - Guarantees of independence: the guarantor joins any war against the guaranteed country.
+
+  The AI uses all three.
+- **Peace conference.** Four kinds of terms, and for each the game shows whether a computer-run enemy would accept:
+  - White peace.
+  - Keep occupied land.
+  - Reparations: the losers pay 5% of their GDP.
+  - Puppet state: needs a crushing win. The puppet follows its overlord into war, can't declare war itself, and
+    pays 10% of its taxes as tribute.
+
+  AI winners choose terms by personality. Tribute and aid have their own ledger lines.
+- **Political upheaval** (`upheaval.ts`), from long periods of very low stability:
+  - Military coups: the government becomes military rule and elections stop.
+  - Revolutions: an autocracy becomes a democracy.
+  - Breakaway states: a region far from the capital declares independence as a new country ("Free …", with its
+    own colour), takes the soldiers stationed there, and a civil war begins.
+
+  The Government screen warns when a crisis is building.
+- **Performance:** surrender-by-lost-land is checked every 5 days instead of daily (capitals are still checked
+  daily). The 20-year run takes about 11.5 s, against a 30 s limit.
+- Save version 11; sanctions and guarantees are synced to online players; new countries are registered in the
+  browser as they appear.
+- Tests: personalities, sanctions, aid, guarantees joining wars, reparations, puppets (tribute, following the
+  overlord, no own wars), coups and revolutions, and a breakaway in the real modern world (Russia). Browser tests
+  cover sanction and guarantee buttons and the peace conference.
 
 ### Stage F — Modes, stats, polish
 Random world and sandbox settings, clickable news, country comparison and more leaderboards, terrain (once a data

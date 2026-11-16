@@ -51,6 +51,8 @@ function sim(msg: SimRequest) {
       // Ignore updates sent before the worker heard about the latest pause/play,
       // so the date doesn't keep moving after you press pause.
       if (paused !== useGame.getState().paused) return;
+      // A country that appeared during the game (a breakaway state) needs its name and details registered.
+      if (Object.keys(state.countries).length !== Object.keys(useGame.getState().state.countries).length) registerStateCountries(state);
       useGame.setState((s) => ({
         state,
         errors: errors.length ? errors : s.errors,
@@ -147,6 +149,7 @@ setOnlineHooks({
   update: (fn) =>
     useGame.setState((s) => {
       const state = fn(s.state);
+      if (Object.keys(state.countries).length !== Object.keys(s.state.countries).length) registerStateCountries(state);
       return { state, provincesOf: state.ownershipVersion !== s.state.ownershipVersion ? provincesByOwner(state) : s.provincesOf };
     }),
   clock: (clock) => useGame.setState({ paused: clock.paused }),

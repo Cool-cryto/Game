@@ -17,3 +17,6 @@ export * from "./construction";
 export * from "./treaties";
 export * from "./units";
 export * from "./generals";
+export * from "./personality";
+export * from "./statecraft";
+export * from "./upheaval";

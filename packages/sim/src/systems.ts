@@ -1,6 +1,7 @@
 import { governmentGrowth, governmentStability } from "./government";
 import { factoryGrowth } from "./construction";
 import { treatyEffects } from "./treaties";
+import { sanctionGrowth, tribute } from "./statecraft";
 import { overallLevel, researchSpeed, researchTarget, resourceBonus, techMods, yearsPerBranchLevel } from "./tech";
 import { RESOURCES, type CountryId, type ResourceId } from "@gs/shared";
 import {
@@ -48,11 +49,14 @@ export function runMonthly(state: GameState): void {
   worldMarket(state, agg);
   const warring = new Set(state.wars.flatMap((w) => [...w.attackers, ...w.defenders]));
   const treaties = treatyEffects(state);
+  // Tribute owed to each overlord this month (worked out before anyone's GDP moves).
+  const tributeTo = new Map<CountryId, number>();
+  for (const c of Object.values(state.countries)) if (c.active && c.overlord) tributeTo.set(c.overlord, (tributeTo.get(c.overlord) ?? 0) + tribute(c));
   for (const c of Object.values(state.countries)) {
     if (!c.active) continue;
     const a = agg.get(c.id)!;
     const t = treaties.get(c.id);
-    economy(c, a, t?.trade ?? 0);
+    economy(c, a, t?.trade ?? 0, sanctionGrowth(state, c.id), tributeTo.get(c.id) ?? 0);
     const provinces = (owned.get(c.id) ?? []).map((id) => state.provinces[id]!);
     investment(c, provinces, t?.research ?? 0);
     society(c, provinces, warring.has(c.id));
@@ -129,7 +133,7 @@ export const debtRatio = (c: CountryState) => (c.treasury < 0 && c.gdp > 0 ? -c.
 
 /** The yearly GDP growth rate this month, broken down so the UI can explain it. */
 /** `trade` is the extra growth from trade partners (see tradeGrowth in treaties.ts). */
-export function growthBreakdown(c: CountryState, infrastructure: number, weightedFactory = 0, trade = 0) {
+export function growthBreakdown(c: CountryState, infrastructure: number, weightedFactory = 0, trade = 0, sanctions = 0) {
   const parts = {
     // Less developed economies catch up faster.
     base: 0.012 + 0.03 * (1 - c.techLevel / 12),
@@ -146,6 +150,7 @@ export function growthBreakdown(c: CountryState, infrastructure: number, weighte
     technology: techMods(c).growth,
     factories: factoryGrowth(weightedFactory),
     trade,
+    sanctions,
   };
   const total = Object.values(parts).reduce((a, b) => a + b, 0);
   return { parts, total };
@@ -169,8 +174,8 @@ export function tradeIncome(c: CountryState): number {
   return Math.max(-cap, Math.min(cap, v * TRADE_STATE_SHARE));
 }
 
-function economy(c: CountryState, a: Aggregate, trade: number) {
-  const g = growthBreakdown(c, a.infrastructure, a.factories, trade).total;
+function economy(c: CountryState, a: Aggregate, trade: number, sanctions: number, tributeIn: number) {
+  const g = growthBreakdown(c, a.infrastructure, a.factories, trade, sanctions).total;
   c.gdpGrowth = g;
   c.gdp *= Math.pow(1 + g, 1 / 12);
 
@@ -186,14 +191,18 @@ function economy(c: CountryState, a: Aggregate, trade: number) {
     interest: c.treasury < 0 ? -(-c.treasury * interestRate(c)) / 12 : 0,
     // Already paid when each project was ordered; shown here so the month adds up.
     construction: c.monthConstruction ? -c.monthConstruction : 0, // (never -0: it wouldn't survive JSON)
+    tribute: tributeIn - tribute(c),
+    // Already moved when it was sent; shown here so the month adds up.
+    aid: c.monthAid ?? 0,
     net: 0,
   };
   // Construction was taken from the treasury when ordered, so it isn't taken again.
-  const change = ledger.taxes + ledger.trade + ledger.admin + ledger.infrastructure + ledger.research + ledger.welfare + ledger.defense + ledger.interest;
-  ledger.net = change + ledger.construction;
+  const change = ledger.taxes + ledger.trade + ledger.admin + ledger.infrastructure + ledger.research + ledger.welfare + ledger.defense + ledger.interest + ledger.tribute;
+  ledger.net = change + ledger.construction + ledger.aid;
   c.treasury += change;
   c.ledger = ledger;
   c.monthConstruction = 0;
+  c.monthAid = 0;
   c.defenseFund += month(c.budget.defense);
 }
 

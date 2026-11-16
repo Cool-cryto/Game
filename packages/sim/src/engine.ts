@@ -3,12 +3,15 @@ import { aiDaily, aiMonthly } from "./ai";
 import { checkCapitulations, diplomacyMonthly } from "./diplomacy";
 import { countryNeighbors, type Geography } from "./geography";
 import { advanceMovement, advanceSieges, enforceUnitCaps, militaryMonthly, resolveBattles } from "./military";
-import { dateAt, SAVE_VERSION, type GameState } from "./state";
+import { dateAt, SAVE_VERSION, type CountryState, type GameState } from "./state";
 import { runMonthly } from "./systems";
 import { politicsMonthly, startingGovernment, type Regime } from "./government";
 import { startingResearch } from "./tech";
 import { DEFAULT_KIND } from "./units";
 import { releaseOrphanedGenerals } from "./generals";
+import { startingPersonality } from "./personality";
+import { freeOrphanedPuppets } from "./statecraft";
+import { upheavalMonthly } from "./upheaval";
 import { constructionDaily } from "./construction";
 import { expireProposals } from "./treaties";
 import { startingOrganizations } from "./state";
@@ -39,6 +42,8 @@ export function tick(state: GameState, geo: Geography, commands: Command[] = [])
   if (dateAt(state.startDate, state.tick).endsWith("-01")) {
     runMonthly(state);
     politicsMonthly(state);
+    upheavalMonthly(state, geo);
+    freeOrphanedPuppets(state);
     militaryMonthly(state, geo);
     const neighbors = countryNeighbors(geo, (p) => state.provinces[p]?.owner);
     diplomacyMonthly(state, neighbors);
@@ -114,6 +119,13 @@ export function deserialize(
     // Version 10 added unit kinds (old units become infantry, fighters and destroyers), training and generals.
     for (const u of Object.values(s.units ?? {}) as GameState["units"][string][]) u.kind ??= DEFAULT_KIND[u.type];
     s.generals ??= [];
+    (s as { version: number }).version = 10;
+  }
+  if ((s.version as number) === 10) {
+    // Version 11 added personalities, sanctions, guarantees and puppet states.
+    s.sanctions ??= [];
+    s.guarantees ??= [];
+    for (const c of Object.values(s.countries) as CountryState[]) if (c.active) c.personality ??= startingPersonality(c, s.rng?.seed ?? 1);
     (s as { version: number }).version = SAVE_VERSION;
   }
   if (s.version !== SAVE_VERSION) {

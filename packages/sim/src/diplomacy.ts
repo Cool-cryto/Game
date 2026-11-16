@@ -1,6 +1,7 @@
 import type { CountryId, ProvinceId } from "@gs/shared";
 import { nextRandom } from "./rng";
 import { largestProvince, logEvent, nameOf, type GameState, type PeaceTerms, type War } from "./state";
+import { guarantorsOf, makePuppet, puppetPair, puppetsOf } from "./statecraft";
 import { breakTreatiesForWar, hasAccess, removeFromTreaties, treatyPairBaselines, type Organization } from "./treaties";
 
 // ---------- Relations and alliances ----------
@@ -39,7 +40,7 @@ export function sameDefenseOrg(s: GameState, a: CountryId, b: CountryId): boolea
 /** Bilateral alliance only (the ones made and broken with proposeAlliance / breakAlliance). */
 export const bilateralAlly = (s: GameState, a: CountryId, b: CountryId) => a !== b && s.alliances.includes(pairKey(a, b));
 /** Allied: a bilateral alliance, or members of the same defense organization. */
-export const allied = (s: GameState, a: CountryId, b: CountryId) => a !== b && (s.alliances.includes(pairKey(a, b)) || sameDefenseOrg(s, a, b));
+export const allied = (s: GameState, a: CountryId, b: CountryId) => a !== b && (s.alliances.includes(pairKey(a, b)) || sameDefenseOrg(s, a, b) || puppetPair(s, a, b));
 export const alliesOf = (s: GameState, c: CountryId): CountryId[] => {
   const out = new Set<CountryId>();
   for (const k of s.alliances) {
@@ -82,11 +83,15 @@ export const friendly = (s: GameState, a: CountryId, b: CountryId) =>
 
 export function declareWar(s: GameState, attacker: CountryId, target: CountryId): War {
   // The target's allies defend it, unless they are allied to the attacker too.
-  const defenders = [target, ...alliesOf(s, target).filter((a) => a !== attacker && !allied(s, a, attacker) && s.countries[a]?.active)];
+  // The target's allies defend it, unless they are allied to the attacker too; so do its guarantors and puppets
+  // (and its overlord, if it's a puppet). The attacker's puppets follow it in.
+  const helpers = [...alliesOf(s, target), ...guarantorsOf(s, target), ...puppetsOf(s, target), ...(s.countries[target]?.overlord ? [s.countries[target]!.overlord!] : [])];
+  const defenders = [target, ...new Set(helpers.filter((a) => a !== attacker && a !== target && !allied(s, a, attacker) && s.countries[a]?.active))];
+  const attackers = [attacker, ...puppetsOf(s, attacker).filter((p) => !defenders.includes(p))];
   const war: War = {
     id: s.nextId++,
     name: `${nameOf(s, attacker)}–${nameOf(s, target)} War`,
-    attackers: [attacker],
+    attackers,
     defenders,
     startTick: s.tick,
   };
@@ -138,7 +143,8 @@ export function wouldAcceptPeace(s: GameState, war: War, receiver: CountryId, te
   const score = warScore(s, war, side);
   const months = (s.tick - war.startTick) / 30;
   const armies = Object.values(s.units).filter((u) => u.type === "army" && war[side].includes(u.owner)).length;
-  if (terms === "occupied") return score <= -0.15 || armies === 0 || (months >= 24 && score <= -0.05);
+  if (terms === "puppet") return score <= -0.4 || (armies === 0 && score <= -0.15);
+  if (terms === "occupied" || terms === "reparations") return score <= -0.15 || armies === 0 || (months >= 24 && score <= -0.05);
   return score <= 0.05 || (months >= 18 && score < 0.2);
 }
 
@@ -169,6 +175,30 @@ export function makePeace(s: GameState, war: War, terms: PeaceTerms, winner: "at
   for (const a of war.attackers) for (const d of war.defenders) adjustRelation(s, a, d, 30);
   sendTroopsHome(s, [...winners, ...losers]);
   const gained = new Set(transferred);
+  if (terms === "reparations") {
+    // The losers pay 5% of their GDP to the winners' leader (borrowing if they must).
+    let paid = 0;
+    for (const id of losers) {
+      const c = s.countries[id];
+      if (!c?.active) continue;
+      const amount = 0.05 * c.gdp;
+      c.treasury -= amount;
+      c.monthAid = (c.monthAid ?? 0) - amount;
+      paid += amount;
+    }
+    const w = s.countries[leader];
+    if (w) {
+      w.treasury += paid;
+      w.monthAid = (w.monthAid ?? 0) + paid;
+    }
+    logEvent(s, "peace", `${nameOf(s, other)} made peace with ${nameOf(s, leader)} and will pay $${Math.round(paid / 1000).toLocaleString("en-US")}B in reparations.`, everyone);
+    return;
+  }
+  if (terms === "puppet") {
+    logEvent(s, "peace", `${nameOf(s, other)} made peace with ${nameOf(s, leader)}.`, everyone);
+    makePuppet(s, other, leader);
+    return;
+  }
   logEvent(
     s,
     "peace",
@@ -314,6 +344,8 @@ export function checkCapitulations(s: GameState) {
   if (!s.wars.length) return;
   capitalsFallen(s);
   if (!s.wars.length) return;
+  // Surrender by lost land is checked every 5 days (a pass over every province; capitals are checked daily above).
+  if (s.tick % 5 !== 0) return;
   // One pass over provinces for everyone at war.
   const fighting = new Set(s.wars.flatMap((w) => [...w.attackers, ...w.defenders]));
   const total = new Map<CountryId, number>();

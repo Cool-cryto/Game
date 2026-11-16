@@ -30,6 +30,9 @@ export interface Patch {
   proposals?: GameState["proposals"];
   /** Generals, whole, when they changed (the list is replaced, never edited in place). */
   generals?: GameState["generals"];
+  /** Sanctions and guarantees, whole, when they changed (replaced, never edited in place). */
+  sanctions?: GameState["sanctions"];
+  guarantees?: GameState["guarantees"];
   /** News since the previous patch. */
   events: GameEvent[];
   /** Changed fields of countries (never their history arrays). Numbers are rounded to 5 significant digits. */
@@ -58,6 +61,8 @@ export class StateDiffer {
   private orgJson = new Map<string, string>();
   private proposals: GameState["proposals"] = [];
   private generals: GameState["generals"] = [];
+  private sanctions: GameState["sanctions"] = [];
+  private guarantees: GameState["guarantees"] = [];
 
   /**
    * Start from a snapshot that clients already have. With `units: false` the
@@ -85,6 +90,8 @@ export class StateDiffer {
     this.orgJson = new Map(s.organizations.map((o) => [o.id, JSON.stringify(o)]));
     this.proposals = s.proposals;
     this.generals = s.generals;
+    this.sanctions = s.sanctions;
+    this.guarantees = s.guarantees;
   }
 
   diff(s: GameState): Patch {
@@ -141,6 +148,14 @@ export class StateDiffer {
     if (s.generals !== this.generals) {
       patch.generals = s.generals;
       this.generals = s.generals;
+    }
+    if (s.sanctions !== this.sanctions) {
+      patch.sanctions = s.sanctions;
+      this.sanctions = s.sanctions;
+    }
+    if (s.guarantees !== this.guarantees) {
+      patch.guarantees = s.guarantees;
+      this.guarantees = s.guarantees;
     }
     if (s.proposals !== this.proposals) {
       patch.proposals = s.proposals;
@@ -253,6 +268,8 @@ export function applyPatch(s: GameState, p: Patch, maxEvents = 300, historyMonth
   }
   if (p.proposals) next.proposals = p.proposals;
   if (p.generals) next.generals = p.generals;
+  if (p.sanctions) next.sanctions = p.sanctions;
+  if (p.guarantees) next.guarantees = p.guarantees;
   const changedCountries = new Set([...Object.keys(p.countries), ...Object.keys(p.history), ...Object.keys(p.removed ?? {})]);
   if (changedCountries.size) {
     next.countries = { ...s.countries };

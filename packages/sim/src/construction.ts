@@ -2,6 +2,8 @@ import type { CountryId, ProvinceId } from "@gs/shared";
 import type { Geography } from "./geography";
 import { costMultiplier } from "./military";
 import { nextRandom } from "./rng";
+import { personalityOf } from "./personality";
+import { relation } from "./diplomacy";
 import { budgetBalance, logEvent, type CountryState, type GameState, type ProvinceState } from "./state";
 
 /**
@@ -155,8 +157,16 @@ export const factoryOutput = (p: ProvinceState) => 1 + 0.1 * buildingLevel(p, "f
  */
 export function aiConstruction(s: GameState, geo: Geography, c: CountryState, enemies: Set<CountryId>, owned: ProvinceState[]) {
   // Like players, the AI may borrow to build, but only while its debt is light, and one project at a time.
-  if (c.construction.length >= 1 || c.treasury < -0.05 * c.gdp || budgetBalance(c) < 0 || c.stability < 30 || nextRandom(s.rng) > 0.15) return;
+  const style = personalityOf(c);
+  if (c.construction.length >= 1 || c.treasury < -0.05 * c.gdp || budgetBalance(c) < 0 || c.stability < 30 || nextRandom(s.rng) > style.buildChance) return;
   let target: { p: ProvinceState; b: BuildingType } | null = null;
+  // Defensive countries fortify borders with neighbours they distrust even in peacetime.
+  if (!enemies.size && style.fortifies) {
+    for (const p of owned) for (const n of geo.provinces[p.id]?.neighbors ?? []) {
+      const o = s.provinces[n]?.owner;
+      if (o && o !== c.id && relation(s, c.id, o) < -30) enemies.add(o);
+    }
+  }
   if (enemies.size) {
     // A fort in the most populous province bordering an enemy.
     const border = owned
