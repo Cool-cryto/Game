@@ -127,7 +127,10 @@ test("clicking the ocean closes the panel", async ({ page }) => {
 
 test("zoom buttons and mouse wheel work", async ({ page }) => {
   await openMap(page);
+  // Each click animates; wait for it to finish, or the next zoom starts from part-way.
   await page.getByLabel("Zoom in").click();
+  await expect.poll(() => zoomLevel(page)).toBeGreaterThan(1.4);
+  await page.waitForTimeout(400);
   await page.getByLabel("Zoom in").click();
   await expect.poll(() => zoomLevel(page)).toBeGreaterThan(2.4);
   await page.getByLabel("Zoom out").click();
@@ -526,4 +529,59 @@ test("fog of war hides foreign forces far from you, and can be switched off", as
   await page.getByRole("button", { name: "Close menu" }).click();
   await searchFor(page, "são paulo");
   await expect(forces).toBeVisible();
+});
+
+test.describe("simple mode (the default for new players)", () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  test("pick a country, follow the guide, set a focus, go to war and attack; your country stays yours", async ({ page }) => {
+    const errors = await openMap(page);
+    // Start screen with a goal and suggested countries; no map-mode menu cluttering the top.
+    const start = page.getByTestId("start-screen");
+    await expect(start).toContainText("Your goal");
+    await expect(page.getByLabel("Map mode")).toHaveCount(0);
+    await start.getByRole("button", { name: /France/ }).click();
+    await expect(page.getByTestId("guide")).toContainText("You lead France");
+    await page.getByRole("button", { name: "Let's go" }).click();
+    await expect(page.getByTestId("player-card")).toContainText("World rank");
+
+    // My country: a focus instead of sliders; the budget stays balanced.
+    await page.getByRole("navigation", { name: "Main actions" }).getByRole("button", { name: "My country" }).click();
+    const hud = page.getByTestId("hud-country");
+    await hud.getByRole("button", { name: /Grow the economy/ }).click();
+    await expect(hud.getByRole("button", { name: /Grow the economy/ })).toHaveAttribute("aria-pressed", "true");
+
+    // Army: plain numbers and recruit buttons.
+    await page.getByRole("navigation", { name: "Main actions" }).getByRole("button", { name: "Army" }).click();
+    await expect(page.getByTestId("hud-army")).toContainText("Where your forces are");
+
+    // World: declare war on a neighbour, then one-click attack.
+    await page.getByRole("navigation", { name: "Main actions" }).getByRole("button", { name: "World" }).click();
+    const belgium = page.getByTestId("relations-BEL");
+    await belgium.getByRole("button", { name: /War/ }).click();
+    await belgium.getByRole("button", { name: "Yes, declare war" }).click();
+    const war = page.getByTestId("hud-world").locator(".swar");
+    await expect(war).toContainText("vs Belgium");
+    await war.getByRole("button", { name: /Attack/ }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const s = (window as unknown as { __gsGame: { getState: () => { state: { units: Record<string, { owner: string; type: string; path: string[] }> } } } }).__gsGame.getState().state;
+          return Object.values(s.units).filter((u) => u.owner === "FRA" && u.type === "army" && u.path.length > 0).length;
+        }),
+      )
+      .toBeGreaterThan(0);
+
+    // Your country is locked in: other countries offer no way to switch.
+    await searchFor(page, "germany");
+    await expect(panel(page)).toContainText("start a new game");
+    await expect(panel(page).getByRole("button", { name: /Lead|Play as/ })).toHaveCount(0);
+
+    // Advanced mode brings the detailed controls back.
+    await page.getByRole("button", { name: "Game", exact: true }).click();
+    await page.getByRole("checkbox", { name: /Advanced controls/ }).check();
+    await page.getByRole("button", { name: "Close menu" }).click();
+    await expect(page.getByLabel("Map mode")).toBeVisible();
+    expect(errors).toEqual([]);
+  });
 });

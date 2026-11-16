@@ -150,7 +150,14 @@ Built: scenario system; **End of the Cold War (1991)** with the Soviet Union, Yu
 browser, export/import, play, host online); server support for scenarios and custom worlds; borders computed from the
 live map.
 
-### Stage 8 — Fog of war ✅ (current)
+### Stage 9 — Simple mode ✅ (current)
+Built: the game starts simple. A start screen (goal, suggested countries with difficulty, short guide); three buttons
+(My country, Army, World) with plain-language panels; a national focus and Low/Normal/High taxes instead of five
+sliders (always a balanced budget); one-click Attack and Make peace; a world rank as the score; short country and
+province panels ("Show all details" for more); only the political map. Your country is locked in once chosen. Everything
+from before is under Game → Options → **Advanced controls**.
+
+### Stage 8 — Fog of war ✅
 Built: vision rules (your land and the next province over, around your units, further for air wings, shared with
 allies); foreign units out of sight, foreign routes and unseen sieges are hidden; the server sends each player only what
 their country can see (closing the "modified client can see everything" gap); the map and globe darken what you can't
@@ -213,6 +220,7 @@ bandwidth 5× too high, and an editor race that wiped a newly created country.
 
 ### Gameplay ideas not yet started
 - Trade agreements and sanctions; resource-specific deals
+- Victory screen when you reach #1 (simple mode already shows your world rank)
 - Province buildings (factories, ports, fortifications) and a local economy per province
 - Events and decisions (elections, crises, disasters)
 - Smarter AI (planning, coalitions, naval invasions, adapting to the player), and an AI that respects fog of war

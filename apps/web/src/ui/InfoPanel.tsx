@@ -19,6 +19,7 @@ import {
 import { citiesIn, flagUrl, GEOGRAPHY, getCountry, getProvince, landNeighbours, MODERN_SCENARIO } from "../data/countries";
 import { gdpPerCapita } from "../map/mapModes";
 import { fogOf } from "../state/fog";
+import { SimpleCountryView } from "./simple/SimpleHud";
 import { playerCountry, useGame } from "../state/gameStore";
 import { useOnline } from "../net/online";
 import { DiplomacySection, WarsSection } from "./DiplomacyPanel";
@@ -58,7 +59,15 @@ export function InfoPanel() {
 
   if (!selected) return null;
   if (selected.kind === "units") return <UnitsView province={selected.province} owner={selected.owner} />;
-  return selected.kind === "country" ? <CountryView id={selected.id} /> : <ProvinceView id={selected.id} />;
+  return selected.kind === "country" ? <CountryPanel id={selected.id} /> : <ProvinceView id={selected.id} />;
+}
+
+/** Simple mode shows a short country panel; "Show all details" (or Advanced mode) shows everything. */
+function CountryPanel({ id }: { id: CountryId }) {
+  const advanced = useUi((s) => s.advanced);
+  const [detailsFor, setDetailsFor] = useState<CountryId | null>(null);
+  if (!advanced && detailsFor !== id) return <SimpleCountryView id={id} onDetails={() => setDetailsFor(id)} />;
+  return <CountryView id={id} />;
 }
 
 /**
@@ -167,16 +176,15 @@ function CountryView({ id }: { id: CountryId }) {
             Played by {useOnline.getState().players.find((p) => p.country === id)?.name ?? "another player"}.
           </p>
         )}
-        {state.active && !isPlayer && state.controller !== "human" && (
-          <button
-            className="btn btn--primary"
-            onClick={() => {
-              if (me) send({ type: "releaseCountry", country: me });
-              send({ type: "claimCountry", country: id });
-            }}
-          >
+        {state.active && !me && state.controller !== "human" && (
+          <button className="btn btn--primary" onClick={() => send({ type: "claimCountry", country: id })}>
             Play as {c.name}
           </button>
+        )}
+        {state.active && me && !isPlayer && state.controller !== "human" && (
+          <p className="panel__small" data-testid="locked-country">
+            You lead {getCountry(me)?.name ?? me}. To lead another country, start a new game from the Game menu.
+          </p>
         )}
         <button className="btn btn--ghost" onClick={() => select({ kind: "country", id }, { focus: true })}>
           Zoom to {c.name}
@@ -480,7 +488,10 @@ function ProvinceView({ id }: { id: ProvinceId }) {
   const me = useGame((s) => playerCountry(s.state)?.id);
   useUi((s) => s.fog); // re-render when fog is switched on or off
   const units = useGame((s) => fogOf(s.state).view.units);
+  const advanced = useUi((s) => s.advanced);
+  const [details, setDetails] = useState(false);
   if (!p || !ps) return null;
+  const full = advanced || details;
   const here = new Map<CountryId, number>();
   for (const u of Object.values(units)) if (u.province === id) here.set(u.owner, (here.get(u.owner) ?? 0) + 1);
   const cities = citiesIn(id).slice(0, 8);
@@ -533,9 +544,15 @@ function ProvinceView({ id }: { id: ProvinceId }) {
         </section>
       )}
 
-      {me && ps.owner === me && ps.controller === me && <RecruitButtons country={me} province={id} label="Recruit here" />}
+      {full && me && ps.owner === me && ps.controller === me && <RecruitButtons country={me} province={id} label="Recruit here" />}
 
-      {inhabited && (
+      {!full && (
+        <button className="link" onClick={() => setDetails(true)}>
+          Show all details
+        </button>
+      )}
+
+      {full && inhabited && (
         <section>
           <h3>Province</h3>
           <div className="stats">
@@ -546,7 +563,7 @@ function ProvinceView({ id }: { id: ProvinceId }) {
         </section>
       )}
 
-      {inhabited && ownerState && (
+      {full && inhabited && ownerState && (
         <section>
           <h3>Resources</h3>
           <table className="res-table">
@@ -573,23 +590,23 @@ function ProvinceView({ id }: { id: ProvinceId }) {
         </section>
       )}
 
-      <section>
+      {full && <section>
         <h3>Overview</h3>
         <dl className="facts">
           <Fact label="Area" value={`${formatInt(p.areaKm2)} km²`} />
           <Fact label="ISO code" value={p.iso} />
           <Fact label="Cities on map" value={formatInt(p.cityCount)} />
         </dl>
-      </section>
+      </section>}
 
-      {cities.length > 0 && (
+      {full && cities.length > 0 && (
         <section>
           <h3>Cities (2019)</h3>
           <CityList cities={cities} />
         </section>
       )}
 
-      <NotYet province />
+      {full && <NotYet province />}
     </Shell>
   );
 }
