@@ -10,6 +10,8 @@ import { scenarioFromCustom } from "../data/scenarios";
 import { formatDate } from "./format";
 import { Icon } from "./nav/Icon";
 import { AccessAdmin } from "./AccessAdmin";
+import { applyWorldOptions, STANDARD_WORLD, WORLD_MODES, type WorldOptions } from "@gs/sim";
+import { GEOGRAPHY } from "../data/countries";
 
 /** New game, save, load, export and import. */
 export function GameMenu() {
@@ -246,6 +248,7 @@ function NewGame({ onStarted, onEditor }: { onStarted: (name: string) => void; o
   const [choice, setChoice] = useState<string | null>(null);
   const [worlds, setWorlds] = useState<SavedWorld[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [world, setWorld] = useState<WorldOptions>(STANDARD_WORLD);
   const replace = useGame((s) => s.replace);
   const setEditor = useUi((s) => s.setEditor);
   useEffect(() => {
@@ -258,7 +261,9 @@ function NewGame({ onStarted, onEditor }: { onStarted: (name: string) => void; o
       const scenario = builtIn ? await builtIn.load() : saved ? await scenarioFromCustom(saved.world) : null;
       if (!scenario) return;
       await clearAutosave();
-      replace(newGameState(scenario));
+      const state = newGameState(scenario);
+      applyWorldOptions(state, GEOGRAPHY, world);
+      replace(state);
       onStarted(scenario.name);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -268,6 +273,44 @@ function NewGame({ onStarted, onEditor }: { onStarted: (name: string) => void; o
     <>
       <h3>New game</h3>
       <p className="dialog__hint">Starting a new game replaces the current one (save first if you want to keep it).</p>
+      <fieldset className="world-setup" data-testid="world-setup">
+        <legend>World setup</legend>
+        <div className="world-setup__modes" role="radiogroup" aria-label="World">
+          {WORLD_MODES.map((m) => (
+            <label key={m.id} className={`peace-term ${world.mode === m.id ? "is-on" : ""}`}>
+              <input type="radio" name="world-mode" checked={world.mode === m.id} onChange={() => setWorld({ ...world, mode: m.id })} data-testid={`mode-${m.id}`} />
+              <span>
+                <strong>{m.label}</strong>
+                <span className="panel__small">{m.help}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+        <details className="world-setup__sandbox">
+          <summary>Sandbox options</summary>
+          <label>
+            Starting money{" "}
+            <select value={world.startingMoney} onChange={(e) => setWorld({ ...world, startingMoney: Number(e.target.value) })} data-testid="sandbox-money">
+              <option value={0.5}>Scarce (half)</option>
+              <option value={1}>Normal</option>
+              <option value={2}>Rich (double)</option>
+              <option value={5}>Lavish (five times)</option>
+            </select>
+          </label>
+          <label>
+            Computer countries{" "}
+            <select value={world.aiAggression} onChange={(e) => setWorld({ ...world, aiAggression: Number(e.target.value) })} data-testid="sandbox-aggression">
+              <option value={0.3}>Peaceful</option>
+              <option value={1}>Normal</option>
+              <option value={2.5}>Warlike</option>
+            </select>
+          </label>
+          <label>
+            <input type="checkbox" checked={world.upheaval} onChange={(e) => setWorld({ ...world, upheaval: e.target.checked })} /> Political crises (coups, revolutions, breakaways)
+          </label>
+          <p className="panel__small">Difficulty is chosen when you pick your country. Fog of war is under Options.</p>
+        </details>
+      </fieldset>
       <ul className="slots" aria-label="Scenarios">
         {SCENARIOS.map((sc) => (
           <li key={sc.id} className="slot" data-testid={`scenario-${sc.id}`}>

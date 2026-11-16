@@ -631,7 +631,7 @@ test.describe("top navigation (first-time player)", () => {
       ["government", ["Overview", "Parties & elections", "Laws", "Stability"]],
       ["research", ["Overview", "Technology tree", "Research spending"]],
       ["construction", ["Overview", "Build", "By province", "Infrastructure"]],
-      ["statistics", ["Economy (GDP)", "Population", "GDP per person", "Military spending", "Technology", "Your charts"]],
+      ["statistics", ["Rankings", "Compare", "Your charts"]],
       ["more", ["Population", "News", "Intelligence", "Settings"]],
     ];
     for (const [id, tabs] of screens) {
@@ -906,4 +906,26 @@ test("statecraft: sanction and guarantee another country; the peace conference o
   const conf = page.getByTestId("peace-conference").first();
   await conf.locator("summary").click();
   for (const t of ["White peace", "Keep the land you hold", "Reparations", "Puppet state"]) await expect(conf).toContainText(t);
+});
+
+test("new game: a random world with sandbox options; statistics rank by any measure and compare two countries", async ({ page }) => {
+  await openMap(page);
+  await openNewGame(page);
+  await page.getByTestId("mode-random").check();
+  await page.getByTestId("world-setup").locator("summary").click();
+  await page.getByTestId("sandbox-money").selectOption("2");
+  await page.getByTestId("scenario-modern").getByRole("button", { name: "Start…" }).click();
+  await page.getByTestId("scenario-modern").getByRole("button", { name: "Start new game" }).click();
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __gsGame: { getState: () => { state: { settings: { mode?: string; startingMoney?: number }; organizations: unknown[] } } } }).__gsGame.getState().state.settings))
+    .toMatchObject({ mode: "random", startingMoney: 2 });
+  await playAs(page, "Japan");
+  await page.getByTestId("nav-statistics").click();
+  await page.getByTestId("ranking-measure").selectOption("military");
+  await expect(page.getByTestId("ranking-military")).toBeVisible();
+  await page.getByTestId("ranking-measure").selectOption("influence");
+  await expect(page.getByTestId("ranking-influence")).toBeVisible();
+  await page.getByTestId("screen-statistics").getByRole("tab", { name: "Compare" }).click();
+  await expect(page.getByTestId("compare-table")).toContainText("Naval strength");
+  await expect(page.getByTestId("compare-a")).toHaveValue("JPN");
 });

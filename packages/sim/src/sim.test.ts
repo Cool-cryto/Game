@@ -15,6 +15,8 @@ import {
   tick,
   unitCap,
   DIFFICULTY_RULES,
+  applyWorldOptions,
+  STANDARD_WORLD,
   breakaway,
   coup,
   revolution,
@@ -731,6 +733,43 @@ describe("statecraft, peace terms and upheaval", () => {
     expect(c.government.regime).toBe("electoral_democracy");
     expect(c.government.nextElection).not.toBeNull();
     expect(s.events.some((e) => e.text.includes("military coup"))).toBe(true);
+  });
+});
+
+describe("world modes and sandbox options", () => {
+  const read = (p: string) => JSON.parse(readFileSync(new URL(`../../../apps/web/src/data/${p}`, import.meta.url), "utf8"));
+  const world = geographyFrom(read("geography.json") as GeographyData);
+  const scenario = read("scenario-modern.json") as Scenario;
+
+  it("alternate history dissolves real alliances and organizations and reshuffles relations", () => {
+    const s = createGameState(scenario, world, 5);
+    expect(s.organizations.length).toBeGreaterThan(0);
+    applyWorldOptions(s, world, { ...STANDARD_WORLD, mode: "alternate" });
+    expect(s.organizations).toHaveLength(0);
+    expect(s.settings.mode).toBe("alternate");
+    const rels = Object.values(s.relations);
+    expect(rels.some((r) => r < -30)).toBe(true);
+    expect(rels.some((r) => r > 30)).toBe(true);
+    expect(s.alliances.length).toBeGreaterThan(0);
+  });
+
+  it("a random world changes deposits, treasuries and stability; sandbox money multiplies everyone's start", () => {
+    const a = createGameState(scenario, world, 5);
+    const b = createGameState(scenario, world, 5);
+    applyWorldOptions(b, world, { mode: "random", startingMoney: 2, aiAggression: 2.5, upheaval: false });
+    const p = Object.values(a.provinces).find((x) => x.deposits.energy > 0)!;
+    expect(b.provinces[p.id]!.deposits.energy).not.toBe(p.deposits.energy);
+    expect(new Set(Object.values(b.countries).filter((c) => c.active).map((c) => c.stability)).size).toBeGreaterThan(5);
+    const fra = "FRA" as CountryId;
+    expect(b.countries[fra]!.defenseFund).toBeCloseTo(2 * a.countries[fra]!.defenseFund, 3);
+    expect(b.settings.upheaval).toBe(false);
+    expect(b.settings.aiAggression).toBe(2.5);
+    // With crises switched off, a collapsing country has no coup.
+    const c = b.countries[fra]!;
+    c.stability = 0;
+    c.crisisMonths = 12;
+    for (let i = 0; i < 100; i++) tick(b, world);
+    expect(b.events.some((e) => e.text.includes("military coup") || e.text.includes("declared independence"))).toBe(false);
   });
 });
 

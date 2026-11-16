@@ -4380,3 +4380,76 @@ tr.is-locked {
   display: block;
   margin: 2px 0 0;
 }
+
+/* ----- Statistics: rankings and comparison ----- */
+.stat-pick {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.stat-pick select,
+.compare select {
+  background: var(--surface-solid);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 6px;
+  max-width: 100%;
+}
+.compare th:not(:first-child),
+.compare td {
+  width: 38%;
+}
+.compare thead th {
+  text-align: right;
+}
+
+/* ----- New game: world setup ----- */
+.world-setup {
+  margin: 10px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line, var(--border));
+  border-radius: 10px;
+}
+.world-setup legend {
+  padding: 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+.world-setup__modes {
+  display: grid;
+  gap: 6px;
+}
+.world-setup__sandbox {
+  margin-top: 8px;
+}
+.world-setup__sandbox summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 13px;
+}
+.world-setup__sandbox label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0;
+  font-size: 13px;
+}
+.world-setup__sandbox select {
+  background: var(--surface-solid);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 6px;
+}
+.news__item--link {
+  cursor: pointer;
+}
+.news__item--link:hover {
+  background: rgba(255, 255, 255, 0.04);
+}

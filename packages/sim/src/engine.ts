@@ -42,7 +42,7 @@ export function tick(state: GameState, geo: Geography, commands: Command[] = [])
   if (dateAt(state.startDate, state.tick).endsWith("-01")) {
     runMonthly(state);
     politicsMonthly(state);
-    upheavalMonthly(state, geo);
+    if (state.settings?.upheaval !== false) upheavalMonthly(state, geo);
     freeOrphanedPuppets(state);
     militaryMonthly(state, geo);
     const neighbors = countryNeighbors(geo, (p) => state.provinces[p]?.owner);

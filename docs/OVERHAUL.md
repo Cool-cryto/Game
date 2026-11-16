@@ -197,6 +197,37 @@ resources (oil, steel…) would be game-generated deposits like the existing one
   overlord, no own wars), coups and revolutions, and a breakaway in the real modern world (Russia). Browser tests
   cover sanction and guarantee buttons and the peace conference.
 
-### Stage F — Modes, stats, polish
-Random world and sandbox settings, clickable news, country comparison and more leaderboards, terrain (once a data
-source is chosen), balance passes and performance checks.
+### Stage F — Modes, stats, polish ✅
+- **World setup** in New game (`modes.ts`), for any scenario or custom world:
+  - Standard.
+  - Alternate history: real alliances and organizations dissolved, neighbours start with random relations and
+    alliances, and every country gets a new personality.
+  - Random world: alternate history plus random deposits, treasuries, stability and technology, all labelled
+    game-generated.
+
+  Sandbox options work with any of them: starting money (half, normal, double, five times), computer countries
+  (peaceful, normal, warlike) and political crises on or off. They are stored in `GameState.settings`.
+- **Statistics:**
+  - Rankings by 11 measures: GDP, military power, population, territory, industrial capacity, technology, naval
+    strength, air strength, diplomatic influence, GDP per person and military spending, each with your rank and
+    share of the world.
+  - A Compare tab with two countries side by side, plus their GDP history.
+- **News:** click a news item to go to the country it's about. Short alert tones (Web Audio, no files) play for
+  wars, battles, peace, alliances and annexations involving you; switch them off under More → Settings.
+- Tests: alternate and random worlds, sandbox money, crises switched off, and a browser test for a random world
+  with sandbox money, the rankings and comparison.
+
+## 3. What is still open
+
+Each item below is a real gap, in no particular order:
+- **Named resources** (oil, steel, aluminium, coal, iron, electricity, rare materials) and **equipment stockpiles**.
+  Today there are food, energy and minerals; units burn fuel (energy).
+- **Terrain and weather** effects on movement and battles, and a terrain map mode. These need a real land-cover or
+  elevation data source, which the project doesn't have yet.
+- **Supply lines**, beyond fuel and home-ground recovery.
+- **More historical scenarios** (1914, 1936): they need historical borders and open economic data.
+- **Fog-aware AI**: the AI still plans with full knowledge.
+- **Online**: speed control for private-room hosts (rooms keep one pace), and difficulty/world setup for online
+  rooms.
+- **Balance**: military power follows population closely (unit limits come from population), so populous
+  countries lead the military rankings; worth revisiting with equipment and resources.

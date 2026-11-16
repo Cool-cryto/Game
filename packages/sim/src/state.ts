@@ -83,6 +83,13 @@ export interface GameSettings {
   difficulty: Difficulty;
   /** Countries that already got their difficulty start (so it applies only once). */
   started: CountryId[];
+  /** How the world was set up, and sandbox options (see modes.ts). Missing means standard. */
+  mode?: "standard" | "alternate" | "random";
+  startingMoney?: number;
+  /** Multiplier on the AI's chance of starting wars (default 1). */
+  aiAggression?: number;
+  /** Coups, revolutions and breakaways (default on). */
+  upheaval?: boolean;
 }
 export const difficultyOf = (s: GameState) => DIFFICULTY_RULES[s.settings?.difficulty ?? "normal"];
 
