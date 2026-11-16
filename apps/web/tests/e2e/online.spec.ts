@@ -1,12 +1,12 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { ADVANCED_STORAGE } from "./storage";
+import { RETURNING_PLAYER } from "./storage";
 
 // Online play. These tests use the game server started by playwright.config.ts.
 
 const unique = () => `${Date.now() % 1e7}${Math.floor(Math.random() * 100)}`;
 
 async function player(browser: Browser) {
-  const context = await browser.newContext({ viewport: { width: 1400, height: 860 }, storageState: ADVANCED_STORAGE });
+  const context = await browser.newContext({ viewport: { width: 1400, height: 860 }, storageState: RETURNING_PLAYER });
   const page = await context.newPage();
   await page.goto("/");
   await page.waitForFunction(() => (window as unknown as { __gsMap?: unknown }).__gsMap);
@@ -101,6 +101,7 @@ test("orders from one player show up for the other", async ({ browser }) => {
   await guest.getByRole("button", { name: "Play as Portugal" }).click();
   // The guest declares war on Spain; the host sees it.
   await searchFor(guest, "spain");
+  await guest.getByRole("button", { name: "Show all details" }).click();
   await guest.getByRole("button", { name: "Declare war…" }).click();
   await guest.getByRole("button", { name: "Declare war", exact: true }).click();
   await expect(host.getByTestId("player-card")).toContainText("At war");
@@ -153,7 +154,7 @@ test("without a game server, online play explains what's needed", async ({ page 
 test("a private server can start in 1991", async ({ browser }) => {
   const page = await player(browser);
   await signUp(page, `cold${unique()}`);
-  await page.getByLabel("World", { exact: true }).selectOption("cold-war-1991");
+  await page.getByRole("dialog").getByLabel("World", { exact: true }).selectOption("cold-war-1991");
   await page.getByRole("button", { name: "Create", exact: true }).click();
   await expect(page.getByTestId("online-pill")).toBeVisible();
   await expect(page.getByTestId("game-date")).toContainText("1991");

@@ -1,10 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
-import { ADVANCED_STORAGE } from "./tests/e2e/storage";
+import { RETURNING_PLAYER } from "./tests/e2e/storage";
 
 export default defineConfig({
   testDir: "tests/e2e",
   timeout: 30_000,
-  use: { baseURL: "http://localhost:5173", viewport: { width: 1400, height: 860 }, storageState: ADVANCED_STORAGE },
+  use: { baseURL: "http://localhost:5173", viewport: { width: 1400, height: 860 }, storageState: RETURNING_PLAYER },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1400, height: 860 } } }],
   webServer: [
     { command: "npx vite --port 5173", url: "http://localhost:5173", reuseExistingServer: true },

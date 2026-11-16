@@ -21,6 +21,11 @@ export const PROVINCE_ZOOM = 3;
 const HIGH_DETAIL_ZOOM = 4;
 /** Width of the country panel plus margins (see .panel in styles.css). */
 const PANEL_SPACE = 384;
+/** Height of the navigation + information bars (see --chrome-h in styles.css), plus a margin. */
+const TOP_CHROME = 94;
+const TOP_CHROME_NARROW = 98;
+/** Width of a management screen (see .screen in styles.css). */
+const SCREEN_WIDTH = 800;
 
 type PShape = ProvinceShape & { path: Path2D };
 type CShape = CountryShape & { path: Path2D; inner: Path2D | null };
@@ -463,8 +468,13 @@ export function WorldMap() {
       return zoomIdentity.translate((w - frame.width * k) / 2, (h - frame.height * k) / 2).scale(k);
     }
 
+    let sized = false;
     function resize(initial: boolean) {
       const rect = wrap.getBoundingClientRect();
+      // A page opened in a hidden tab has no size yet: wait for a real one, or the zoom maths divides by zero.
+      if (rect.width < 1 || rect.height < 1) return;
+      if (!sized) initial = true;
+      sized = true;
       const dpr = window.devicePixelRatio || 1;
       size = { w: rect.width, h: rect.height };
       canvas.width = Math.round(rect.width * dpr);
@@ -495,14 +505,16 @@ export function WorldMap() {
       requestDraw();
     }
 
-    /** The part of the screen not covered by the top bar or the info panel. */
+    /** The part of the screen not covered by the top bars, an open management screen, or the info panel. */
     function viewport() {
       const { w, h } = size;
       const panelOpen = !!useUi.getState().selected;
       const wide = w > 760;
-      if (panelOpen && wide) return { x0: 0, x1: w - PANEL_SPACE, y0: 64, y1: h };
-      if (panelOpen) return { x0: 0, x1: w, y0: 140, y1: Math.max(h * 0.45, 260) };
-      return { x0: 0, x1: w, y0: wide ? 64 : 140, y1: h };
+      const top = wide ? TOP_CHROME : TOP_CHROME_NARROW;
+      const left = wide && useUi.getState().screen ? Math.min(SCREEN_WIDTH, w / 2) : 0;
+      if (panelOpen && wide) return { x0: left, x1: w - PANEL_SPACE, y0: top, y1: h };
+      if (panelOpen) return { x0: 0, x1: w, y0: top, y1: Math.max(h * 0.45, 260) };
+      return { x0: left, x1: w, y0: top, y1: h };
     }
 
     function focusTransform(b: Bounds, maxRel: number, minRel = 1): ZoomTransform {

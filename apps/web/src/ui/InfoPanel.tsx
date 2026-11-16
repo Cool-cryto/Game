@@ -33,12 +33,12 @@ const KIND_LABEL: Record<CountryInfo["kind"], string> = {
   territory: "Territory / dependency",
   disputed: "Disputed region",
 };
-const RESOURCE_LABEL: Record<ResourceId, string> = { food: "Food", energy: "Energy", minerals: "Minerals" };
-const BUDGET_LABEL: Record<BudgetCategory, { label: string; help: string }> = {
+export const RESOURCE_LABEL: Record<ResourceId, string> = { food: "Food", energy: "Energy", minerals: "Minerals" };
+export const BUDGET_LABEL: Record<BudgetCategory, { label: string; help: string }> = {
   infrastructure: { label: "Infrastructure", help: "Builds up province infrastructure (about 4% of GDP keeps it growing)." },
   research: { label: "Research", help: "Raises technology level, which boosts output and growth." },
   welfare: { label: "Welfare", help: "Raises stability." },
-  defense: { label: "Defense", help: "Saved up for armies, which arrive in Stage 4." },
+  defense: { label: "Defense", help: "Fills the army fund, which pays for recruiting and keeping units." },
 };
 
 /** Info panel for whatever is selected: a country or a province. */
@@ -62,11 +62,11 @@ export function InfoPanel() {
   return selected.kind === "country" ? <CountryPanel id={selected.id} /> : <ProvinceView id={selected.id} />;
 }
 
-/** Simple mode shows a short country panel; "Show all details" (or Advanced mode) shows everything. */
+/** A short country panel first; "Show all details" shows everything. */
 function CountryPanel({ id }: { id: CountryId }) {
-  const advanced = useUi((s) => s.advanced);
-  const [detailsFor, setDetailsFor] = useState<CountryId | null>(null);
-  if (!advanced && detailsFor !== id) return <SimpleCountryView id={id} onDetails={() => setDetailsFor(id)} />;
+  const details = useUi((s) => s.details);
+  const setDetails = useUi((s) => s.setDetails);
+  if (!details) return <SimpleCountryView id={id} onDetails={() => setDetails(true)} />;
   return <CountryView id={id} />;
 }
 
@@ -124,7 +124,7 @@ function CloseButton() {
   );
 }
 
-function CountryView({ id }: { id: CountryId }) {
+export function CountryView({ id }: { id: CountryId }) {
   const c = getCountry(id);
   const state = useGame((s) => s.state.countries[id]);
   const provinceIds = useGame((s) => s.provincesOf.get(id)) ?? [];
@@ -166,6 +166,9 @@ function CountryView({ id }: { id: CountryId }) {
           {c.officialName && c.officialName !== c.name && <p className="panel__official">{c.officialName}</p>}
           <span className={`badge badge--${c.kind}`}>{KIND_LABEL[c.kind]}</span>
           {isPlayer && <span className="badge badge--you">You</span>}
+          <button className="link panel__less" onClick={() => useUi.getState().setDetails(false)}>
+            Show less
+          </button>
         </div>
         <CloseButton />
       </div>
@@ -331,7 +334,7 @@ function CountryView({ id }: { id: CountryId }) {
   );
 }
 
-const GROWTH_LABELS: Record<string, string> = {
+export const GROWTH_LABELS: Record<string, string> = {
   base: "Catch-up potential",
   infrastructure: "Infrastructure vs technology",
   resources: "Resources and trade",
@@ -339,7 +342,7 @@ const GROWTH_LABELS: Record<string, string> = {
   stability: "Stability",
   debt: "Debt",
 };
-const STABILITY_LABELS: Record<string, string> = {
+export const STABILITY_LABELS: Record<string, string> = {
   base: "Baseline",
   welfare: "Welfare spending",
   taxes: "Tax burden",
@@ -348,7 +351,7 @@ const STABILITY_LABELS: Record<string, string> = {
   debt: "Debt",
 };
 
-function Why({ title, parts, format, labels }: { title: string; parts: Record<string, number>; format: (v: number) => string; labels: Record<string, string> }) {
+export function Why({ title, parts, format, labels }: { title: string; parts: Record<string, number>; format: (v: number) => string; labels: Record<string, string> }) {
   return (
     <details className="why">
       <summary>{title}</summary>
@@ -365,7 +368,7 @@ function Why({ title, parts, format, labels }: { title: string; parts: Record<st
 }
 
 /** The player's controls: tax rate and spending. */
-function Policies({ country }: { country: CountryState }) {
+export function Policies({ country }: { country: CountryState }) {
   const send = useGame((s) => s.send);
   const balance = budgetBalance(country);
   return (
@@ -408,7 +411,7 @@ function Policies({ country }: { country: CountryState }) {
   );
 }
 
-function PolicySummary({ country }: { country: CountryState }) {
+export function PolicySummary({ country }: { country: CountryState }) {
   return (
     <section>
       <h3>Policies</h3>
@@ -424,7 +427,7 @@ function PolicySummary({ country }: { country: CountryState }) {
 }
 
 /** A slider that keeps its own value while dragging and follows the game state otherwise. */
-function PolicySlider({
+export function PolicySlider({
   label,
   help,
   value,
@@ -488,10 +491,9 @@ function ProvinceView({ id }: { id: ProvinceId }) {
   const me = useGame((s) => playerCountry(s.state)?.id);
   useUi((s) => s.fog); // re-render when fog is switched on or off
   const units = useGame((s) => fogOf(s.state).view.units);
-  const advanced = useUi((s) => s.advanced);
-  const [details, setDetails] = useState(false);
+  const full = useUi((s) => s.details);
+  const setDetails = useUi((s) => s.setDetails);
   if (!p || !ps) return null;
-  const full = advanced || details;
   const here = new Map<CountryId, number>();
   for (const u of Object.values(units)) if (u.province === id) here.set(u.owner, (here.get(u.owner) ?? 0) + 1);
   const cities = citiesIn(id).slice(0, 8);
@@ -599,7 +601,7 @@ function ProvinceView({ id }: { id: ProvinceId }) {
         </dl>
       </section>}
 
-      {full && cities.length > 0 && (
+      {cities.length > 0 && (
         <section>
           <h3>Cities (2019)</h3>
           <CityList cities={cities} />
@@ -621,7 +623,7 @@ function Pips({ n }: { n: number }) {
   );
 }
 
-function Meter({ value, max, label, tone }: { value: number; max: number; label: string; tone: "good" | "mid" | "bad" | "tech" }) {
+export function Meter({ value, max, label, tone }: { value: number; max: number; label: string; tone: "good" | "mid" | "bad" | "tech" }) {
   return (
     <div className={`meter meter--${tone}`}>
       <div className="meter__bar">
@@ -671,7 +673,7 @@ function NotYet({ province = false }: { province?: boolean }) {
   );
 }
 
-function Stat({ label, value, sub, tone, subTone }: { label: string; value: string | null; sub?: string; tone?: "neg"; subTone?: "neg" | "pos" }) {
+export function Stat({ label, value, sub, tone, subTone }: { label: string; value: string | null; sub?: string; tone?: "neg"; subTone?: "neg" | "pos" }) {
   return (
     <div className="stat">
       <div className={value ? `stat__value ${tone ?? ""}` : "stat__value muted"}>{value ?? "No data"}</div>
@@ -683,7 +685,7 @@ function Stat({ label, value, sub, tone, subTone }: { label: string; value: stri
   );
 }
 
-function Fact({ label, value }: { label: string; value: string | null | undefined }) {
+export function Fact({ label, value }: { label: string; value: string | null | undefined }) {
   return (
     <>
       <dt>{label}</dt>

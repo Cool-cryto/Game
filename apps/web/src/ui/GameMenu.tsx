@@ -7,6 +7,7 @@ import { SCENARIOS } from "../data/scenarios";
 import { listWorlds, type SavedWorld } from "../state/worlds";
 import { scenarioFromCustom } from "../data/scenarios";
 import { formatDate } from "./format";
+import { Icon } from "./nav/Icon";
 import { AccessAdmin } from "./AccessAdmin";
 
 /** New game, save, load, export and import. */
@@ -24,11 +25,9 @@ export function GameMenu() {
 
   return (
     <>
-      <button className="menu-btn" onClick={() => setOpen(true)} aria-haspopup="dialog">
-        <svg viewBox="0 0 24 24" aria-hidden>
-          <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-        <span>Game</span>
+      <button className="tool-btn" onClick={() => setOpen(true)} aria-haspopup="dialog" title="Settings: save, load, new game, options" aria-label="Settings">
+        <Icon name="settings" />
+        <span className="tool-btn__label">Settings</span>
       </button>
       <dialog ref={dialog} className="dialog" onClose={() => setOpen(false)} aria-label="Game menu">
         {open && <MenuBody close={() => setOpen(false)} />}
@@ -183,20 +182,12 @@ function MenuBody({ close }: { close: () => void }) {
 /** Game options. */
 function OptionsSection() {
   const fog = useUi((s) => s.fog);
-  const advanced = useUi((s) => s.advanced);
-  const setAdvanced = useUi((s) => s.setAdvanced);
   const setFog = useUi((s) => s.setFog);
   const isOnline = useOnline((s) => !!s.room);
   return (
     <>
       <h3>Options</h3>
-      <label className="dialog__row dialog__check">
-        <input type="checkbox" checked={advanced} onChange={(e) => setAdvanced(e.target.checked)} />
-        <span>
-          <strong>Advanced controls</strong>
-          <span className="dialog__hint">Every map mode, exact tax and spending sliders, and all the numbers. Off keeps the game simple.</span>
-        </span>
-      </label>
+
       <label className="dialog__row dialog__check">
         <input type="checkbox" checked={isOnline || fog} disabled={isOnline} onChange={(e) => setFog(e.target.checked)} />
         <span>

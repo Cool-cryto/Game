@@ -38,6 +38,11 @@ async function pointOf(page: Page, kind: "country" | "province", id: string) {
   return { x: p[0], y: p[1] };
 }
 
+/** Country and province panels start short; this shows everything (and stays on for later panels). */
+async function showDetails(page: Page) {
+  await panel(page).getByRole("button", { name: "Show all details" }).click();
+}
+
 const zoomLevel = async (page: Page) => parseFloat((await page.getByTestId("zoom-level").textContent()) ?? "0");
 const panel = (page: Page) => page.getByTestId("info-panel");
 
@@ -66,6 +71,8 @@ test("zoomed out, clicking picks a country and shows its starting numbers", asyn
   await expect(page.locator(".map-tooltip")).toHaveText("Brazil");
   await page.mouse.click(p.x, p.y);
   await expect(panel(page).getByRole("heading", { name: "Brazil" })).toBeVisible();
+  await expect(panel(page)).toContainText("People");
+  await showDetails(page);
   await expect(panel(page)).toContainText("Population");
   await expect(panel(page)).toContainText("Natural Earth estimates for 2019");
   await expect(panel(page)).toContainText("São Paulo");
@@ -209,11 +216,15 @@ test("you can play as a country and change its policies", async ({ page }) => {
   await expect(page.getByTestId("player-card")).toContainText("Play as");
   await searchFor(page, "japan");
   await panel(page).getByRole("button", { name: "Play as Japan" }).click();
-  await expect(panel(page).getByLabel("Policies")).toBeVisible();
   await expect(page.getByTestId("player-card")).toContainText("Japan");
+  // Policies live in Economy → Detailed budget.
+  await page.getByTestId("nav-economy").click();
+  await page.getByRole("tab", { name: "Detailed budget" }).click();
+  const policies = page.getByTestId("screen-economy").getByLabel("Policies");
+  await expect(policies).toBeVisible();
 
   // Raise taxes: the budget shows a surplus, and running time fills the treasury.
-  const tax = panel(page).getByLabel("Tax rate");
+  const tax = policies.getByLabel("Tax rate");
   await tax.focus();
   for (let i = 0; i < 10; i++) await page.keyboard.press("ArrowRight");
   await expect(page.getByTestId("budget-balance")).toContainText("Surplus");
@@ -227,6 +238,7 @@ test("you can play as a country and change its policies", async ({ page }) => {
 test("other countries show their policies but can't be changed", async ({ page }) => {
   await openMap(page);
   await searchFor(page, "brazil");
+  await showDetails(page);
   await expect(panel(page)).toContainText("Tax rate");
   await expect(panel(page).getByLabel("Policies")).toHaveCount(0);
   await expect(panel(page)).toContainText("Run by the computer");
@@ -236,7 +248,7 @@ test("save to a slot, keep playing, then load it back", async ({ page }) => {
   await openMap(page);
   await searchFor(page, "kenya");
   await panel(page).getByRole("button", { name: "Play as Kenya" }).click();
-  await page.getByRole("button", { name: "Game", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByTestId("slot-2").getByRole("button", { name: "Save" }).click();
   await expect(page.getByTestId("slot-2")).toContainText("Kenya · 1 Jan 2020");
   await page.getByRole("button", { name: "Close menu" }).click();
@@ -246,7 +258,7 @@ test("save to a slot, keep playing, then load it back", async ({ page }) => {
   await expect(gameDate(page)).not.toContainText("2020", { timeout: 10_000 });
   await page.getByRole("button", { name: "Pause" }).click();
 
-  await page.getByRole("button", { name: "Game", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByTestId("slot-2").getByRole("button", { name: "Load" }).click();
   await expect(gameDate(page)).toContainText("1 Jan 2020");
   await expect(page.getByTestId("player-card")).toContainText("Kenya");
@@ -254,18 +266,18 @@ test("save to a slot, keep playing, then load it back", async ({ page }) => {
 
 test("saves survive reloading the page", async ({ page }) => {
   await openMap(page);
-  await page.getByRole("button", { name: "Game", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByTestId("slot-1").getByRole("button", { name: "Save" }).click();
   await expect(page.getByTestId("slot-1")).toContainText("1 Jan 2020");
   await page.reload();
   await page.waitForFunction(() => window.__gsMap);
-  await page.getByRole("button", { name: "Game", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await expect(page.getByTestId("slot-1")).toContainText("1 Jan 2020");
 });
 
 test("importing a file that isn't a save shows a clear error", async ({ page }) => {
   await openMap(page);
-  await page.getByRole("button", { name: "Game", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByTestId("import-input").setInputFiles({ name: "notes.json", mimeType: "application/json", buffer: Buffer.from('{"hello":1}') });
   await expect(page.getByRole("status")).toContainText("isn't a saved game");
 });
@@ -281,6 +293,7 @@ async function playAs(page: Page, country: string) {
 test("your country panel shows its military, and recruiting needs defense funds", async ({ page }) => {
   await openMap(page);
   await playAs(page, "France");
+  await showDetails(page);
   const military = panel(page).getByLabel("Military");
   await expect(military).toContainText("Units (population limit)");
   // The defense fund starts empty, so recruiting is not possible yet.
@@ -298,6 +311,7 @@ test("your country panel shows its military, and recruiting needs defense funds"
 test("select your units and march them somewhere", async ({ page }) => {
   await openMap(page);
   await playAs(page, "France");
+  await showDetails(page);
   await panel(page).getByLabel("Military").locator(".stack-list button").first().click();
   await expect(panel(page)).toContainText("Your forces");
   await panel(page).getByRole("button", { name: /^Move \d+ unit/ }).click();
@@ -311,6 +325,7 @@ test("select your units and march them somewhere", async ({ page }) => {
 test("diplomacy: relations can be improved; alliances need good relations", async ({ page }) => {
   await openMap(page);
   await playAs(page, "Portugal");
+  await showDetails(page);
   await searchFor(page, "brazil");
   const diplomacy = panel(page).getByLabel("Diplomacy");
   await expect(diplomacy.getByRole("button", { name: "Propose alliance" })).toBeDisabled();
@@ -325,6 +340,7 @@ test("war: declare, invade, occupy, and the enemy is annexed", async ({ page }) 
   test.setTimeout(90_000);
   await openMap(page, { waitForDetail: true });
   await playAs(page, "France");
+  await showDetails(page);
   await searchFor(page, "monaco");
   await panel(page).getByRole("button", { name: "Declare war…" }).click();
   await panel(page).getByRole("button", { name: "Declare war", exact: true }).click();
@@ -432,7 +448,7 @@ test("the globe works on a phone-sized screen", async ({ page }) => {
 // ---------- Stage 7: scenarios and the world editor ----------
 
 async function openNewGame(page: Page) {
-  await page.getByRole("button", { name: "Game", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await expect(page.getByLabel("Scenarios")).toBeVisible();
 }
 
@@ -444,6 +460,7 @@ test("start the End of the Cold War scenario (1991)", async ({ page }) => {
   await expect(page.getByTestId("game-date")).toContainText("1 Jan 1991");
   await searchFor(page, "soviet union");
   await expect(panel(page).getByRole("heading", { name: "Soviet Union" })).toBeVisible();
+  await showDetails(page);
   await expect(panel(page)).toContainText("World Bank figures for 1991");
   await expect(panel(page)).toContainText("Land borders"); // worked out from the 1991 map
   await expect(panel(page)).toContainText("Poland");
@@ -522,7 +539,7 @@ test("fog of war hides foreign forces far from you, and can be switched off", as
   await expect(forces).toBeVisible(); // your own are always shown
 
   // Switch fog off in the Game menu.
-  await page.getByRole("button", { name: "Game" }).click();
+  await page.getByRole("button", { name: "Settings" }).click();
   const fog = page.getByRole("checkbox", { name: /Fog of war/ });
   await expect(fog).toBeChecked();
   await fog.uncheck();
@@ -531,38 +548,63 @@ test("fog of war hides foreign forces far from you, and can be switched off", as
   await expect(forces).toBeVisible();
 });
 
-test.describe("simple mode (the default for new players)", () => {
+test.describe("top navigation (first-time player)", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
-  test("pick a country, follow the guide, set a focus, go to war and attack; your country stays yours", async ({ page }) => {
+  test("start screen, guide, every screen opens with its tabs, and your country stays yours", async ({ page }) => {
     const errors = await openMap(page);
-    // Start screen with a goal and suggested countries; no map-mode menu cluttering the top.
     const start = page.getByTestId("start-screen");
     await expect(start).toContainText("Your goal");
-    await expect(page.getByLabel("Map mode")).toHaveCount(0);
     await start.getByRole("button", { name: /France/ }).click();
     await expect(page.getByTestId("guide")).toContainText("You lead France");
     await page.getByRole("button", { name: "Let's go" }).click();
-    await expect(page.getByTestId("player-card")).toContainText("World rank");
+    await expect(page.getByTestId("player-card")).toContainText("Rank");
 
-    // My country: a focus instead of sliders; the budget stays balanced.
-    await page.getByRole("navigation", { name: "Main actions" }).getByRole("button", { name: "My country" }).click();
-    const hud = page.getByTestId("hud-country");
-    await hud.getByRole("button", { name: /Grow the economy/ }).click();
-    await expect(hud.getByRole("button", { name: /Grow the economy/ })).toHaveAttribute("aria-pressed", "true");
+    // Every navigation button opens its own screen; every tab shows content; World goes back to the map.
+    const screens: [string, string[]][] = [
+      ["country", ["Overview", "Provinces", "History"]],
+      ["economy", ["Overview", "Budget & taxes", "Resources & trade", "Debt", "Detailed budget"]],
+      ["military", ["Overview", "Forces", "Recruit", "Military budget", "Equipment"]],
+      ["diplomacy", ["Relations", "Wars & peace", "Alliances", "Treaties & organizations"]],
+      ["government", ["Stability", "Policies", "Parties, laws & elections"]],
+      ["research", ["Technology", "Research spending", "Technology tree"]],
+      ["construction", ["Infrastructure", "By province", "Buildings"]],
+      ["statistics", ["Economy (GDP)", "Population", "GDP per person", "Military spending", "Technology", "Your charts"]],
+      ["more", ["Population", "News", "Intelligence", "Settings"]],
+    ];
+    for (const [id, tabs] of screens) {
+      await page.getByTestId(`nav-${id}`).click();
+      const screen = page.getByTestId(`screen-${id}`);
+      await expect(screen).toBeVisible();
+      await expect(page.locator(".screen")).toHaveCount(1); // only one screen at a time
+      for (const t of tabs) {
+        await screen.getByRole("tab", { name: t, exact: true }).click();
+        await expect(screen.getByRole("tabpanel")).not.toBeEmpty();
+      }
+    }
+    await page.getByTestId("screen-more").getByRole("tab", { name: "Intelligence" }).click();
+    await expect(page.getByTestId("screen-more").getByTestId("planned")).toContainText("Coming in a later update");
+    await page.getByTestId("nav-world").click();
+    await expect(page.locator(".screen")).toHaveCount(0);
 
-    // Army: plain numbers and recruit buttons.
-    await page.getByRole("navigation", { name: "Main actions" }).getByRole("button", { name: "Army" }).click();
-    await expect(page.getByTestId("hud-army")).toContainText("Where your forces are");
+    // Economy: a focus sets a balanced budget.
+    await page.getByTestId("nav-economy").click();
+    await page.getByRole("tab", { name: "Budget & taxes" }).click();
+    await page.getByRole("button", { name: /Grow the economy/ }).click();
+    await expect(page.getByRole("button", { name: /Grow the economy/ })).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: "Back to map" }).click();
+    await expect(page.locator(".screen")).toHaveCount(0);
 
-    // World: declare war on a neighbour, then one-click attack.
-    await page.getByRole("navigation", { name: "Main actions" }).getByRole("button", { name: "World" }).click();
+    // Diplomacy: declare war on a neighbour, then one-click attack.
+    await page.getByTestId("nav-diplomacy").click();
+    await page.getByRole("tab", { name: "Relations" }).click();
     const belgium = page.getByTestId("relations-BEL");
-    await belgium.getByRole("button", { name: /War/ }).click();
+    await belgium.getByRole("button", { name: "War" }).click();
     await belgium.getByRole("button", { name: "Yes, declare war" }).click();
-    const war = page.getByTestId("hud-world").locator(".swar");
+    await page.getByRole("tab", { name: "Wars & peace" }).click();
+    const war = page.locator(".swar");
     await expect(war).toContainText("vs Belgium");
-    await war.getByRole("button", { name: /Attack/ }).click();
+    await war.getByRole("button", { name: "Attack" }).click();
     await expect
       .poll(() =>
         page.evaluate(() => {
@@ -573,15 +615,28 @@ test.describe("simple mode (the default for new players)", () => {
       .toBeGreaterThan(0);
 
     // Your country is locked in: other countries offer no way to switch.
+    await page.keyboard.press("Escape");
     await searchFor(page, "germany");
     await expect(panel(page)).toContainText("start a new game");
-    await expect(panel(page).getByRole("button", { name: /Lead|Play as/ })).toHaveCount(0);
-
-    // Advanced mode brings the detailed controls back.
-    await page.getByRole("button", { name: "Game", exact: true }).click();
-    await page.getByRole("checkbox", { name: /Advanced controls/ }).check();
-    await page.getByRole("button", { name: "Close menu" }).click();
-    await expect(page.getByLabel("Map mode")).toBeVisible();
+    await expect(panel(page).getByRole("button", { name: /Play as/ })).toHaveCount(0);
     expect(errors).toEqual([]);
+  });
+
+  test("navigation never overlaps, from a phone to a wide screen", async ({ page }) => {
+    for (const width of [390, 800, 1180, 1440, 1920]) {
+      await page.setViewportSize({ width, height: 860 });
+      await openMap(page);
+      const boxes = await page
+        .locator(".topnav__btn, .topnav__tools > :not(dialog)")
+        .evaluateAll((els) => els.map((e) => e.getBoundingClientRect()).map((r) => ({ l: r.left, r: r.right, t: r.top, b: r.bottom, w: r.width })));
+      for (const b of boxes) expect(b.w).toBeGreaterThan(0); // every button is shown
+      for (let i = 0; i < boxes.length; i++)
+        for (let j = i + 1; j < boxes.length; j++) {
+          const [a, b] = [boxes[i]!, boxes[j]!];
+          const overlap = a.l < b.r - 0.5 && b.l < a.r - 0.5 && a.t < b.b - 0.5 && b.t < a.b - 0.5;
+          expect(overlap, `overlap at ${width}px`).toBe(false);
+        }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    }
   });
 });

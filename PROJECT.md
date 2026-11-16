@@ -150,7 +150,16 @@ Built: scenario system; **End of the Cold War (1991)** with the Soviet Union, Yu
 browser, export/import, play, host online); server support for scenarios and custom worlds; borders computed from the
 live map.
 
-### Stage 9 — Simple mode ✅ (current)
+### Stage 10 — Top navigation ✅ (current)
+Built: a permanent top navigation (World, Country, Economy, Military, Diplomacy, Government, Research, Construction,
+Statistics, More) with search, Play online and Settings on the right; an information bar with flag, treasury, rank,
+date, pause and speed; one management screen at a time, each with tabs, tooltips and "Back to map"; the map keeps its
+map-mode menu, legend and zoom. Every screen uses the systems that exist; parties/laws/elections, the technology tree,
+buildings, equipment, treaties/organizations and intelligence are clearly labelled as coming later. Responsive from
+phones (navigation on its own row) to wide screens, never overlapping. The Simple/Advanced switch is gone: each screen
+shows the essentials first, with detailed controls in their own tabs; map panels have "Show all details".
+
+### Stage 9 — Simple mode ✅
 Built: the game starts simple. A start screen (goal, suggested countries with difficulty, short guide); three buttons
 (My country, Army, World) with plain-language panels; a national focus and Low/Normal/High taxes instead of five
 sliders (always a balanced budget); one-click Attack and Make peace; a world rank as the score; short country and
@@ -208,6 +217,9 @@ bandwidth 5× too high, and an editor race that wiped a newly created country.
 ## 7. What is still left to build
 
 ### Next steps (recommended order)
+0. **Systems the new screens are waiting for** (each screen already has its place): government types, parties and
+   elections; a technology tree; buildings (factories, railways, ports); equipment; treaties and organizations;
+   intelligence.
 1. **Hosting on the internet** so friends anywhere can play online. Needs an account with a host that runs a long-lived
    Node.js app with a persistent disk (e.g. Fly.io, Railway, Render or a small VPS) and HTTPS. Steps are in
    [docs/HOSTING.md](docs/HOSTING.md). The project is ready to deploy (Dockerfile, Railway settings, proxy-safe sign-in

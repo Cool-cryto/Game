@@ -185,6 +185,17 @@ Behind a host's proxy set `TRUST_PROXY=1` so the sign-in limit sees each player'
 The server pings every WebSocket every 25 s so proxies don't close quiet connections, and closes ones that stop answering.
 Serverless platforms are not a good fit, because players keep a connection open. Step-by-step: [HOSTING.md](HOSTING.md).
 
+### Interface layout (Stage 10)
+
+- `apps/web/src/ui/nav/TopNav.tsx` – the navigation bar (ten sections, search, Play online, Settings) and the information
+  bar (country figures + `TimeControls`). `uiStore.screen` says which management screen is open (null = map only).
+- `apps/web/src/ui/screens/` – `Screen.tsx` (frame with tabs, back to map, `Planned` for systems not built yet, cards,
+  rows), `CoreScreens.tsx` (Country, Economy, Military), `WorldScreens.tsx` (Diplomacy, Government, Research,
+  Construction, Statistics, More), `ScreenHost.tsx` (shows one, with an error boundary so a broken screen can't take
+  down the map). Screens reuse the map panels' pieces (`Policies`, `Why`, `Meter`, relations and war cards).
+- Store selectors must return stable values (select `s.state.wars`, then filter in the component); a selector that
+  builds a new array every call makes React re-render forever.
+
 ### Paywall
 
 - `apps/server/src/paywall.ts` – access rules (admins, `users.access` = `paid` | `granted`), Stripe Checkout through Stripe's
