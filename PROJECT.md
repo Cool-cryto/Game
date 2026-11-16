@@ -254,10 +254,8 @@ bandwidth 5× too high, and an editor race that wiped a newly created country.
 ### Next steps (recommended order)
 0. **Systems the new screens are waiting for** (each screen already has its place): equipment, treaties and
    organizations, intelligence, changing the kind of government.
-1. **Hosting on the internet** so friends anywhere can play online. Needs an account with a host that runs a long-lived
-   Node.js app with a persistent disk (e.g. Fly.io, Railway, Render or a small VPS) and HTTPS. Steps are in
-   [docs/HOSTING.md](docs/HOSTING.md). The project is ready to deploy (Dockerfile, Railway settings, proxy-safe sign-in
-   limit, connection keep-alive). *Waiting on: you creating a hosting account.*
+1. ~~Hosting on the internet~~ **Done**: live on Railway (free plan) with a $5 Square paywall and free passes; see
+   [docs/HOSTING.md](docs/HOSTING.md). Moving to Railway's Hobby plan keeps it online all month.
 2. **Changing the kind of government**: reforms, coups and revolutions (governments, parties, laws and elections exist).
 3. **Naval warfare**: fleet battles, blockades, AI sea invasions.
 4. **More historical scenarios** (e.g. 1936, 1914). These need historical borders that don't follow today's provinces and
