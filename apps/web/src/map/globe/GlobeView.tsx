@@ -238,9 +238,7 @@ export function GlobeView({ active }: { active: boolean }) {
         ctx.fill(veil, "evenodd");
       }
       ctx.lineJoin = "round";
-      ctx.strokeStyle = "rgba(8, 14, 22, 0.35)";
-      ctx.lineWidth = 0.6;
-      for (const c of countryList) if (c.inner) ctx.stroke(c.inner);
+      // Province borders inside countries aren't drawn (they cluttered the map).
       ctx.strokeStyle = "rgba(6, 12, 20, 0.9)";
       ctx.lineWidth = 1.3;
       for (const c of countryList) ctx.stroke(c.path);
@@ -318,7 +316,7 @@ export function GlobeView({ active }: { active: boolean }) {
       }
 
       drawLabels(ctx, proj);
-      markers = drawUnitsOverlay(ctx, {
+      const drawn = drawUnitsOverlay(ctx, {
         project: (p) => {
           const g = GEOGRAPHY.provinces[p];
           if (!g || !visible(g.lon, g.lat)) return null;
@@ -331,7 +329,11 @@ export function GlobeView({ active }: { active: boolean }) {
         me: playerCountry(game)?.id,
         selected,
         moveOrder,
+        running: !useGame.getState().paused,
       });
+      markers = drawn.markers;
+      // Keep drawing while units glide between provinces.
+      if (drawn.animating) requestDraw();
     }
 
     function drawLabels(ctx: CanvasRenderingContext2D, proj: ReturnType<typeof projection>) {
@@ -418,8 +420,8 @@ export function GlobeView({ active }: { active: boolean }) {
       }
       return null;
     }
-    const selectionFor = (hit: ReturnType<typeof pick>): Selection =>
-      !hit ? null : rel() >= PROVINCE_ZOOM ? { kind: "province", id: hit.province } : { kind: "country", id: hit.country };
+    /** Clicking picks a country (provinces only matter as places to send units). */
+    const selectionFor = (hit: ReturnType<typeof pick>): Selection => (!hit ? null : { kind: "country", id: hit.country });
 
     // ---------- Camera ----------
     function resize() {

@@ -78,7 +78,7 @@ test("zoomed out, clicking picks a country and shows its starting numbers", asyn
   await expect(panel(page)).toContainText("São Paulo");
 });
 
-test("zoomed in, clicking picks a province, which links back to its country", async ({ page }) => {
+test("zoomed in, the tooltip names the province, and clicking picks its country", async ({ page }) => {
   await openMap(page, { waitForDetail: true });
   await searchFor(page, "germany");
   await expect.poll(() => zoomLevel(page)).toBeGreaterThan(3);
@@ -88,9 +88,8 @@ test("zoomed in, clicking picks a province, which links back to its country", as
   const p = await pointOf(page, "province", "DEU-1591");
   await page.mouse.move(p.x, p.y);
   await expect(page.locator(".map-tooltip")).toContainText("· Germany");
+  // Provinces aren't separate things to click any more: the click opens the country.
   await page.mouse.click(p.x, p.y);
-  await expect(panel(page).getByText("Part of")).toBeVisible();
-  await panel(page).getByRole("button", { name: /Part of/ }).click();
   await expect(panel(page).getByRole("heading", { name: "Germany" })).toBeVisible();
 });
 
@@ -191,24 +190,27 @@ test("works on a phone-sized screen", async ({ page }) => {
 
 const gameDate = (page: Page) => page.getByTestId("game-date");
 
-test("time starts paused, runs when played, and stops when paused", async ({ page }) => {
+test("time stands still until you lead a country, then runs by itself at 21 days a second", async ({ page }) => {
   await openMap(page);
   await expect(gameDate(page)).toContainText("1 Jan 2020");
-  await expect(gameDate(page)).toContainText("Paused");
-  await page.getByRole("radio", { name: "Speed 5" }).click();
-  await page.getByRole("button", { name: "Play", exact: true }).click();
-  await expect(gameDate(page)).not.toContainText("2020", { timeout: 10_000 });
-  await page.getByRole("button", { name: "Pause" }).click();
-  // The worker may send one final update as it stops; after that the date must not move.
-  await page.waitForTimeout(300);
-  const stopped = await gameDate(page).textContent();
   await page.waitForTimeout(1000);
-  expect(await gameDate(page).textContent()).toBe(stopped);
-  // Space toggles pause too.
+  await expect(gameDate(page)).toContainText("1 Jan 2020");
+  // No play, pause or speed buttons.
+  await expect(page.getByRole("button", { name: /^(Play|Pause)$/ })).toHaveCount(0);
+  await expect(page.getByRole("radio", { name: /Speed/ })).toHaveCount(0);
+  await playAs(page, "Japan");
+  const days = () =>
+    page.evaluate(() => (window as unknown as { __gsGame: { getState: () => { state: { tick: number } } } }).__gsGame.getState().state.tick);
+  const t0 = await days();
+  await page.waitForTimeout(2000);
+  const perSecond = ((await days()) - t0) / 2;
+  expect(perSecond).toBeGreaterThan(15);
+  expect(perSecond).toBeLessThan(27);
+  // Space doesn't pause any more.
   await page.keyboard.press("Space");
-  await expect(gameDate(page)).not.toContainText("Paused");
-  await page.keyboard.press("Space");
-  await expect(gameDate(page)).toContainText("Paused");
+  const t1 = await days();
+  await page.waitForTimeout(500);
+  expect(await days()).toBeGreaterThan(t1);
 });
 
 test("you can play as a country and change its policies", async ({ page }) => {
@@ -228,10 +230,7 @@ test("you can play as a country and change its policies", async ({ page }) => {
   await tax.focus();
   for (let i = 0; i < 10; i++) await page.keyboard.press("ArrowRight");
   await expect(page.getByTestId("budget-balance")).toContainText("Surplus");
-  await page.getByRole("radio", { name: "Speed 5" }).click();
-  await page.getByRole("button", { name: "Play", exact: true }).click();
-  await expect(gameDate(page)).toContainText("2021", { timeout: 10_000 });
-  await page.getByRole("button", { name: "Pause" }).click();
+  await expect(gameDate(page)).toContainText("2021", { timeout: 30_000 });
   await expect(page.getByTestId("player-card")).toContainText(/Treasury\s*\$[1-9]/);
 });
 
@@ -250,17 +249,15 @@ test("save to a slot, keep playing, then load it back", async ({ page }) => {
   await panel(page).getByRole("button", { name: "Play as Kenya" }).click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByTestId("slot-2").getByRole("button", { name: "Save" }).click();
-  await expect(page.getByTestId("slot-2")).toContainText("Kenya · 1 Jan 2020");
+  await expect(page.getByTestId("slot-2")).toContainText(/Kenya · \d+ \w+ 2020/);
   await page.getByRole("button", { name: "Close menu" }).click();
-
-  await page.getByRole("radio", { name: "Speed 5" }).click();
-  await page.getByRole("button", { name: "Play", exact: true }).click();
-  await expect(gameDate(page)).not.toContainText("2020", { timeout: 10_000 });
-  await page.getByRole("button", { name: "Pause" }).click();
+  // Time runs on by itself.
+  await expect(gameDate(page)).not.toContainText("2020", { timeout: 30_000 });
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByTestId("slot-2").getByRole("button", { name: "Load" }).click();
-  await expect(gameDate(page)).toContainText("1 Jan 2020");
+  // Back in 2020 (time may already have moved on a little since loading).
+  await expect(gameDate(page)).toContainText("2020");
   await expect(page.getByTestId("player-card")).toContainText("Kenya");
 });
 
@@ -296,13 +293,9 @@ test("your country panel shows its military, and recruiting needs defense funds"
   await showDetails(page);
   const military = panel(page).getByLabel("Military");
   await expect(military).toContainText("Units (population limit)");
-  // The defense fund starts empty, so recruiting is not possible yet.
+  // Countries start with three months of defense money, so you can recruit straight away.
   const army = military.getByRole("button", { name: /^Army/ });
-  await expect(army).toBeDisabled();
-  await page.getByRole("radio", { name: "Speed 5" }).click();
-  await page.getByRole("button", { name: "Play", exact: true }).click();
-  await expect(army).toBeEnabled({ timeout: 15_000 });
-  await page.getByRole("button", { name: "Pause" }).click();
+  await expect(army).toBeEnabled();
   const before = await military.locator(".stat__value").first().textContent();
   await army.click();
   await expect(military.locator(".stat__value").first()).not.toHaveText(before!);
@@ -390,10 +383,9 @@ test("war: declare, invade, occupy, and the enemy is annexed", async ({ page }) 
   await searchFor(page, "monaco");
   await panel(page).getByRole("button", { name: "Send units here" }).click();
 
-  await page.getByRole("radio", { name: "Speed 5" }).click();
-  await page.getByRole("button", { name: "Play", exact: true }).click();
-  await expect(page.getByTestId("news-list")).toContainText("Monaco has been annexed", { timeout: 60_000 });
-  await page.getByRole("button", { name: "Pause" }).click();
+  // Monaco's capital is taken, held for 7 months (about 10 seconds), and Monaco falls.
+  await expect(page.getByTestId("news-list")).toContainText("has taken the capital of Monaco", { timeout: 40_000 });
+  await expect(page.getByTestId("news-list")).toContainText("Monaco has been annexed", { timeout: 40_000 });
   await expect(page.getByTestId("player-card")).not.toContainText("At war");
   // The province itself now belongs to France.
   const owner = await page.evaluate(() => {
@@ -532,7 +524,7 @@ test("world editor: create a country, give it land, play it", async ({ page }) =
   await expect(page.getByTestId("editor")).toHaveCount(0);
   await page.waitForTimeout(900);
   await page.mouse.click(p.x, p.y);
-  await expect(panel(page)).toContainText("Part of");
+  // Clicking the map opens the country there: the new one.
   await expect(panel(page)).toContainText("Free Bavaria");
 
   // The saved world is offered as a new game.
@@ -600,7 +592,7 @@ test.describe("top navigation (first-time player)", () => {
     const screens: [string, string[]][] = [
       ["country", ["Overview", "Provinces", "History"]],
       ["economy", ["Overview", "Budget & taxes", "Resources & trade", "Debt", "Detailed budget"]],
-      ["military", ["Overview", "Forces", "Recruit", "Military budget", "Equipment"]],
+      ["military", ["Overview", "Forces", "Military budget", "Equipment"]],
       ["diplomacy", ["Relations", "Wars & peace", "Alliances", "Treaties", "Organizations"]],
       ["government", ["Overview", "Parties & elections", "Laws", "Stability"]],
       ["research", ["Overview", "Technology tree", "Research spending"]],
@@ -740,11 +732,8 @@ test("construction: order a factory, see it under construction, and it finishes"
   await expect(page.getByTestId("player-card")).toContainText(/Treasury\s*-\$/); // paid by borrowing
   await screen.getByRole("tab", { name: "Overview" }).click();
   await expect(screen.getByTestId("projects")).toContainText("Factory");
-  // Let time run until it's done.
-  await page.getByRole("radio", { name: "Speed 5" }).click();
-  await page.getByRole("button", { name: "Play", exact: true }).click();
+  // Time runs by itself until it's done.
   await expect(screen).toContainText("Nothing being built", { timeout: 30_000 });
-  await page.getByRole("button", { name: "Pause" }).click();
   await screen.getByRole("tab", { name: "By province" }).click();
   await expect(screen.getByTestId("province-buildings").locator("tbody tr").first()).toContainText("1");
 });

@@ -37,6 +37,9 @@ export interface ChatMessage {
   at: number;
 }
 
+/** The game always runs at this pace: in-game days per real second (single player and online alike). */
+export const GAME_DAYS_PER_SECOND = 21;
+
 export interface Clock {
   paused: boolean;
   speed: 1 | 2 | 3 | 4 | 5;

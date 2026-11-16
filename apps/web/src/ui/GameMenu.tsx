@@ -19,8 +19,9 @@ export function GameMenu() {
     if (!d) return;
     if (open && !d.open) {
       d.showModal();
-      useGame.getState().setPaused(true);
+      useGame.getState().hold("menu", true);
     } else if (!open && d.open) d.close();
+    if (!open) useGame.getState().hold("menu", false);
   }, [open]);
 
   return (

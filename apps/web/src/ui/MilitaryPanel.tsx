@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CountryId, ProvinceId } from "@gs/shared";
 import {
   canRecruit,
@@ -52,6 +52,13 @@ export function UnitsView({ province, owner }: { province: ProvinceId; owner: Co
   const country = getCountry(owner);
   const flag = country ? flagUrl(country) : null;
   const picked = units.filter((u) => (chosen ? chosen.has(u.id) : true)).map((u) => u.id);
+  // The units moved on (or are gone): close this panel rather than show an empty one.
+  const empty = units.length === 0;
+  useEffect(() => {
+    if (!empty) return;
+    const t = setTimeout(() => select(null), 400);
+    return () => clearTimeout(t);
+  }, [empty, select]);
 
   return (
     <aside className="panel" aria-label="Units" data-testid="info-panel">

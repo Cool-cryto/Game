@@ -19,7 +19,7 @@ function OnlineDialogHost() {
 import { Legend } from "./ui/Legend";
 import { ZoomControls } from "./ui/ZoomControls";
 import { Guide, StartScreen } from "./ui/simple/SimpleHud";
-import { InfoBar, TopNav } from "./ui/nav/TopNav";
+import { TopNav } from "./ui/nav/TopNav";
 import { MapModeControl } from "./ui/nav/MapModeControl";
 import { ScreenHost } from "./ui/screens/ScreenHost";
 
@@ -58,7 +58,6 @@ export function App() {
         </div>
       )}
       <TopNav />
-      <InfoBar />
       {!editing && <ScreenHost />}
       {editing ? <EditorPanel /> : <InfoPanel />}
       {!editing && <StartScreen />}

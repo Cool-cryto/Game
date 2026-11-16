@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type { CountryId, ProvinceId } from "@gs/shared";
 import { createGameState, provincesByOwner, type Command, type CountryState, type GameState } from "@gs/sim";
 import { GEOGRAPHY, MODERN_SCENARIO, registerStateCountries } from "../data/countries";
-import type { SimRequest, SimResponse, Speed } from "../sim/protocol";
+import type { SimRequest, SimResponse } from "../sim/protocol";
 import { online, onlineCountry, setOnlineHooks, useOnline } from "../net/online";
 
 interface GameStore {
@@ -10,8 +10,8 @@ interface GameStore {
   state: GameState;
   /** Province ids per owner; recomputed only when ownership changes. */
   provincesOf: Map<CountryId, ProvinceId[]>;
+  /** Time stands still only before you lead a country, or while something holds it (editor, game menu). */
   paused: boolean;
-  speed: Speed;
   /** Bumped when a different game is loaded (new game or loaded save). */
   generation: number;
   /** "local": single player in this browser. "online": the game runs on a server. */
@@ -19,8 +19,8 @@ interface GameStore {
   /** Most recent command errors, for the UI to show. */
   errors: string[];
   send: (command: Command) => void;
-  setSpeed: (speed: Speed) => void;
-  setPaused: (paused: boolean) => void;
+  /** Stop time while `reason` is on (e.g. the world editor or the game menu); time runs again when no holds remain. */
+  hold: (reason: string, on: boolean) => void;
   /** Replace the running game, e.g. a new game or a loaded save. Pauses the game. */
   replace: (state: GameState) => void;
 }
@@ -56,11 +56,21 @@ function sim(msg: SimRequest) {
   worker.postMessage(msg);
 }
 
+const holds = new Set<string>();
+/** Single player: time runs whenever you lead a country and nothing holds it. */
+function syncClock() {
+  const g = useGame.getState();
+  if (g.mode !== "local") return;
+  const paused = previewMode || holds.size > 0 || !playerCountry(g.state);
+  if (paused === g.paused) return;
+  useGame.setState({ paused });
+  sim({ type: "setPaused", paused });
+}
+
 export const useGame = create<GameStore>((set, get) => ({
   state: initial,
   provincesOf: provincesByOwner(initial),
   paused: true,
-  speed: 1,
   generation: 0,
   mode: "local",
   errors: [],
@@ -71,26 +81,26 @@ export const useGame = create<GameStore>((set, get) => ({
     else if (command.type === "releaseCountry") online.release();
     else online.command(command);
   },
-  setSpeed: (speed) => {
-    if (get().mode === "online") return online.clock({ speed });
-    set({ speed });
-    sim({ type: "setSpeed", speed });
-  },
-  setPaused: (paused) => {
-    if (get().mode === "online") return online.clock({ paused });
-    set({ paused });
-    sim({ type: "setPaused", paused });
+  hold: (reason, on) => {
+    if (on) holds.add(reason);
+    else holds.delete(reason);
+    syncClock();
   },
   replace: (state) => {
     registerStateCountries(state);
     set((s) => ({ state, provincesOf: provincesByOwner(state), paused: true, errors: [], generation: s.generation + 1 }));
     sim({ type: "setPaused", paused: true });
     sim({ type: "start", state });
+    syncClock();
   },
 }));
+// Picking a country (or loading a game with one) starts the clock.
+useGame.subscribe((s, prev) => {
+  if (s.state !== prev.state || s.mode !== prev.mode) syncClock();
+});
 
-/** Start the simulation worker (it begins paused). */
-export const startSimulation = () => sim({ type: "setSpeed", speed: useGame.getState().speed });
+/** Start the simulation worker (it begins paused, until you lead a country). */
+export const startSimulation = () => sim({ type: "setPaused", paused: true });
 
 export const ownerOf = (id: ProvinceId): CountryId | undefined => useGame.getState().state.provinces[id]?.owner;
 
@@ -113,7 +123,7 @@ setOnlineHooks({
       const state = fn(s.state);
       return { state, provincesOf: state.ownershipVersion !== s.state.ownershipVersion ? provincesByOwner(state) : s.provincesOf };
     }),
-  clock: (clock) => useGame.setState({ paused: clock.paused, speed: clock.speed }),
+  clock: (clock) => useGame.setState({ paused: clock.paused }),
   leave: () => {
     // Back to single player with a fresh world.
     useGame.setState({ mode: "local" });

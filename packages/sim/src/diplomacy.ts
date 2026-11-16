@@ -254,18 +254,39 @@ export function heldShare(s: GameState, c: CountryId): number {
   return total > 0 ? held / total : 1;
 }
 
+/** Days an enemy must hold a country's capital before the country falls (about 10 seconds at 21 days a second). */
+export const CAPITAL_HOLD_DAYS = 210;
+
 /**
- * A country at war whose capital is taken by an enemy falls: the enemy that took the capital annexes it,
- * except provinces another enemy holds, which go to that enemy.
+ * A country at war whose capital an enemy holds for CAPITAL_HOLD_DAYS in a row falls: the enemy holding the
+ * capital annexes it, except provinces another enemy holds, which go to that enemy. Taking the capital back
+ * (or peace) resets the count.
  */
 function capitalsFallen(s: GameState) {
+  for (const c of Object.values(s.countries)) {
+    if (!c.capitalLost) continue;
+    const capital = c.active && c.capital ? s.provinces[c.capital] : undefined;
+    if (!capital || capital.controller === c.id || !atWar(s, c.id, capital.controller)) delete c.capitalLost;
+  }
   for (const war of [...s.wars]) {
     for (const c of [...war.attackers, ...war.defenders]) {
       const country = s.countries[c];
       const capital = country?.active && country.capital ? s.provinces[country.capital] : undefined;
-      if (!capital || capital.controller === c || !atWar(s, c, capital.controller)) continue;
+      if (!country || !capital || capital.controller === c || !atWar(s, c, capital.controller)) continue;
       const taker = capital.controller;
-      logEvent(s, "annexation", `${nameOf(s, taker)} took the capital of ${nameOf(s, c)}, and the whole country has fallen.`, [taker, c]);
+      if (country.capitalLost?.by !== taker) {
+        country.capitalLost = { by: taker, since: s.tick };
+        logEvent(
+          s,
+          "war",
+          `${nameOf(s, taker)} has taken the capital of ${nameOf(s, c)}! If it isn't retaken within ${Math.round(CAPITAL_HOLD_DAYS / 30)} months, ${nameOf(s, c)} falls.`,
+          [taker, c],
+        );
+        continue;
+      }
+      if (s.tick - country.capitalLost.since < CAPITAL_HOLD_DAYS) continue;
+      delete country.capitalLost;
+      logEvent(s, "annexation", `${nameOf(s, taker)} held the capital of ${nameOf(s, c)}, and the whole country has fallen.`, [taker, c]);
       // Work out who gets what first: once the country is gone, nobody is at war with it any more.
       const handover = Object.values(s.provinces)
         .filter((p) => p.owner === c)

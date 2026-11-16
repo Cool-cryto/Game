@@ -3656,3 +3656,121 @@ button.infobar__country:hover .infobar__name {
     max-width: none;
   }
 }
+
+/* =====================================================================
+   Slim layout: one top bar (sections as icons, your country, the date,
+   tools), narrower panels and news, so the map gets the screen.
+   ===================================================================== */
+:root {
+  --nav-h: 44px;
+  --info-h: 0px;
+}
+.topnav {
+  gap: 10px;
+}
+.topnav__brand span {
+  display: none;
+}
+/* Section names show on hover (tooltip) and for the open section only. */
+.topnav__label {
+  display: none;
+}
+.topnav__btn {
+  padding: 0 10px;
+}
+.topnav__btn.is-active .topnav__label {
+  display: inline;
+}
+.tool-btn__label {
+  display: none;
+}
+.tool-btn {
+  padding: 0 8px;
+}
+.topnav__tools .search {
+  width: 180px;
+}
+/* Your country and the date sit in the top bar. */
+.topnav .infobar {
+  position: static;
+  height: auto;
+  flex: none;
+  gap: 14px;
+  padding: 0 4px 0 12px;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid var(--line);
+}
+.topnav .infobar__country {
+  gap: 12px;
+}
+.topnav .infobar__label {
+  display: none;
+}
+.time__date {
+  display: flex;
+  flex-direction: row;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  font-variant-numeric: tabular-nums;
+}
+.time__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+.time__dot.is-running {
+  background: #7fd39a;
+  box-shadow: 0 0 0 3px rgba(127, 211, 154, 0.18);
+}
+.panel {
+  width: 310px;
+  padding: 12px 14px;
+  bottom: 30px;
+  font-size: 13px;
+}
+.news {
+  width: 290px;
+  max-height: 170px;
+  bottom: 26px;
+}
+.app:has(.panel) .news {
+  right: 334px;
+}
+.screen {
+  width: min(720px, 100%);
+}
+@media (max-width: 1100px) {
+  .topnav .infobar__name {
+    display: none;
+  }
+  .topnav__tools .search {
+    width: 140px;
+  }
+}
+/* Phones: tools, then the ten sections, then your country and the date, each on its own row. */
+@media (max-width: 760px) {
+  :root {
+    --nav-h: 138px;
+  }
+  .topnav {
+    height: var(--nav-h);
+    overflow: hidden;
+  }
+  .topnav .infobar {
+    order: 3;
+    flex: 1 1 100%;
+    height: 36px;
+    padding: 0 6px;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+  .topnav__btn.is-active .topnav__label {
+    display: none;
+  }
+  .panel {
+    width: auto;
+  }
+}

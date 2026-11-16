@@ -16,7 +16,7 @@ import { sameSelection, useUi, type CameraCommand, type Selection } from "../sta
 
 /** How far in the player may zoom, relative to the whole-world view. */
 const MAX_ZOOM = 96;
-/** From this zoom, the pointer picks provinces instead of countries and province borders show. */
+/** From this zoom, province names show and labels change size. */
 export const PROVINCE_ZOOM = 3;
 /** From this zoom, the detailed geometry is used (once loaded). */
 const HIGH_DETAIL_ZOOM = 4;
@@ -228,12 +228,7 @@ export function WorldMap() {
       }
 
       ctx.lineJoin = "round";
-      if (z >= PROVINCE_ZOOM * 0.75) {
-        const a = Math.min(1, (z - PROVINCE_ZOOM * 0.75) / (PROVINCE_ZOOM * 0.5));
-        ctx.strokeStyle = `rgba(8, 14, 22, ${0.45 * a})`;
-        ctx.lineWidth = 0.6 / t.k;
-        for (const c of visible) if (c.inner) ctx.stroke(c.inner);
-      }
+      // Province borders inside countries aren't drawn: they cluttered the map. (Province names still show up close.)
       ctx.strokeStyle = "rgba(6, 12, 20, 0.9)";
       ctx.lineWidth = (z >= PROVINCE_ZOOM ? 1.4 : 0.8) / t.k;
       for (const c of visible) ctx.stroke(c.path);
@@ -276,7 +271,7 @@ export function WorldMap() {
       const game = useGame.getState().state;
       const { selected, moveOrder } = useUi.getState();
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      markers = drawUnitsOverlay(ctx, {
+      const drawn = drawUnitsOverlay(ctx, {
         project: (p) => {
           const shape = low.provinces.get(p);
           return shape ? (transform.apply(shape.labelPoint) as [number, number]) : null;
@@ -288,7 +283,11 @@ export function WorldMap() {
         me: playerCountry(game)?.id,
         selected,
         moveOrder,
+        running: !useGame.getState().paused,
       });
+      markers = drawn.markers;
+      // Keep drawing while units glide between provinces.
+      if (drawn.animating) requestDraw();
     }
 
     function drawLabels(ctx: CanvasRenderingContext2D, L: Layer, visible: CShape[], dpr: number, selected: Selection) {
@@ -413,11 +412,10 @@ export function WorldMap() {
       return null;
     }
 
-    /** Zoomed out you pick countries; zoomed in you pick provinces. */
+    /** Clicking the map picks a country (provinces only matter as places to send units). */
     function selectionAt(sx: number, sy: number): Selection {
       const hit = pick(sx, sy);
-      if (!hit) return null;
-      return rel() >= PROVINCE_ZOOM ? { kind: "province", id: hit.province } : { kind: "country", id: hit.country };
+      return hit ? { kind: "country", id: hit.country } : null;
     }
 
     function updateHover() {
@@ -440,7 +438,7 @@ export function WorldMap() {
         setTooltip(hit ? `${getProvince(hit.province)?.name ?? ""}: ${previewMove(useGame.getState().state, order, hit.province)}` : "Click a province to send your units there");
         return;
       }
-      const s: Selection = hit ? (rel() >= PROVINCE_ZOOM ? { kind: "province", id: hit.province } : { kind: "country", id: hit.country }) : null;
+      const s: Selection = hit ? { kind: "country", id: hit.country } : null;
       useUi.getState().hover(s);
       canvas.style.cursor = hit ? "pointer" : "grab";
       const tip = tooltipRef.current;
@@ -448,7 +446,8 @@ export function WorldMap() {
       let text: string | null = null;
       if (hit) {
         const country = getCountry(hit.country)?.name ?? hit.country;
-        text = s?.kind === "province" ? `${getProvince(hit.province)?.name ?? hit.province} · ${country}` : country;
+        // Zoomed in, the tooltip also names the province under the pointer.
+        text = rel() >= PROVINCE_ZOOM ? `${getProvince(hit.province)?.name ?? hit.province} · ${country}` : country;
       }
       setTooltip(text);
     }

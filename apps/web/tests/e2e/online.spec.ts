@@ -73,16 +73,11 @@ test("two players share a private server: countries, time, chat", async ({ brows
   await guest.getByRole("button", { name: "Play as Germany" }).click();
   await expect(guest.getByTestId("player-card")).toContainText("Germany");
 
-  // Only the host controls time; both see the same date.
-  await expect(guest.getByRole("button", { name: "Play", exact: true })).toBeDisabled();
-  await host.getByRole("radio", { name: "Speed 5" }).click();
-  await host.getByRole("button", { name: "Play", exact: true }).click();
-  await expect(guest.getByTestId("game-date")).not.toContainText("2020", { timeout: 15_000 });
-  await host.getByRole("button", { name: "Pause" }).click();
-  await expect(guest.getByTestId("game-date")).toContainText("Paused");
-  await expect.poll(async () => (await guest.getByTestId("game-date").textContent())?.replace(/Paused|Host's clock/g, "")).toBe(
-    (await host.getByTestId("game-date").textContent())?.replace(/Paused/g, ""),
-  );
+  // Nobody controls time: it runs by itself while players are here, and both see it move on.
+  await expect(guest.getByRole("button", { name: /^(Play|Pause)$/ })).toHaveCount(0);
+  await expect(guest.getByTestId("game-date")).not.toContainText("1 Jan 2020", { timeout: 15_000 });
+  const year = async (p: Page) => Number((await p.getByTestId("game-date").textContent())!.match(/\d{4}/)![0]);
+  await expect.poll(async () => Math.abs((await year(guest)) - (await year(host)))).toBeLessThanOrEqual(1);
 
   // Chat.
   await guest.getByTestId("online-pill").click();
@@ -136,13 +131,11 @@ test("the global world is open to everyone and runs at a fixed speed", async ({ 
   await signUp(page, `global${unique()}`);
   await page.getByTestId("room-world").getByRole("button", { name: "Join" }).click();
   await expect(page.getByTestId("online-pill")).toContainText("Global World");
-  await expect(page.getByTestId("game-date")).toContainText("Fixed speed");
-  await expect(page.getByRole("button", { name: /Play|Pause/ }).first()).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^(Play|Pause)$/ })).toHaveCount(0);
   // Leaving returns to a single-player game.
   await page.getByTestId("online-pill").click();
   await page.getByRole("button", { name: "Leave server" }).click();
   await expect(page.getByTestId("online-pill")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Play", exact: true })).toBeEnabled();
 });
 
 test("without a game server, online play explains what's needed", async ({ page }) => {

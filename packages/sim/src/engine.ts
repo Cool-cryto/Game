@@ -2,7 +2,7 @@ import { applyCommand, type Command } from "./commands";
 import { aiDaily, aiMonthly } from "./ai";
 import { checkCapitulations, diplomacyMonthly } from "./diplomacy";
 import { countryNeighbors, type Geography } from "./geography";
-import { advanceMovement, advanceSieges, militaryMonthly, resolveBattles } from "./military";
+import { advanceMovement, advanceSieges, enforceUnitCaps, militaryMonthly, resolveBattles } from "./military";
 import { dateAt, SAVE_VERSION, type GameState } from "./state";
 import { runMonthly } from "./systems";
 import { politicsMonthly, startingGovernment, type Regime } from "./government";
@@ -42,6 +42,7 @@ export function tick(state: GameState, geo: Geography, commands: Command[] = [])
     diplomacyMonthly(state, neighbors);
     aiMonthly(state, geo, neighbors);
   }
+  enforceUnitCaps(state);
   return errors;
 }
 

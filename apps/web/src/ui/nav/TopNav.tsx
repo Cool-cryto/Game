@@ -59,6 +59,7 @@ export function TopNav() {
           );
         })}
       </nav>
+      <InfoBar />
       <div className="topnav__tools">
         <SearchBox />
         <OnlineButton />

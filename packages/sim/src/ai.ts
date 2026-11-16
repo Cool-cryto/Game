@@ -202,6 +202,14 @@ export function aiDaily(s: GameState, geo: Geography) {
     const here = s.provinces[u.province]!;
     if (atWar(s, u.owner, here.controller)) continue;
     if (Object.values(s.units).some((x) => x.province === u.province && x.type === "army" && atWar(s, u.owner, x.owner))) continue;
+    // The capital is in enemy hands: everyone goes to take it back before the country falls.
+    if (c.capitalLost && c.capital) {
+      const back = findLandPath(geo, u.province, (p) => p === c.capital, (p) => canEnter(s, u.owner, p), 3000);
+      if (back?.length) {
+        startMove(s, geo, u, back, "land");
+        continue;
+      }
+    }
     const goal = (p: ProvinceId) => {
       const prov = s.provinces[p]!;
       if (!atWar(s, u.owner, prov.controller)) return false;

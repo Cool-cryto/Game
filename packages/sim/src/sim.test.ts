@@ -222,6 +222,9 @@ describe("military", () => {
   it("recruiting needs defense funds and stays within the population cap", () => {
     const s = newGame();
     scripted(s);
+    // Countries start with three months of defense money; spend it, and recruiting must wait for more.
+    expect(s.countries[A]!.defenseFund).toBeGreaterThan(0);
+    s.countries[A]!.defenseFund = 0;
     expect(validateCommand(s, geo, { type: "recruit", country: A, unitType: "army", province: P(1) })).toMatch(/defense funds/);
     run(s, 365);
     const before = unitsOf(s, A).length;
@@ -287,34 +290,41 @@ describe("war", () => {
     s.countries[B]!.capital = P(5);
     scripted(s);
     for (const u of unitsOf(s, B)) delete s.units[u.id];
+    s.countries[B]!.defenseFund = -1e6; // and no money to raise new ones
     run(s, 1, [{ type: "declareWar", country: A, target: B }]);
     const army = armies(s, A)[0]!;
     army.province = P(3);
     startMove(s, geo, army, [P(4)], "land");
-    runUntil(s, () => army.province === P(4), 30);
+    runUntil(s, () => army.province === P(4), 100);
     expect(s.provinces[P(4)]!.controller).toBe(A);
-    // A fort: the army has to besiege it for a few days.
+    // A fort: the army has to besiege it for a while.
     s.provinces[P(5)]!.buildings = { fort: 2 };
     startMove(s, geo, army, [P(5)], "land");
-    runUntil(s, () => army.province === P(5), 30);
+    runUntil(s, () => army.province === P(5), 100);
     expect(s.provinces[P(5)]!.controller).toBe(B);
-    expect(runUntil(s, () => s.provinces[P(5)]!.controller !== B, 30)).toBe(true);
+    expect(runUntil(s, () => s.provinces[P(5)]!.controller !== B, 100)).toBe(true);
   });
 
-  it("when a country's capital falls, the whole country falls", () => {
+  it("when an enemy holds a country's capital for seven months, the whole country falls", () => {
     const s = newGame();
     scripted(s);
     for (const u of unitsOf(s, B)) delete s.units[u.id];
+    s.countries[B]!.defenseFund = -1e6; // and no money to raise new ones
     run(s, 1, [{ type: "declareWar", country: A, target: B }]);
     expect(s.countries[B]!.capital).toBe(P(4));
     const army = armies(s, A)[0]!;
     army.province = P(3);
     startMove(s, geo, army, [P(4)], "land");
-    runUntil(s, () => !s.countries[B]!.active, 30);
-    expect(s.countries[B]!.active).toBe(false);
+    runUntil(s, () => s.provinces[P(4)]!.controller === A, 100);
+    // A warning first: the capital can still be retaken.
+    expect(s.countries[B]!.capitalLost?.by).toBe(A);
+    expect(s.events.some((e) => e.text.includes("has taken the capital of Borduria"))).toBe(true);
+    run(s, 100);
+    expect(s.countries[B]!.active).toBe(true);
+    expect(runUntil(s, () => !s.countries[B]!.active, 150)).toBe(true);
     expect([s.provinces[P(4)]!.owner, s.provinces[P(5)]!.owner]).toEqual([A, A]); // P-5 too, never reached
     expect(s.wars).toHaveLength(0);
-    expect(s.events.some((e) => e.text.includes("took the capital of Borduria"))).toBe(true);
+    expect(s.events.some((e) => e.text.includes("held the capital of Borduria"))).toBe(true);
   });
 
   it("declaring war brings in the defender's allies", () => {
@@ -779,7 +789,12 @@ describe("fog of war", () => {
         const client = applyPatch(clients.get(v)!, JSON.parse(wire));
         clients.set(v, client);
         expect(client.units).toEqual(pv.view.units);
-        for (const p of Object.values(server.provinces)) expect(client.provinces[p.id]!.siege).toEqual(pv.view.provinces[p.id]!.siege);
+        // Sieges are sent when they move on by 5% or more, so the client may be a little behind.
+        for (const p of Object.values(server.provinces)) {
+          const [mine, real] = [client.provinces[p.id]!.siege, pv.view.provinces[p.id]!.siege];
+          expect(mine?.by).toEqual(real?.by);
+          if (mine && real) expect(Math.abs(mine.progress - real.progress)).toBeLessThan(0.05);
+        }
       }
     }
     expect(sieges).toBeGreaterThan(0); // the test did cover sieges
@@ -970,12 +985,13 @@ describe("construction", () => {
     expect(rawProduction(p, 5, "minerals") / plain).toBeCloseTo(1.3, 5);
     expect(rawProduction(p, 5, "food")).toBe(rawProduction({ ...p, buildings: {} }, 5, "food")); // food unaffected
     expect(siegeDays(5, 0)).toBe(0); // no fort: taken at once
-    expect(siegeDays(5, 2)).toBeCloseTo(10, 5);
+    expect(siegeDays(5, 2)).toBeCloseTo(35, 5);
     expect(growthBreakdown(s.countries[A]!, 5, 5).parts.factories).toBeCloseTo(0.008, 5);
     // A railway into P-2 shortens the march from P-1.
     const army = armies(s, A)[0]!;
     army.province = P(1);
     p.buildings = {};
+    p.infrastructure = 0; // a slow road, so the railway's saving shows in whole days
     startMove(s, geo, army, [P(2)], "land");
     const slow = army.travel!.daysLeft;
     p.buildings = { railway: 1 };
