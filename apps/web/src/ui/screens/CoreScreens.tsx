@@ -7,6 +7,7 @@ import {
   canRecruit,
   debtRatio,
   growthBreakdown,
+  interestRate,
   governmentLabel,
   isAtWar,
   MAX_INFRASTRUCTURE,
@@ -55,7 +56,7 @@ export function yearlyBudget(c: CountryState) {
   const income = c.taxRate * c.gdp;
   const spending = BUDGET_CATEGORIES.reduce((a, k) => a + c.budget[k], 0) * c.gdp;
   const admin = ADMIN_COST * c.gdp;
-  const interest = c.treasury < 0 ? -c.treasury * 0.04 : 0;
+  const interest = c.treasury < 0 ? -c.treasury * interestRate(c) : 0;
   return { income, spending, admin, interest, balance: income - spending - admin - interest };
 }
 
@@ -238,7 +239,7 @@ function EconomyOverview({ c }: { c: CountryState }) {
   const started = c.history.gdp.length > 0;
   return (
     <div className="grid">
-      <Card title="Treasury" hint="Money in the bank. Negative means debt, which costs 4% interest a year.">
+      <Card title="Treasury" hint="Money in the bank. Negative means debt, which costs interest (4% a year; 3% with Global finance).">
         <p className={`big-number ${c.treasury < 0 ? "neg" : ""}`}>{money(c.treasury)}</p>
         <Rows
           rows={[
@@ -371,7 +372,7 @@ function Debt({ c }: { c: CountryState }) {
         <Rows
           rows={[
             ["Debt / GDP", pct(ratio, 0)],
-            ["Interest", `${money(-c.treasury * 0.04)} / yr (4%)`],
+            ["Interest", `${money(-c.treasury * interestRate(c))} / yr (${Math.round(interestRate(c) * 100)}%)`],
             ["Effect on growth", <span className="neg">{pct(growthHit, 2, true)} / yr</span>],
             ["Effect on stability", <span className="neg">{stabilityHit.toFixed(0)}</span>],
           ]}

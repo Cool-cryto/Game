@@ -195,6 +195,15 @@ Serverless platforms are not a good fit, because players keep a connection open.
   countries. Save version 5; `deserialize(text, scenarioCountries)` upgrades version-4 saves (the server passes each
   room's scenario).
 
+### Technology (Stage 12)
+
+- `packages/sim/src/tech.ts` – `Research` on every country: `levels` and `progress` per branch, `focus`. `TECHS` is the
+  tree (branch, level, effect, `mods`); `techMods(c)` sums unlocked technologies (cached per level combination, since
+  battles and movement ask often). Used by production (`rawProduction` with the economy level × `resourceBonus`),
+  `growthBreakdown`/`stabilityBreakdown` ("technology" line), `interestRate`, infrastructure cap and speed,
+  `combatPower` (military level + power mods), air support, `legDays` and recovery. Command: `setResearchFocus`.
+  `techLevel` remains as the average (growth catch-up, maps, rankings). Save version 6 (upgrade from 4 and 5).
+
 ### Interface layout (Stage 10)
 
 - `apps/web/src/ui/nav/TopNav.tsx` – the navigation bar (ten sections, search, Play online, Settings) and the information

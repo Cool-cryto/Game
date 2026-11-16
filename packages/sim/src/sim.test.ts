@@ -28,6 +28,10 @@ import {
   ViewSync,
   visibleProvinces,
   startingGovernment,
+  techMods,
+  TECHS,
+  combatPower,
+  researchTarget,
   governmentEffects,
   ELECTION_INTERVAL,
   LAW_COOLDOWN,
@@ -592,9 +596,51 @@ describe("government", () => {
     old.version = 4;
     for (const c of Object.values(old.countries) as { government?: unknown }[]) delete c.government;
     const loaded = deserialize(JSON.stringify(old), { BBB: { regime: "closed_autocracy" } });
-    expect(loaded.version).toBe(5);
+    expect(loaded.version).toBe(6);
+    expect(loaded.countries[A]!.research.levels.economy).toBe(s.countries[A]!.techLevel);
     expect(loaded.countries[B]!.government.regime).toBe("closed_autocracy");
     expect(loaded.countries[A]!.government.source).toBe("estimate");
+  });
+});
+
+describe("technology tree", () => {
+  it("starts every branch at the country's level, with the matching technologies unlocked", () => {
+    const s = newGame();
+    const a = s.countries[A]!;
+    expect(a.research.levels).toEqual({ economy: a.techLevel, military: a.techLevel, infrastructure: a.techLevel });
+    const expected = TECHS.filter((t) => t.level <= a.techLevel).length;
+    expect(TECHS.filter((t) => a.research.levels[t.branch] >= t.level)).toHaveLength(expected);
+  });
+
+  it("research spending advances the focused branch only; balanced works on the lowest", () => {
+    const s = newGame();
+    scripted(s);
+    const a = s.countries[A]!;
+    a.budget.research = 0.1;
+    run(s, 1, [{ type: "setResearchFocus", country: A, focus: "military" }]);
+    const before = { ...a.research.levels };
+    runUntil(s, () => a.research.levels.military > before.military, 3000);
+    expect(a.research.levels.military).toBeGreaterThan(before.military);
+    expect(a.research.levels.economy).toBe(before.economy);
+    expect(a.research.levels.infrastructure).toBe(before.infrastructure);
+    a.research.focus = "balanced";
+    expect(researchTarget(a, 20)).not.toBe("military"); // military is now ahead
+    expect(validateCommand(s, geo, { type: "setResearchFocus", country: A, focus: "magic" as never })).toMatch(/Unknown/);
+  });
+
+  it("unlocked technologies change the rules: production, combat power, movement, interest", () => {
+    const s = newGame();
+    const a = s.countries[A]!;
+    const army = armies(s, A)[0]!;
+    a.research.levels = { economy: 1, military: 1, infrastructure: 1 };
+    const weak = combatPower(s, army);
+    expect(techMods(a).food).toBe(0);
+    a.research.levels = { economy: 12, military: 11, infrastructure: 2 };
+    expect(techMods(a).food).toBeCloseTo(0.15);
+    expect(techMods(a).interest).toBeCloseTo(0.01);
+    expect(techMods(a).ownLandSpeed).toBeCloseTo(0.2);
+    // Military level 11: 8% per level, plus Combined arms (+10% armies) and Precision weapons (+10%).
+    expect(combatPower(s, army) / weak).toBeCloseTo(((1 + 0.08 * 11) * 1.2) / 1.08, 5);
   });
 });
 

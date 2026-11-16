@@ -6,6 +6,7 @@ import { advanceMovement, advanceSieges, militaryMonthly, resolveBattles } from 
 import { dateAt, SAVE_VERSION, type GameState } from "./state";
 import { runMonthly } from "./systems";
 import { politicsMonthly, startingGovernment, type Regime } from "./government";
+import { startingResearch } from "./tech";
 
 /**
  * Advance the game by one day. Order:
@@ -62,6 +63,13 @@ export function deserialize(text: string, scenarioCountries?: Record<string, { r
     // Version 5 added governments.
     for (const c of Object.values(s.countries) as GameState["countries"][keyof GameState["countries"]][]) {
       c.government ??= startingGovernment(c.id, scenarioCountries?.[c.id], c.id.startsWith("C-"));
+    }
+    (s as { version: number }).version = 5;
+  }
+  if ((s.version as number) === 5) {
+    // Version 6 split technology into research branches, all starting at the old level.
+    for (const c of Object.values(s.countries) as GameState["countries"][keyof GameState["countries"]][]) {
+      c.research ??= startingResearch(c.techLevel, c.researchProgress ?? 0);
     }
     (s as { version: number }).version = SAVE_VERSION;
   }

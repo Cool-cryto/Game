@@ -38,6 +38,8 @@ export function aiMonthly(s: GameState, geo: Geography, neighbors: Map<CountryId
   for (const c of ai(s)) {
     economyPolicy(s, c);
     aiGovernment(s, c, isAtWar(s, c.id));
+    // Research: weapons first in wartime, otherwise keep the branches even.
+    c.research.focus = isAtWar(s, c.id) && c.research.levels.military < 20 ? "military" : "balanced";
     buildForces(s, geo, c, unitCount.get(c.id) ?? { all: 0, navy: 0, air: 0 }, port.get(c.id) ?? null);
     diplomacy(s, c, neighbors.get(c.id) ?? new Set(), sidePower);
   }

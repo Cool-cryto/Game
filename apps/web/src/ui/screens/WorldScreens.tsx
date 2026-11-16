@@ -2,17 +2,13 @@ import { useState } from "react";
 import type { CountryId } from "@gs/shared";
 import {
   alliesOf,
-  costMultiplier,
   dateAt,
   isAtWar,
   MAX_INFRASTRUCTURE,
-  MAX_TECH,
   relation,
   relationLabel,
   sideOf,
-  techMultiplier,
   visibleProvinces,
-  yearsPerTechLevel,
   BUDGET_RANGE,
   type CountryState,
   type GameEvent,
@@ -133,72 +129,6 @@ function AlliancesTab({ me }: { me: CountryId }) {
         ) : (
           <p className="screen__note">No allies yet. Improve relations with a country in Relations, then propose an alliance.</p>
         )}
-      </Card>
-    </div>
-  );
-}
-
-// ============ Research ============
-
-export function ResearchScreen() {
-  return (
-    <NeedCountry>
-      {(c) => (
-        <ScreenFrame
-          id="research"
-          title="Research"
-          subtitle="Technology and scientific development"
-          tabs={[
-            { id: "technology", label: "Technology" },
-            { id: "spending", label: "Research spending" },
-            { id: "tree", label: "Technology tree" },
-          ]}
-        >
-          {(tab) =>
-            tab === "technology" ? (
-              <TechTab c={c} />
-            ) : tab === "spending" ? (
-              <SpendingSlider c={c} category="research" note="Research spending moves you towards the next technology level. Higher levels take longer." />
-            ) : (
-              <Planned
-                title="Technology tree"
-                items={["Separate economic, military and infrastructure research", "Choose what to research next", "Unlocks such as new unit types and buildings"]}
-                note="Today technology is one level (1 to 20) that research spending raises."
-              />
-            )
-          }
-        </ScreenFrame>
-      )}
-    </NeedCountry>
-  );
-}
-
-function TechTab({ c }: { c: CountryState }) {
-  const years = c.budget.research > 0 ? (yearsPerTechLevel(c.techLevel) * 0.03) / c.budget.research : null;
-  const worldRank = useGame((s) => 1 + Object.values(s.state.countries).filter((x) => x.active && x.techLevel > c.techLevel).length);
-  return (
-    <div className="grid">
-      <Card title="Technology level" hint="Raises how much your economy and provinces produce, and how strong your units are.">
-        <p className="big-number">
-          {c.techLevel}
-          <span className="big-number__sub"> / {MAX_TECH}</span>
-        </p>
-        <Meter
-          value={c.researchProgress}
-          max={1}
-          label={c.techLevel >= MAX_TECH ? "Maximum level" : `${Math.round(c.researchProgress * 100)}% to level ${c.techLevel + 1}`}
-          tone="tech"
-        />
-        <Rows rows={[["Next level in", years ? `about ${years.toFixed(1)} years` : "never (no research spending)"], ["World position", `#${worldRank}`, "Countries with a higher technology level, plus one"]]} />
-      </Card>
-      <Card title="What technology does">
-        <Rows
-          rows={[
-            ["Production", `×${techMultiplier(c.techLevel).toFixed(2)}`, "Output of resources compared with no technology"],
-            ["Unit power", `+${Math.round(8 * c.techLevel)}%`, "Each level makes your units 8% stronger"],
-            ["Unit cost", `×${costMultiplier(c).toFixed(2)}`, "Recruiting and upkeep cost multiplier"],
-          ]}
-        />
       </Card>
     </div>
   );

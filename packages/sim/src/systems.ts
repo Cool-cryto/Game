@@ -1,4 +1,5 @@
-import { governmentEffects, governmentGrowth, governmentStability } from "./government";
+import { governmentGrowth, governmentStability } from "./government";
+import { overallLevel, researchSpeed, researchTarget, resourceBonus, techMods, yearsPerBranchLevel } from "./tech";
 import { RESOURCES, type CountryId, type ResourceId } from "@gs/shared";
 import {
   ADMIN_COST,
@@ -69,7 +70,7 @@ function aggregateProvinces(state: GameState): Map<CountryId, Aggregate> {
     if (!a) out.set(p.owner, (a = { pop: 0, infraPop: 0, infrastructure: 0, production: { food: 0, energy: 0, minerals: 0 } }));
     a.pop += p.population;
     a.infraPop += p.infrastructure * p.population;
-    for (const r of RESOURCES) a.production[r] += rawProduction(p, owner.techLevel, r) * state.resourceScale[r];
+    for (const r of RESOURCES) a.production[r] += rawProduction(p, owner.research.levels.economy, r) * resourceBonus(owner, r) * state.resourceScale[r];
   }
   for (const [id, a] of out) {
     a.infrastructure = a.pop > 0 ? a.infraPop / a.pop : 0;
@@ -113,6 +114,8 @@ function worldMarket(state: GameState, agg: Map<CountryId, Aggregate>) {
 
 const RESOURCE_WEIGHT: Record<ResourceId, number> = { food: 0.01, energy: 0.015, minerals: 0.01 };
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+/** Yearly interest on debt: 4%, lower with Global finance. */
+export const interestRate = (c: CountryState) => 0.04 - techMods(c).interest;
 export const debtRatio = (c: CountryState) => (c.treasury < 0 && c.gdp > 0 ? -c.treasury / c.gdp : 0);
 
 /** The yearly GDP growth rate this month, broken down so the UI can explain it. */
@@ -120,7 +123,7 @@ export function growthBreakdown(c: CountryState, infrastructure: number) {
   const parts = {
     // Less developed economies catch up faster.
     base: 0.012 + 0.03 * (1 - c.techLevel / 12),
-    infrastructure: clamp((infrastructure - c.techLevel) * 0.003, -0.02, 0.01),
+    infrastructure: clamp((infrastructure - c.research.levels.infrastructure) * 0.003, -0.02, 0.01),
     // Exporters earn a little, importers pay a little; real shortages hurt a lot.
     resources: RESOURCES.reduce(
       (sum, r) => sum + (clamp(tradeBalance(c.resources[r]), -1, 1) * 0.25 - (1 - supplied(c.resources[r])) * 3) * RESOURCE_WEIGHT[r],
@@ -130,6 +133,7 @@ export function growthBreakdown(c: CountryState, infrastructure: number) {
     stability: ((c.stability - 50) / 50) * 0.01,
     debt: -Math.min(0.03, debtRatio(c) * 0.02),
     government: governmentGrowth(c, false),
+    technology: techMods(c).growth,
   };
   const total = Object.values(parts).reduce((a, b) => a + b, 0);
   return { parts, total };
@@ -142,7 +146,7 @@ function economy(c: CountryState, a: Aggregate) {
 
   const revenue = (c.gdp * c.taxRate) / 12;
   const spending = (c.gdp * (ADMIN_COST + c.budget.infrastructure + c.budget.research + c.budget.welfare + c.budget.defense)) / 12;
-  const interest = c.treasury < 0 ? (-c.treasury * 0.04) / 12 : 0;
+  const interest = c.treasury < 0 ? (-c.treasury * interestRate(c)) / 12 : 0;
   c.treasury += revenue - spending - interest;
   c.defenseFund += (c.gdp * c.budget.defense) / 12;
 }
@@ -152,20 +156,26 @@ export const yearsPerTechLevel = (level: number) => 4 + 0.5 * level;
 
 function investment(c: CountryState, provinces: ProvinceState[]) {
   // Infrastructure: 4% of GDP slowly builds it up; spending nothing lets it decay.
-  const change = (c.budget.infrastructure / 0.04 - 0.5) * 0.01;
-  const cap = Math.min(MAX_INFRASTRUCTURE, c.techLevel + 2);
+  const mods = techMods(c);
+  const change = (c.budget.infrastructure / 0.04 - 0.5) * 0.01 * (c.budget.infrastructure / 0.04 > 0.5 ? 1 + mods.infraSpeed : 1);
+  const cap = Math.min(MAX_INFRASTRUCTURE, c.research.levels.infrastructure + 2);
   for (const p of provinces) {
     p.infrastructure = clamp(p.infrastructure + change, 0, Math.max(p.infrastructure, cap));
   }
 
-  // Research.
-  if (c.techLevel < MAX_TECH) {
-    c.researchProgress += (c.budget.research / 0.03 / (12 * yearsPerTechLevel(c.techLevel))) * (1 + governmentEffects(c, false).research);
-    while (c.researchProgress >= 1 && c.techLevel < MAX_TECH) {
-      c.researchProgress -= 1;
-      c.techLevel += 1;
-      c.gdp *= 1.02; // a new technology level gives a one-off productivity boost
+  // Research: money goes to the focused branch (or the lowest, when balanced).
+  const branch = researchTarget(c, MAX_TECH);
+  if (branch) {
+    const r = c.research;
+    r.progress[branch] += (c.budget.research / 0.03 / (12 * yearsPerBranchLevel(r.levels[branch]))) * researchSpeed(c);
+    while (r.progress[branch] >= 1 && r.levels[branch] < MAX_TECH) {
+      r.progress[branch] -= 1;
+      r.levels[branch] += 1;
+      if (branch === "economy") c.gdp *= 1.02; // a new economic level gives a one-off productivity boost
     }
+    if (r.levels[branch] >= MAX_TECH) r.progress[branch] = 0;
+    c.techLevel = overallLevel(r);
+    c.researchProgress = r.progress[branch];
   }
 }
 
@@ -180,6 +190,7 @@ export function stabilityBreakdown(c: CountryState, atWar = false) {
     food: food < 1 ? -(1 - food) * 40 : 0,
     debt: -Math.min(20, debtRatio(c) * 20),
     government: governmentStability(c, atWar),
+    technology: techMods(c).stability,
   };
   const target = clamp(Object.values(parts).reduce((a, b) => a + b, 0), 0, 100);
   return { parts, target };

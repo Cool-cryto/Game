@@ -30,7 +30,7 @@ What was asked for at the start, and where each item stands today.
 | Governments | ✅ Done | Real government types (V-Dem + Wikidata), party blocs, laws, elections |
 | Populations | ✅ Done | Country and province populations that grow over time |
 | Resources | ✅ Done | Food, energy, minerals with a world market (deposits are game-generated) |
-| Technology | ✅ Done | Technology levels from research spending |
+| Technology | ✅ Done | Three research branches and an 18-technology tree with real effects |
 | Infrastructure | ✅ Done | Per-province infrastructure from spending |
 | Diplomacy | ✅ Done | Relations, alliances, peace deals |
 | Armies, navies and air forces as strategic units | ✅ Done | Recruit, move, fight, besiege; fleets carry armies; air support |
@@ -150,7 +150,16 @@ Built: scenario system; **End of the Cold War (1991)** with the Soviet Union, Yu
 browser, export/import, play, host online); server support for scenarios and custom worlds; borders computed from the
 live map.
 
-### Stage 11 — Government & elections ✅ (current)
+### Stage 12 — Technology tree ✅ (current)
+Built: three research branches (Economy, Military, Infrastructure), each level 1–20, with a research focus (one branch,
+or Balanced = the lowest branch; progress kept when switching). An 18-technology tree, six per branch, each with a
+concrete effect on existing rules: resource output, growth, research speed, interest on debt, army/fleet/unit power,
+air support, land and sea movement (Railways: faster in your own territory), recovery, infrastructure building speed
+and stability. Economy sets production, Military sets unit power, Infrastructure caps infrastructure; the overall level
+is the average. Branches start at the level set by GDP per person (no invented per-branch data). AI researches military
+in wartime, otherwise balanced. Research screen: overview with focus, the technology tree, spending. Save version 6.
+
+### Stage 11 — Government & elections ✅
 Built: every country starts with its real kind of government for the scenario's year: V-Dem "Regimes of the World"
 (liberal democracy, electoral democracy, electoral autocracy, closed autocracy; CC BY-SA 4.0) plus monarchy or republic
 from Wikidata (CC0), giving types such as constitutional monarchy, absolute monarchy or one-party rule. Four party blocs
@@ -232,7 +241,7 @@ bandwidth 5× too high, and an editor race that wiped a newly created country.
 ## 7. What is still left to build
 
 ### Next steps (recommended order)
-0. **Systems the new screens are waiting for** (each screen already has its place): a technology tree; buildings (factories, railways, ports); equipment; treaties and organizations;
+0. **Systems the new screens are waiting for** (each screen already has its place): buildings (factories, railways, ports); equipment; treaties and organizations;
    intelligence.
 1. **Hosting on the internet** so friends anywhere can play online. Needs an account with a host that runs a long-lived
    Node.js app with a persistent disk (e.g. Fly.io, Railway, Render or a small VPS) and HTTPS. Steps are in
