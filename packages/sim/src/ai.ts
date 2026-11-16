@@ -7,6 +7,7 @@ import { nextRandom } from "./rng";
 import { findLandPath, type Geography } from "./geography";
 import { allied, alliesOf, atWar, declareWar, isAtWar, makePeace, pairKey, relation, sideOf, warScore, wouldAcceptPeace } from "./diplomacy";
 import { canEnter, canRecruit, combatPower, recruit, startMove, unitCap } from "./military";
+import { DIFFICULTY_RULES, difficultyOf } from "./state";
 import { budgetBalance, defaultBudget, logEvent, nameOf, type CountryState, type GameState, type ProvinceState, type UnitType } from "./state";
 
 /**
@@ -77,7 +78,7 @@ function economyPolicy(s: GameState, c: CountryState) {
 
 function buildForces(s: GameState, geo: Geography, c: CountryState, units: { all: number; navy: number; air: number }, coast: ProvinceId | null) {
   if (!c.capital) return;
-  const target = Math.ceil(unitCap(c) * (isAtWar(s, c.id) ? 1 : 0.6));
+  const target = Math.ceil(unitCap(c) * (isAtWar(s, c.id) ? 1 : difficultyOf(s).aiPeaceArmy));
   if (units.all >= target) return;
   const port = geo.provinces[c.capital]?.coastal ? c.capital : coast;
   let type: UnitType = "army";
@@ -112,9 +113,11 @@ function diplomacy(s: GameState, c: CountryState, neighbors: Set<CountryId>, sid
   const mine = sidePower(c.id);
   for (const n of neighbors) {
     const other = s.countries[n];
-    if (!other?.active || relation(s, c.id, n) > -60 || allied(s, c.id, n) || hasTreaty(s, c.id, n, "nonAggression")) continue;
-    if (mine < 2 * sidePower(n) || mine === 0) continue;
-    if (nextRandom(s.rng) < 0.015) {
+    // Difficulty sets how readily the AI turns on human players; between computer countries the rules never change.
+    const rules = other?.controller === "human" ? difficultyOf(s) : DIFFICULTY_RULES.normal;
+    if (!other?.active || relation(s, c.id, n) > rules.aiHostility || allied(s, c.id, n) || hasTreaty(s, c.id, n, "nonAggression")) continue;
+    if (mine < rules.aiWarRatio * sidePower(n) || mine === 0) continue;
+    if (nextRandom(s.rng) < 0.015 * rules.aiWarChance) {
       declareWar(s, c.id, n);
       return;
     }

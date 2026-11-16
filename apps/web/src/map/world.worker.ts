@@ -12,15 +12,17 @@ let generation = 0;
 
 const post = (msg: WorkerResponse) => (self as unknown as Worker).postMessage(msg);
 
-async function loadLevel(level: "low" | "high", baseUrl: string, gen: number) {
+async function loadLevel(level: "low" | "high", baseUrl: string) {
   const res = await fetch(`${baseUrl}maps/provinces-${level}.topo.json`);
   if (!res.ok) throw new Error(`Map data request failed (${res.status})`);
   const topo = (await res.json()) as ProvinceTopology;
   topologies[level] = topo;
   const labels = level === "low";
   const provinces = buildProvinceShapes(topo, frame, { labels });
+  // Built from the owners as they are now: if ownership changed while this was downloading (e.g. a saved game was
+  // restored), an "owners" message has already updated them. Dropping the result instead would leave the map loading forever.
   const countries = buildCountryShapes(topo, frame, owners, { labels });
-  if (gen === generation) post({ type: "level", level, provinces, countries });
+  post({ type: "level", level, provinces, countries });
 }
 
 self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
@@ -28,9 +30,9 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
   try {
     if (msg.type === "load") {
       owners = msg.owners;
-      const gen = ++generation;
-      await loadLevel("low", msg.baseUrl, gen);
-      await loadLevel("high", msg.baseUrl, gen);
+      ++generation;
+      await loadLevel("low", msg.baseUrl);
+      await loadLevel("high", msg.baseUrl);
     } else if (msg.type === "owners") {
       owners = msg.owners;
       const gen = ++generation;

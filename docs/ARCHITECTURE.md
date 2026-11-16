@@ -283,3 +283,16 @@ Serverless platforms are not a good fit, because players keep a connection open.
 - Countries that aren't in the modern facts (historical or custom) get facts from `historical-countries.json` or a generic
   entry (`registerStateCountries`). Custom countries' map color is stored on `CountryState.color`.
 - The editor (`apps/web/src/state/editor.ts`) shows a preview game built from the draft; the real game is restored on close.
+
+### Saves and setup (Stage 18)
+
+- `state.ts`: `GameState.settings` (`difficulty`, `started`), `DIFFICULTY_RULES`, `difficultyOf`. Save version 9
+  (version 8 saves upgrade to Normal with their human countries already started).
+- `commands.ts`: `setDifficulty` (only before any country is human-led; it has no `country`, so the server's
+  `checkCommand` rejects it); `claimCountry` applies the difficulty's starting money once per country.
+- `ai.ts`: war on a human uses that difficulty's hostility, strength ratio and chance; between computer countries
+  the Normal rules apply. Peacetime army size uses `aiPeaceArmy`.
+- `apps/web/src/state/autosave.ts`: IndexedDB key `auto` in the `saves` store; saves every 5 s, on `visibilitychange`
+  to hidden and on `pagehide` (the connection is kept open so that last save starts synchronously); restores on
+  startup unless a country is already being played. `GameMenu` clears it for a new game.
+- `apps/web/src/ui/StartScreen.tsx`: country selection (`useStartScreen` opens it; first-time players see it at once).

@@ -8,6 +8,7 @@ import { GameMenu } from "../GameMenu";
 import { SearchBox } from "../SearchBox";
 import { economyRank } from "../simple/SimpleHud";
 import { TimeControls } from "../TimeControls";
+import { useStartScreen } from "../StartScreen";
 import { useEditor } from "../../state/editor";
 import { Icon } from "./Icon";
 
@@ -107,9 +108,9 @@ export function InfoBar() {
           {war && <span className="player__war">At war</span>}
         </button>
       ) : (
-        <div className="infobar__country infobar__country--empty" data-testid="player-card">
-          Choose a country: click it on the map, then <strong>Play as…</strong>
-        </div>
+        <button className="infobar__country infobar__country--empty" data-testid="player-card" onClick={() => useStartScreen.getState().setOpen(true)} title="Open the country selection">
+          Choose a country: <strong>pick one</strong> or click it on the map
+        </button>
       )}
       {!editing && <TimeControls />}
     </div>

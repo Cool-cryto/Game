@@ -106,9 +106,11 @@ export const useGame = create<GameStore>((set, get) => ({
   },
   replace: (state) => {
     registerStateCountries(state);
-    set((s) => ({ state, provincesOf: provincesByOwner(state), paused: true, errors: [], generation: s.generation + 1 }));
+    // Tell the worker first: setting the store below re-checks the clock (a loaded game with a country starts
+    // running at once), and a pause sent after that would leave the worker stopped while the page shows time running.
     sim({ type: "setPaused", paused: true });
     sim({ type: "start", state });
+    set((s) => ({ state, provincesOf: provincesByOwner(state), paused: true, errors: [], generation: s.generation + 1 }));
     syncClock();
   },
 }));

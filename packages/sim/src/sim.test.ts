@@ -14,6 +14,7 @@ import {
   serialize,
   tick,
   unitCap,
+  DIFFICULTY_RULES,
   unitsOf,
   validateCommand,
   warScore,
@@ -464,6 +465,63 @@ describe("saving", () => {
     expect(() => deserialize("hello")).toThrow(/isn't a saved game/);
     expect(() => deserialize("{}")).toThrow(/isn't a saved game/);
     expect(() => deserialize(JSON.stringify({ ...newGame(), version: 3 }))).toThrow(/different version/);
+  });
+});
+
+describe("difficulty", () => {
+  it("is chosen before taking a country, and sets the player's starting money once", () => {
+    const easy = newGame();
+    const hard = newGame();
+    const normal = newGame();
+    const fund = normal.countries[A]!.defenseFund;
+    expect(validateCommand(easy, geo, { type: "setDifficulty", difficulty: "nonsense" as "easy" })).toMatch(/Unknown difficulty/);
+    tick(easy, geo, [{ type: "setDifficulty", difficulty: "easy" }, { type: "claimCountry", country: A }]);
+    tick(hard, geo, [{ type: "setDifficulty", difficulty: "expert" }, { type: "claimCountry", country: A }]);
+    tick(normal, geo, [{ type: "claimCountry", country: A }]);
+    expect(easy.settings.difficulty).toBe("easy");
+    expect(easy.countries[A]!.treasury).toBeGreaterThan(normal.countries[A]!.treasury + 0.09 * easy.countries[A]!.gdp);
+    expect(easy.countries[A]!.defenseFund).toBeGreaterThan(fund);
+    expect(hard.countries[A]!.treasury).toBeLessThan(0); // Expert starts in debt…
+    expect(hard.countries[A]!.defenseFund).toBeGreaterThanOrEqual(0); // …but never with negative army money
+    // Locked once someone leads a country; releasing and re-taking doesn't pay out twice.
+    expect(validateCommand(easy, geo, { type: "setDifficulty", difficulty: "normal" })).toMatch(/before you take a country/);
+    const t = easy.countries[A]!.treasury;
+    tick(easy, geo, [{ type: "releaseCountry", country: A }]);
+    tick(easy, geo, [{ type: "claimCountry", country: A }]);
+    expect(easy.countries[A]!.treasury).toBeLessThanOrEqual(t + 1);
+  });
+
+  it("makes computer countries readier to attack a human player, never each other", () => {
+    expect(DIFFICULTY_RULES.expert.aiWarRatio).toBeLessThan(DIFFICULTY_RULES.normal.aiWarRatio);
+    expect(DIFFICULTY_RULES.easy.aiWarChance).toBeLessThan(DIFFICULTY_RULES.hard.aiWarChance);
+    // A hostile, much stronger neighbour attacks a human on Expert far more often than on Easy.
+    const wars = (level: "easy" | "expert") => {
+      let n = 0;
+      for (let seed = 1; seed <= 12; seed++) {
+        const s = newGame(seed);
+        tick(s, geo, [{ type: "setDifficulty", difficulty: level }, { type: "claimCountry", country: B }]);
+        s.countries[A]!.stability = 80;
+        for (const u of Object.values(s.units)) if (u.owner === B) delete s.units[u.id];
+        s.countries[B]!.defenseFund = -1e6;
+        for (let d = 0; d < 400 && !s.wars.length; d++) {
+          s.relations[[A, B].sort().join("|")] = -50; // a lasting rivalry
+          run(s, 1);
+        }
+        if (s.wars.some((w) => w.attackers.includes(A) && w.defenders.includes(B))) n++;
+      }
+      return n;
+    };
+    expect(wars("expert")).toBeGreaterThan(wars("easy"));
+  });
+
+  it("old saves (version 8) upgrade to Normal with their players already started", () => {
+    const s = newGame();
+    tick(s, geo, [{ type: "claimCountry", country: A }]);
+    const old = JSON.parse(serialize(s));
+    old.version = 8;
+    delete old.settings;
+    const loaded = deserialize(JSON.stringify(old));
+    expect(loaded.settings).toEqual({ difficulty: "normal", started: [A] });
   });
 });
 

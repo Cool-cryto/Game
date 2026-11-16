@@ -95,6 +95,16 @@ export function deserialize(
     s.treaties ??= [];
     s.proposals ??= [];
     s.organizations ??= startingOrganizations({ organizations: organizationsFor?.(s.scenarioId ?? "") }, s.countries);
+    (s as { version: number }).version = 9;
+  }
+  if ((s.version as number) === 8) {
+    // Version 9 added game settings (difficulty). Older games played at Normal, and their players already started.
+    s.settings ??= {
+      difficulty: "normal",
+      started: Object.values(s.countries)
+        .filter((c) => c.controller === "human")
+        .map((c) => c.id),
+    };
     (s as { version: number }).version = SAVE_VERSION;
   }
   if (s.version !== SAVE_VERSION) {

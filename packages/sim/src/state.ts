@@ -9,7 +9,79 @@ import { resourceBonus, startingResearch, type Research } from "./tech";
 import type { Buildings, Project } from "./construction";
 import type { Organization, Proposal, Treaty } from "./treaties";
 
-export const SAVE_VERSION = 8;
+export const SAVE_VERSION = 9;
+
+/**
+ * Difficulty. It never gives computer-run countries free money or units: it changes the player's starting
+ * treasury and defense funds (once, when you take a country), how readily the AI picks a fight with human
+ * players, and how large a share of its own unit limit the AI keeps under arms in peacetime (paid for as usual).
+ */
+export type Difficulty = "easy" | "normal" | "hard" | "expert";
+export const DIFFICULTIES: Difficulty[] = ["easy", "normal", "hard", "expert"];
+export interface DifficultyRules {
+  label: string;
+  summary: string;
+  /** Added to the player's treasury when they take a country, as a share of yearly GDP (negative = debt). */
+  playerTreasury: number;
+  /** Months of defense budget added to (or taken from) the player's defense fund when they take a country. */
+  playerDefenseMonths: number;
+  /** AI countries consider war on a human player when relations are at or below this. */
+  aiHostility: number;
+  /** ...and when their side is this many times stronger than the human's side. */
+  aiWarRatio: number;
+  /** Multiplier on the monthly chance of that war. */
+  aiWarChance: number;
+  /** Share of its unit limit the AI keeps in peacetime. */
+  aiPeaceArmy: number;
+}
+export const DIFFICULTY_RULES: Record<Difficulty, DifficultyRules> = {
+  easy: {
+    label: "Easy",
+    summary: "Start with a 10%-of-GDP cash reserve and six extra months of army money. Computer countries rarely attack you.",
+    playerTreasury: 0.1,
+    playerDefenseMonths: 6,
+    aiHostility: -75,
+    aiWarRatio: 3,
+    aiWarChance: 0.3,
+    aiPeaceArmy: 0.5,
+  },
+  normal: {
+    label: "Normal",
+    summary: "The standard game: a balanced budget and three months of army money.",
+    playerTreasury: 0,
+    playerDefenseMonths: 0,
+    aiHostility: -60,
+    aiWarRatio: 2,
+    aiWarChance: 1,
+    aiPeaceArmy: 0.6,
+  },
+  hard: {
+    label: "Hard",
+    summary: "Less army money to start. Computer countries keep bigger armies and attack you more readily.",
+    playerTreasury: 0,
+    playerDefenseMonths: -1.5,
+    aiHostility: -45,
+    aiWarRatio: 1.6,
+    aiWarChance: 1.6,
+    aiPeaceArmy: 0.7,
+  },
+  expert: {
+    label: "Expert",
+    summary: "Start in debt (10% of GDP) with no spare army money. Computer countries are armed and quick to attack you.",
+    playerTreasury: -0.1,
+    playerDefenseMonths: -3,
+    aiHostility: -30,
+    aiWarRatio: 1.3,
+    aiWarChance: 2.5,
+    aiPeaceArmy: 0.8,
+  },
+};
+export interface GameSettings {
+  difficulty: Difficulty;
+  /** Countries that already got their difficulty start (so it applies only once). */
+  started: CountryId[];
+}
+export const difficultyOf = (s: GameState) => DIFFICULTY_RULES[s.settings?.difficulty ?? "normal"];
 
 /** Spending categories the player controls, each as a share of GDP per year. */
 export type BudgetCategory = "infrastructure" | "research" | "welfare" | "defense";
@@ -148,6 +220,8 @@ export interface ProvinceState {
  */
 export interface GameState {
   version: typeof SAVE_VERSION;
+  /** Difficulty and other game settings. */
+  settings: GameSettings;
   scenarioId: string;
   /** Name of the scenario, and where its starting numbers came from (for the UI). */
   scenarioName?: string;
@@ -270,6 +344,7 @@ export function createGameState(scenario: Scenario, geo: Geography, seed: number
 
   const state: GameState = {
     version: SAVE_VERSION,
+    settings: { difficulty: "normal", started: [] },
     scenarioId: scenario.id,
     scenarioName: scenario.name,
     dataNote: scenario.dataNote,

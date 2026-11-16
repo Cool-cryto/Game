@@ -19,11 +19,13 @@ import {
   treatiesOf,
   partnerIn,
   TREATY_INFO,
+  DIFFICULTIES,
+  DIFFICULTY_RULES,
+  type Difficulty,
 } from "@gs/sim";
 import { flagUrl, GEOGRAPHY, getCountry } from "../../data/countries";
 import { playerCountry, useGame } from "../../state/gameStore";
 import { useUi } from "../../state/uiStore";
-import { useEditor } from "../../state/editor";
 import { useOnline } from "../../net/online";
 import { formatCompact } from "../format";
 
@@ -309,8 +311,22 @@ export function SimpleCountryView({ id, onDetails }: { id: CountryId; onDetails:
           {!me && c.controller !== "human" && (
             <div className="slead">
               <p>
-                Difficulty: <span className={`difficulty difficulty--${diff.tone}`}>{diff.label}</span>
+                Challenge: <span className={`difficulty difficulty--${diff.tone}`}>{diff.label}</span>
               </p>
+              <label className="slead__level">
+                Difficulty{" "}
+                <select
+                  value={s.settings?.difficulty ?? "normal"}
+                  onChange={(e) => send({ type: "setDifficulty", difficulty: e.target.value as Difficulty })}
+                  data-testid="panel-difficulty"
+                >
+                  {DIFFICULTIES.map((d) => (
+                    <option key={d} value={d}>
+                      {DIFFICULTY_RULES[d].label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <button className="btn btn--primary" onClick={() => send({ type: "claimCountry", country: id })}>
                 Play as {info.name}
               </button>
@@ -345,51 +361,6 @@ export function SimpleCountryView({ id, onDetails }: { id: CountryId; onDetails:
 const playerName = (id: CountryId) => useOnline.getState().players.find((p) => p.country === id)?.name;
 
 // ---------- Start screen and guide ----------
-
-const SUGGESTED: CountryId[] = ["USA", "CHN", "DEU", "GBR", "FRA", "JPN", "BRA", "IND", "TUR", "EGY", "NGA", "POL"] as CountryId[];
-
-/** Before you pick a country: what the game is about, and some good countries to start with. */
-export function StartScreen() {
-  const s = useGame((x) => x.state);
-  const send = useGame((x) => x.send);
-  const me = playerCountry(s);
-  const editing = useEditor((x) => x.active);
-  const online = useOnline((x) => !!x.room);
-  const selected = useUi((x) => x.selected);
-  const [hidden, setHidden] = useState(guideDone);
-  // For first-time players: once you've led a country, you know to click one on the map.
-  if (me || editing || online || hidden || selected) return null;
-  const options = SUGGESTED.filter((id) => s.countries[id]?.active && s.countries[id]?.controller !== "human");
-  return (
-    <div className="start" role="dialog" aria-label="Choose your country" data-testid="start-screen">
-      <h2>Choose a country to lead</h2>
-      <p className="start__goal">
-        <strong>Your goal:</strong> make your country the strongest in the world. Grow your economy, build an army, make friends, and take
-        land from your enemies.
-      </p>
-      <div className="start__grid">
-        {options.map((id) => {
-          const info = getCountry(id)!;
-          const flag = flagUrl(info);
-          const d = difficulty(s, id);
-          return (
-            <button key={id} className="start__pick" onClick={() => send({ type: "claimCountry", country: id })}>
-              {flag ? <img src={flag} alt="" /> : <span className="flag-placeholder" />}
-              <span>{info.name}</span>
-              <span className={`difficulty difficulty--${d.tone}`}>{d.label}</span>
-            </button>
-          );
-        })}
-      </div>
-      <p className="start__or">
-        …or click any country on the map.{" "}
-        <button className="link" onClick={() => setHidden(true)}>
-          Just look around first
-        </button>
-      </p>
-    </div>
-  );
-}
 
 const GUIDE_KEY = "wa.guideDone";
 const guideDone = () => {
