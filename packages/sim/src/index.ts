@@ -14,3 +14,4 @@ export * from "./visibility";
 export * from "./government";
 export * from "./tech";
 export * from "./construction";
+export * from "./treaties";

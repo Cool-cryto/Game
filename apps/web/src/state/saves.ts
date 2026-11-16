@@ -1,6 +1,9 @@
 import { MODERN_SCENARIO } from "../data/countries";
 import { deserialize, serialize, currentDate, type GameState } from "@gs/sim";
 import { getCountry } from "../data/countries";
+
+/** Organizations for saves from before treaties existed (the 1991 data loads on demand, so only the modern world's are at hand). */
+const organizationsFor = (scenarioId: string) => (scenarioId === "modern" ? MODERN_SCENARIO.organizations : undefined);
 import { playerCountry } from "./gameStore";
 
 /**
@@ -53,7 +56,7 @@ export async function saveToSlot(slot: Slot, state: GameState): Promise<void> {
 export async function loadFromSlot(slot: Slot): Promise<GameState> {
   const rec = (await run("readonly", (s) => s.get(slot))) as { data: string } | undefined;
   if (!rec) throw new Error(`Slot ${slot} is empty.`);
-  return deserialize(rec.data, MODERN_SCENARIO.countries);
+  return deserialize(rec.data, MODERN_SCENARIO.countries, organizationsFor);
 }
 
 export async function deleteSlot(slot: Slot): Promise<void> {
@@ -81,5 +84,5 @@ export function exportSave(state: GameState) {
 }
 
 export async function importSave(file: File): Promise<GameState> {
-  return deserialize(await file.text(), MODERN_SCENARIO.countries);
+  return deserialize(await file.text(), MODERN_SCENARIO.countries, organizationsFor);
 }

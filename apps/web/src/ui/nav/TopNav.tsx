@@ -31,7 +31,7 @@ export function TopNav() {
   const setScreen = useUi((s) => s.setScreen);
   const atWar = useGame((s) => {
     const me = playerCountry(s.state)?.id;
-    return me ? isAtWar(s.state, me) || s.state.offers.some((o) => o.to === me) : false;
+    return me ? isAtWar(s.state, me) || s.state.offers.some((o) => o.to === me) || s.state.proposals.some((p) => p.to === me) : false;
   });
   return (
     <header className="topnav">
@@ -54,7 +54,7 @@ export function TopNav() {
             >
               <Icon name={n.id} />
               <span className="topnav__label">{n.label}</span>
-              {n.id === "diplomacy" && atWar && <span className="topnav__dot" aria-label="At war or peace offer waiting" />}
+              {n.id === "diplomacy" && atWar && <span className="topnav__dot" aria-label="At war, or an offer is waiting" />}
             </button>
           );
         })}

@@ -3,6 +3,7 @@ import type { CountryId, ProvinceId } from "@gs/shared";
 import { nextRandom } from "./rng";
 import { distanceKm, findLandPath, type Geography } from "./geography";
 import { allied, atWar, friendly } from "./diplomacy";
+import { hasAccess } from "./treaties";
 import { logEvent, nameOf, type CountryState, type GameState, type Unit, type UnitType } from "./state";
 
 /**
@@ -97,7 +98,14 @@ export function recruit(s: GameState, country: CountryId, type: UnitType, provin
 export function canEnter(s: GameState, country: CountryId, p: ProvinceId): boolean {
   const prov = s.provinces[p];
   if (!prov) return false;
-  return friendly(s, country, prov.owner) || friendly(s, country, prov.controller) || atWar(s, country, prov.owner) || atWar(s, country, prov.controller);
+  return (
+    friendly(s, country, prov.owner) ||
+    friendly(s, country, prov.controller) ||
+    atWar(s, country, prov.owner) ||
+    atWar(s, country, prov.controller) ||
+    // Military access: the land's owner lets you through while it holds the province.
+    (prov.owner === prov.controller && hasAccess(s, country, prov.owner))
+  );
 }
 
 export type Plan = { path: ProvinceId[]; mode: "land" | "sea" | "air" } | { error: string };
@@ -113,10 +121,10 @@ export function planMove(s: GameState, geo: Geography, u: Unit, to: ProvinceId):
   }
   if (u.type === "navy") {
     if (!geo.provinces[to]?.coastal) return { error: "Fleets can only sail to coastal provinces." };
-    if (!canEnter(s, u.owner, to)) return { error: "You have no access there (not yours, an ally's, or an enemy's at war)." };
+    if (!canEnter(s, u.owner, to)) return { error: "You have no access there (not yours, an ally's, an enemy's at war, or a country that gave you military access)." };
     return { path: [to], mode: "sea" };
   }
-  if (!canEnter(s, u.owner, to)) return { error: "You have no access there (not yours, an ally's, or an enemy's at war)." };
+  if (!canEnter(s, u.owner, to)) return { error: "You have no access there (not yours, an ally's, an enemy's at war, or a country that gave you military access)." };
   const land = findLandPath(geo, u.province, (p) => p === to, (p) => canEnter(s, u.owner, p));
   if (land) return { path: land, mode: "land" };
   // No land route: ship the army over if both ends are on the coast and we have a fleet.

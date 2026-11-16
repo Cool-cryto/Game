@@ -20,6 +20,7 @@ import {
   upkeepPerYear,
   type CountryState,
   type UnitType,
+  tradeGrowth,
 } from "@gs/sim";
 import { flagUrl, GEOGRAPHY, getCountry, getProvince, landNeighbours } from "../../data/countries";
 import { gdpPerCapita } from "../../map/mapModes";
@@ -274,7 +275,7 @@ function EconomyOverview({ c }: { c: CountryState }) {
         />
       </Card>
       <Card title="Why is the economy growing at this rate?" wide>
-        <Why title="Show the breakdown" parts={growthBreakdown(c, infra, factories).parts} format={(v) => pct(v, 2, true)} labels={GROWTH_LABELS} />
+        <Why title="Show the breakdown" parts={growthBreakdown(c, infra, factories, tradeGrowth(useGame.getState().state, c.id)).parts} format={(v) => pct(v, 2, true)} labels={GROWTH_LABELS} />
       </Card>
     </div>
   );

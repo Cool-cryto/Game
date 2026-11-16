@@ -10,7 +10,7 @@
     "typecheck": "tsc -p .",
     "test": "vitest run",
     "test:e2e": "playwright test --trace off",
-    "data": "node scripts/build-world.mjs && node scripts/build-scenarios.mjs && node scripts/build-government.mjs"
+    "data": "node scripts/build-world.mjs && node scripts/build-scenarios.mjs && node scripts/build-government.mjs && node scripts/build-organizations.mjs"
   },
   "dependencies": {
     "@gs/shared": "*",

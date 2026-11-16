@@ -3543,3 +3543,116 @@ button.infobar__country:hover .infobar__name {
   gap: 6px;
   margin-top: 6px;
 }
+
+/* Treaties and organizations (Diplomacy screen) */
+.treaty__flag {
+  width: 18px;
+  height: 13px;
+  object-fit: cover;
+  border-radius: 2px;
+  vertical-align: -2px;
+}
+.treaty__since {
+  color: var(--text-dim);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.treaty__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.treaty__choices .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.treaty__rel {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.treaty__target {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.treaty__target span {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+.treaty__status {
+  font-size: 12px;
+  max-width: 260px;
+}
+.treaty__status.pos {
+  color: #8fdca8;
+}
+.treaty__status.neg {
+  color: #f6a397;
+}
+.org {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.org + .org {
+  margin-top: 8px;
+}
+.org__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+.org__kind {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-dim);
+}
+.org__kind--economic {
+  background: rgba(143, 220, 168, 0.15);
+  color: #8fdca8;
+}
+.org__kind--defense {
+  background: rgba(240, 110, 95, 0.15);
+  color: #f6a397;
+}
+.org__kind--political {
+  background: rgba(130, 170, 255, 0.15);
+  color: #a9c2ff;
+}
+.org__count {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.org__members {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin: 6px 0;
+}
+.org__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.org__found {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.org__found .input {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+@media (max-width: 600px) {
+  .treaty__status {
+    max-width: none;
+  }
+}

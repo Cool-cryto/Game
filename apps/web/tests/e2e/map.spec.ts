@@ -565,7 +565,7 @@ test.describe("top navigation (first-time player)", () => {
       ["country", ["Overview", "Provinces", "History"]],
       ["economy", ["Overview", "Budget & taxes", "Resources & trade", "Debt", "Detailed budget"]],
       ["military", ["Overview", "Forces", "Recruit", "Military budget", "Equipment"]],
-      ["diplomacy", ["Relations", "Wars & peace", "Alliances", "Treaties & organizations"]],
+      ["diplomacy", ["Relations", "Wars & peace", "Alliances", "Treaties", "Organizations"]],
       ["government", ["Overview", "Parties & elections", "Laws", "Stability"]],
       ["research", ["Overview", "Technology tree", "Research spending"]],
       ["construction", ["Overview", "Build", "By province", "Infrastructure"]],
@@ -598,12 +598,13 @@ test.describe("top navigation (first-time player)", () => {
     // Diplomacy: declare war on a neighbour, then one-click attack.
     await page.getByTestId("nav-diplomacy").click();
     await page.getByRole("tab", { name: "Relations" }).click();
-    const belgium = page.getByTestId("relations-BEL");
-    await belgium.getByRole("button", { name: "War" }).click();
-    await belgium.getByRole("button", { name: "Yes, declare war" }).click();
+    // (Not Belgium or Germany: fellow NATO members can't attack each other.)
+    const neighbour = page.getByTestId("relations-CHE");
+    await neighbour.getByRole("button", { name: "War" }).click();
+    await neighbour.getByRole("button", { name: "Yes, declare war" }).click();
     await page.getByRole("tab", { name: "Wars & peace" }).click();
     const war = page.locator(".swar");
-    await expect(war).toContainText("vs Belgium");
+    await expect(war).toContainText("vs Switzerland");
     await war.getByRole("button", { name: "Attack" }).click();
     await expect
       .poll(() =>
@@ -710,4 +711,37 @@ test("construction: order a factory, see it under construction, and it finishes"
   await page.getByRole("button", { name: "Pause" }).click();
   await screen.getByRole("tab", { name: "By province" }).click();
   await expect(screen.getByTestId("province-buildings").locator("tbody tr").first()).toContainText("1");
+});
+
+test("treaties and organizations: sign a pact, see your real organizations, found one", async ({ page }) => {
+  const errors = await openMap(page);
+  await playAs(page, "France");
+  await page.getByTestId("nav-diplomacy").click();
+  const screen = page.getByTestId("screen-diplomacy");
+  await screen.getByRole("tab", { name: "Treaties" }).click();
+  await expect(screen.getByTestId("my-treaties")).toHaveCount(0);
+  // Pick Germany (a neighbour) and propose a non-aggression pact: the computer says yes at neutral relations.
+  await screen.getByTestId("treaty-pick-DEU").click();
+  const options = screen.getByTestId("treaty-options");
+  await expect(options).toContainText("Trade agreement");
+  await expect(options.getByTestId("propose-trade")).toBeDisabled(); // relations aren't good enough yet
+  await options.getByTestId("propose-nonAggression").click();
+  await expect(screen.getByTestId("my-treaties")).toContainText("Germany");
+  await expect(screen.getByTestId("my-treaties")).toContainText("Non-aggression pact");
+  await page.screenshot({ path: process.env.SHOTS ? `${process.env.SHOTS}/treaties.png` : "test-results/treaties.png" });
+  // A pact means no war: the War button is off for Germany.
+  await screen.getByRole("tab", { name: "Relations" }).click();
+  await expect(screen.getByTestId("relations-DEU").getByRole("button", { name: "War" })).toBeDisabled();
+
+  // France starts in its real organizations.
+  await screen.getByRole("tab", { name: "Organizations" }).click();
+  await expect(screen.getByTestId("org-data:NATO")).toContainText("Defense alliance");
+  await expect(screen.getByTestId("org-data:EU")).toContainText("28 members");
+  await page.screenshot({ path: process.env.SHOTS ? `${process.env.SHOTS}/organizations.png` : "test-results/organizations.png" });
+  // Found a new one.
+  await screen.getByLabel("Organization name").fill("Channel Union");
+  await screen.getByRole("button", { name: "Found" }).click();
+  await expect(screen).toContainText("Channel Union");
+  await expect(screen.getByRole("button", { name: "Found" })).toBeDisabled(); // one per country
+  expect(errors).toEqual([]);
 });

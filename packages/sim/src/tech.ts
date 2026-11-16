@@ -149,7 +149,8 @@ export const BRANCH_SPEED = 2.5;
 export const yearsPerBranchLevel = (level: number) => (4 + 0.5 * level) / BRANCH_SPEED;
 
 /** Research speed multiplier from government and technologies. */
-export const researchSpeed = (c: CountryState) => 1 + governmentEffects(c, false).research + techMods(c).research;
+/** `treaties` is the bonus from research agreements (see treatyResearch in treaties.ts). */
+export const researchSpeed = (c: CountryState, treaties = 0) => 1 + governmentEffects(c, false).research + techMods(c).research + treaties;
 
 /** Extra output of each resource from technology. */
 export const resourceBonus = (c: CountryState | undefined, r: ResourceId) => 1 + techMods(c)[r];

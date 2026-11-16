@@ -36,6 +36,9 @@ interface UiState {
   /** The tab last opened on each screen. */
   tabs: Partial<Record<ScreenId, string>>;
   setTab: (screen: ScreenId, tab: string) => void;
+  /** The country picked on Diplomacy → Treaties. */
+  diplomacyTarget: CountryId | null;
+  setDiplomacyTarget: (c: CountryId | null) => void;
   /** Fog of war in single player (online it's always on). Remembered in this browser. */
   fog: boolean;
   setFog: (on: boolean) => void;
@@ -92,6 +95,8 @@ export const useUi = create<UiState>((set) => ({
   setDetails: (details) => set({ details }),
   tabs: {},
   setTab: (screen, tab) => set((s) => ({ tabs: { ...s.tabs, [screen]: tab } })),
+  diplomacyTarget: null,
+  setDiplomacyTarget: (diplomacyTarget) => set({ diplomacyTarget }),
   fog: loadFog(),
   setFog: (fog) => {
     try {

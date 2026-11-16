@@ -4,8 +4,29 @@ import { canCallElection, canChangeLaw, changeLaw, type LawId } from "./governme
 import type { CountryId, ProvinceId } from "@gs/shared";
 import type { Geography } from "./geography";
 import {
+  canFoundOrg,
+  canJoinOrg,
+  canProposeTreaty,
+  cancelTreaty,
+  countTreaties,
+  foundOrg,
+  hasTreaty,
+  joinOrg,
+  leaveOrg,
+  orgById,
+  signTreaty,
+  TREATY_INFO,
+  TREATY_TYPES,
+  wouldAcceptTreaty,
+  type OrgKind,
+  type TreatyType,
+} from "./treaties";
+import {
   adjustRelation,
   allied,
+  bilateralAlly,
+  defenseOrgOf,
+  sameDefenseOrg,
   atWar,
   declareWar,
   makePeace,
@@ -39,7 +60,13 @@ export type Command =
   | { type: "setLaw"; country: CountryId; law: LawId; value: string }
   | { type: "callElection"; country: CountryId }
   | { type: "setResearchFocus"; country: CountryId; focus: ResearchFocus }
-  | { type: "build"; country: CountryId; province: ProvinceId; building: BuildingType };
+  | { type: "build"; country: CountryId; province: ProvinceId; building: BuildingType }
+  | { type: "proposeTreaty"; country: CountryId; target: CountryId; treaty: TreatyType }
+  | { type: "cancelTreaty"; country: CountryId; target: CountryId; treaty: TreatyType }
+  | { type: "answerProposal"; country: CountryId; proposalId: number; accept: boolean }
+  | { type: "joinOrganization"; country: CountryId; org: string }
+  | { type: "leaveOrganization"; country: CountryId; org: string }
+  | { type: "foundOrganization"; country: CountryId; name: string; kind: OrgKind };
 
 export const TAX_RANGE = [0.05, 0.6] as const;
 export const BUDGET_RANGE = [0, 0.3] as const;
@@ -92,7 +119,9 @@ export function validateCommand(s: GameState, geo: Geography, cmd: Command): str
     }
     case "declareWar":
       if (atWar(s, cmd.country, cmd.target)) return `Already at war with ${target!.name}.`;
+      if (sameDefenseOrg(s, cmd.country, cmd.target)) return `${target!.name} is a fellow member of ${defenseOrgOf(s, cmd.country)!.name}. Leave it first.`;
       if (allied(s, cmd.country, cmd.target)) return `Break your alliance with ${target!.name} first.`;
+      if (hasTreaty(s, cmd.country, cmd.target, "nonAggression")) return `You have a non-aggression pact with ${target!.name}. Cancel it first.`;
       return null;
     case "offerPeace": {
       const war = s.wars.find((w) => w.id === cmd.warId);
@@ -115,12 +144,13 @@ export function validateCommand(s: GameState, geo: Geography, cmd: Command): str
     case "proposeAlliance": {
       if (allied(s, cmd.country, cmd.target)) return `Already allied with ${target!.name}.`;
       if (atWar(s, cmd.country, cmd.target)) return "You're at war. Make peace first.";
+      if (s.proposals.some((p) => p.from === cmd.country && p.to === cmd.target && p.kind === "alliance")) return "You've already proposed this; waiting for their answer.";
       const wait = cooldownLeft(s, cmd.country, cmd.target);
       if (wait) return `Wait ${wait} more days before another diplomatic action towards ${target!.name}.`;
       return null;
     }
     case "breakAlliance":
-      if (!allied(s, cmd.country, cmd.target)) return `You're not allied with ${target!.name}.`;
+      if (!bilateralAlly(s, cmd.country, cmd.target)) return sameDefenseOrg(s, cmd.country, cmd.target) ? `You're allied through ${defenseOrgOf(s, cmd.country)!.name}; leave it to end that.` : `You're not allied with ${target!.name}.`;
       return null;
     case "setLaw":
       return canChangeLaw(s, c, cmd.law, cmd.value);
@@ -131,6 +161,32 @@ export function validateCommand(s: GameState, geo: Geography, cmd: Command): str
       return null;
     case "build":
       return canBuild(s, geo, cmd.country, cmd.province, cmd.building);
+    case "proposeTreaty": {
+      const why = canProposeTreaty(s, cmd.country, cmd.target, cmd.treaty);
+      if (why) return why;
+      const wait = cooldownLeft(s, cmd.country, cmd.target);
+      if (wait) return `Wait ${wait} more days before another diplomatic action towards ${target!.name}.`;
+      return null;
+    }
+    case "cancelTreaty":
+      if (!TREATY_TYPES.includes(cmd.treaty)) return "Unknown kind of treaty.";
+      if (!hasTreaty(s, cmd.country, cmd.target, cmd.treaty)) return `You have no ${TREATY_INFO[cmd.treaty].label.toLowerCase()} with ${target!.name}.`;
+      return null;
+    case "answerProposal": {
+      const p = s.proposals.find((x) => x.id === cmd.proposalId);
+      if (!p || p.to !== cmd.country) return "That proposal has expired.";
+      return null;
+    }
+    case "joinOrganization":
+      return canJoinOrg(s, cmd.country, orgById(s, cmd.org));
+    case "leaveOrganization": {
+      const o = orgById(s, cmd.org);
+      if (!o || !o.members.includes(cmd.country)) return "You're not a member of that organization.";
+      return null;
+    }
+    case "foundOrganization":
+      if (typeof cmd.name !== "string") return "Give it a name.";
+      return canFoundOrg(s, cmd.country, cmd.name, cmd.kind);
   }
 }
 
@@ -213,7 +269,12 @@ export function applyCommand(s: GameState, geo: Geography, cmd: Command): string
     case "proposeAlliance": {
       s.diplomacyCooldown[`${cmd.country}>${cmd.target}`] = s.tick;
       const target = s.countries[cmd.target]!;
-      const reason = target.controller === "human" ? "they are another player" : wouldAcceptAlliance(s, cmd.country, cmd.target);
+      if (target.controller === "human") {
+        s.proposals = [...s.proposals, { id: s.nextId++, from: cmd.country, to: cmd.target, kind: "alliance", expiresTick: s.tick + 60 }];
+        logEvent(s, "diplomacy", `${c.name} proposed an alliance to ${target.name}.`, [cmd.country, cmd.target]);
+        break;
+      }
+      const reason = wouldAcceptAlliance(s, cmd.country, cmd.target);
       if (reason) {
         logEvent(s, "diplomacy", `${target.name} declined an alliance with ${c.name}.`, [cmd.country, cmd.target]);
         return `${target.name} declined: ${reason}`;
@@ -240,6 +301,58 @@ export function applyCommand(s: GameState, geo: Geography, cmd: Command): string
       break;
     case "build":
       startBuilding(s, cmd.country, cmd.province, cmd.building);
+      break;
+    case "proposeTreaty": {
+      s.diplomacyCooldown[`${cmd.country}>${cmd.target}`] = s.tick;
+      const target = s.countries[cmd.target]!;
+      const label = TREATY_INFO[cmd.treaty].label.toLowerCase();
+      if (target.controller === "human") {
+        s.proposals = [...s.proposals, { id: s.nextId++, from: cmd.country, to: cmd.target, kind: cmd.treaty, expiresTick: s.tick + 60 }];
+        logEvent(s, "diplomacy", `${c.name} proposed a ${label} to ${target.name}.`, [cmd.country, cmd.target]);
+        break;
+      }
+      const reason = wouldAcceptTreaty(s, cmd.country, cmd.target, cmd.treaty);
+      if (reason) {
+        logEvent(s, "diplomacy", `${target.name} declined a ${label} with ${c.name}.`, [cmd.country, cmd.target]);
+        return `${target.name} declined: ${reason}`;
+      }
+      signTreaty(s, cmd.country, cmd.target, cmd.treaty);
+      break;
+    }
+    case "cancelTreaty":
+      cancelTreaty(s, cmd.country, cmd.target, cmd.treaty);
+      break;
+    case "answerProposal": {
+      const p = s.proposals.find((x) => x.id === cmd.proposalId)!;
+      s.proposals = s.proposals.filter((x) => x !== p);
+      const from = s.countries[p.from];
+      if (!from?.active) break;
+      if (!cmd.accept) {
+        logEvent(s, "diplomacy", `${c.name} turned down ${from.name}'s proposal.`, [cmd.country, p.from]);
+        break;
+      }
+      if (p.kind === "alliance") {
+        if (allied(s, p.from, p.to) || atWar(s, p.from, p.to)) return "That alliance is no longer possible.";
+        s.alliances.push(pairKey(p.from, p.to));
+        logEvent(s, "alliance", `${from.name} and ${c.name} formed an alliance.`, [p.from, p.to]);
+      } else {
+        // Check again: things may have changed while the proposal waited (another treaty filled the limit, a war started).
+        const why =
+          canProposeTreaty({ ...s, proposals: [] }, p.from, p.to, p.kind) ??
+          (countTreaties(s, p.to, p.kind) >= TREATY_INFO[p.kind].max ? `You already have the most ${TREATY_INFO[p.kind].label.toLowerCase()}s allowed.` : null);
+        if (why) return why;
+        signTreaty(s, p.from, p.to, p.kind);
+      }
+      break;
+    }
+    case "joinOrganization":
+      joinOrg(s, cmd.country, orgById(s, cmd.org)!);
+      break;
+    case "leaveOrganization":
+      leaveOrg(s, cmd.country, orgById(s, cmd.org)!);
+      break;
+    case "foundOrganization":
+      foundOrg(s, cmd.country, cmd.name, cmd.kind);
       break;
   }
   return null;

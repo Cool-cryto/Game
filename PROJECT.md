@@ -32,7 +32,7 @@ What was asked for at the start, and where each item stands today.
 | Resources | ✅ Done | Food, energy, minerals with a world market (deposits are game-generated) |
 | Technology | ✅ Done | Three research branches and an 18-technology tree with real effects |
 | Infrastructure | ✅ Done | Per-province infrastructure from spending; factories, railways, ports, fortifications |
-| Diplomacy | ✅ Done | Relations, alliances, peace deals |
+| Diplomacy | ✅ Done | Relations, alliances, peace deals, treaties, international organizations (real members from Wikidata) |
 | Armies, navies and air forces as strategic units | ✅ Done | Recruit, move, fight, besiege; fleets carry armies; air support |
 | AI countries that develop and interact independently | ✅ Done | Rule-based AI for economy, military, alliances, war and peace |
 | Single player | ✅ Done | Runs fully in the browser |
@@ -150,7 +150,23 @@ Built: scenario system; **End of the Cold War (1991)** with the Soviet Union, Yu
 browser, export/import, play, host online); server support for scenarios and custom worlds; borders computed from the
 live map.
 
-### Stage 13 — Construction ✅ (current)
+### Stage 14 — Treaties & international organizations ✅ (current)
+Built: four treaties between two countries: non-aggression pacts (no war between the two until one cancels), trade
+agreements (up to +0.1% growth per partner, more for the smaller economy, +0.5% at most), research agreements (+5%
+research speed each, three count) and military access (armies may cross each other's land). Each has a relations
+threshold, a limit per country and a relations penalty for cancelling; war ends the two sides' treaties. International
+organizations of three kinds: economic unions (every member is a trade partner), defense alliances (members defend each
+other, one at a time) and political unions (members get along better). Real organizations and their members on the
+scenario's start date come from Wikidata (CC0): in 2020 NATO, the European Union, ASEAN, ECOWAS, the CSTO, the African
+Union, the Arab League and the CIS; in 1991 NATO, the European Communities, ASEAN, ECOWAS, the Warsaw Pact and the Arab
+League. Organizations whose Wikidata lists had errors or gaps (e.g. Mercosur, SADC, the SCO) are left out rather than
+shown wrong. The three largest economies among the members decide who joins; players can found their own. Offers to
+another player wait two months for an answer (alliances too). The AI signs trade and research deals with friendly
+neighbours, seeks pacts with much stronger ones and sometimes joins an organization most of its neighbours are in;
+treaties between two computer-run countries aren't news. Treaties and Organizations tabs on the Diplomacy screen, a
+Treaties button on every country, "Member of" in country panels. Save version 8.
+
+### Stage 13 — Construction ✅
 Built: four buildings in provinces: factories (levels 1–5: growth weighted by population, +10% energy and minerals per
 level), railways (armies 40% faster into the province for the side holding it; infrastructure grows 50% faster),
 ports (coast, 1–3: fleets sail out faster and recover faster) and fortifications (1–3: defenders +15% per level, sieges
@@ -217,6 +233,7 @@ data) had never been uploaded to GitHub, so a fresh download didn't build.
 | 1991 GDP | World Bank, via github.com/datasets/gdp | CC BY 4.0 (credited in the game) |
 | Kind of government (1991, 2020) | V-Dem Regimes of the World, via Our World in Data | CC BY-SA 4.0 (credited in the game) |
 | Monarchy or republic | Wikidata | CC0 |
+| International organizations and their members (2020, 1991) | Wikidata | CC0 |
 
 Estimated or game-generated (always labelled in the game):
 - Province populations (split from country totals by cities and land).
@@ -252,8 +269,8 @@ bandwidth 5× too high, and an editor race that wiped a newly created country.
 ## 7. What is still left to build
 
 ### Next steps (recommended order)
-0. **Systems the new screens are waiting for** (each screen already has its place): equipment, treaties and
-   organizations, intelligence, changing the kind of government.
+0. **Systems the new screens are waiting for** (each screen already has its place): equipment, intelligence,
+   changing the kind of government.
 1. ~~Hosting on the internet~~ **Done**: live on Railway (free plan) with a $5 Square paywall and free passes; see
    [docs/HOSTING.md](docs/HOSTING.md). Moving to Railway's Hobby plan keeps it online all month.
 2. **Changing the kind of government**: reforms, coups and revolutions (governments, parties, laws and elections exist).
@@ -262,7 +279,7 @@ bandwidth 5× too high, and an editor race that wiped a newly created country.
    reliable open economic data for those years; the project currently has neither.
 
 ### Gameplay ideas not yet started
-- Trade agreements and sanctions; resource-specific deals
+- Sanctions; resource-specific deals; guarantees of independence
 - Victory screen when you reach #1 (simple mode already shows your world rank)
 - A local economy per province (buildings exist; GDP is still national)
 - Events and decisions (elections, crises, disasters)

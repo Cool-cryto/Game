@@ -8,11 +8,14 @@ import { runMonthly } from "./systems";
 import { politicsMonthly, startingGovernment, type Regime } from "./government";
 import { startingResearch } from "./tech";
 import { constructionDaily } from "./construction";
+import { expireProposals } from "./treaties";
+import { startingOrganizations } from "./state";
+import type { Scenario } from "@gs/shared";
 
 /**
  * Advance the game by one day. Order:
  *   1. apply queued commands
- *   2. movement → battles → sieges → surrenders
+ *   2. movement → battles → sieges → surrenders → construction → expired proposals
  *   3. AI war orders
  *   4. on the 1st of a month: economy and society, military upkeep, diplomacy, AI decisions
  * Returns any command errors.
@@ -28,6 +31,7 @@ export function tick(state: GameState, geo: Geography, commands: Command[] = [])
   advanceSieges(state);
   checkCapitulations(state);
   constructionDaily(state);
+  expireProposals(state);
   aiDaily(state, geo);
   state.tick += 1;
   if (dateAt(state.startDate, state.tick).endsWith("-01")) {
@@ -50,7 +54,11 @@ export function serialize(state: GameState): string {
  * Saves from the previous version (4, before governments) are upgraded: pass the
  * scenario's countries so they get their real starting government.
  */
-export function deserialize(text: string, scenarioCountries?: Record<string, { regime?: Regime | null; monarchy?: boolean }>): GameState {
+export function deserialize(
+  text: string,
+  scenarioCountries?: Record<string, { regime?: Regime | null; monarchy?: boolean }>,
+  organizationsFor?: (scenarioId: string) => Scenario["organizations"] | undefined,
+): GameState {
   let data: unknown;
   try {
     data = JSON.parse(text);
@@ -78,6 +86,14 @@ export function deserialize(text: string, scenarioCountries?: Record<string, { r
   if ((s.version as number) === 6) {
     // Version 7 added construction.
     for (const c of Object.values(s.countries) as GameState["countries"][keyof GameState["countries"]][]) c.construction ??= [];
+    (s as { version: number }).version = 7;
+  }
+  if ((s.version as number) === 7) {
+    // Version 8 added treaties and international organizations: real ones as of the scenario's start, for the
+    // countries still in the game (custom worlds and unknown scenarios start without any).
+    s.treaties ??= [];
+    s.proposals ??= [];
+    s.organizations ??= startingOrganizations({ organizations: organizationsFor?.(s.scenarioId ?? "") }, s.countries);
     (s as { version: number }).version = SAVE_VERSION;
   }
   if (s.version !== SAVE_VERSION) {

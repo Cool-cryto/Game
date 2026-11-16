@@ -15,6 +15,10 @@ import {
   type UnitType,
   type War,
   governmentLabel,
+  orgsOf,
+  treatiesOf,
+  partnerIn,
+  TREATY_INFO,
 } from "@gs/sim";
 import { flagUrl, GEOGRAPHY, getCountry } from "../../data/countries";
 import { playerCountry, useGame } from "../../state/gameStore";
@@ -156,6 +160,10 @@ export function Relations({ me, them, compact = false }: { me: CountryId; them: 
   const rel = relation(s, me, them);
   const war = warBetween(s, me, them);
   const isAllied = allied(s, me, them);
+  const setScreen = useUi((x) => x.setScreen);
+  const setTab = useUi((x) => x.setTab);
+  const setTarget = useUi((x) => x.setDiplomacyTarget);
+  const treaties = treatiesOf(s, me).filter((t) => partnerIn(t, me) === them);
   const reason = (type: "improveRelations" | "proposeAlliance" | "declareWar") => validateCommand(s, GEOGRAPHY, { type, country: me, target: them });
   const allyReason = reason("proposeAlliance") ?? wouldAcceptAlliance(s, me, them);
   const tone = isAllied ? "ally" : rel >= 25 ? "good" : rel <= -25 ? "bad" : "neutral";
@@ -178,6 +186,17 @@ export function Relations({ me, them, compact = false }: { me: CountryId; them: 
               Ally
             </button>
           )}
+          <button
+            className="btn btn--ghost btn--small"
+            title="Trade, research, non-aggression and military access treaties."
+            onClick={() => {
+              setTarget(them);
+              setTab("diplomacy", "treaties");
+              setScreen("diplomacy");
+            }}
+          >
+            Treaties
+          </button>
           {!confirm ? (
             <button className="btn btn--danger btn--small" disabled={!!reason("declareWar")} title={reason("declareWar") ?? undefined} onClick={() => setConfirm(true)}>
               War
@@ -201,6 +220,7 @@ export function Relations({ me, them, compact = false }: { me: CountryId; them: 
           )}
         </div>
       )}
+      {treaties.length > 0 && <p className="panel__small">Treaties: {treaties.map((t) => TREATY_INFO[t.type].short).join(", ")}</p>}
       {!war && !isAllied && allyReason && !compact && <p className="panel__small">Alliance: {allyReason}</p>}
     </div>
   );
@@ -251,6 +271,11 @@ export function SimpleCountryView({ id, onDetails }: { id: CountryId; onDetails:
             Government: <strong>{governmentLabel(c.government)}</strong>
             {c.government.source === "estimate" ? " (estimate)" : ""}
           </p>
+          {orgsOf(s, id).length > 0 && (
+            <p className="panel__small" data-testid="orgs-line">
+              Member of: {orgsOf(s, id).map((o) => o.name).join(", ")}
+            </p>
+          )}
           {!me && c.controller !== "human" && (
             <div className="slead">
               <p>

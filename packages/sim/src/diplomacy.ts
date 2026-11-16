@@ -1,6 +1,7 @@
 import type { CountryId, ProvinceId } from "@gs/shared";
 import { nextRandom } from "./rng";
 import { largestProvince, logEvent, nameOf, type GameState, type PeaceTerms, type War } from "./state";
+import { breakTreatiesForWar, hasAccess, removeFromTreaties, treatyPairBaselines, type Organization } from "./treaties";
 
 // ---------- Relations and alliances ----------
 
@@ -15,12 +16,41 @@ export function adjustRelation(s: GameState, a: CountryId, b: CountryId, delta: 
   else s.relations[k] = Math.round(v * 10) / 10;
 }
 
-export const allied = (s: GameState, a: CountryId, b: CountryId) => a !== b && s.alliances.includes(pairKey(a, b));
-export const alliesOf = (s: GameState, c: CountryId): CountryId[] =>
-  s.alliances.flatMap((k) => {
+/** Each country's defense organization (at most one). Cached per organizations array, which is replaced on change. */
+const defenseIndex = new WeakMap<Organization[], Map<CountryId, Organization>>();
+function defenseMap(s: GameState): Map<CountryId, Organization> {
+  const orgs = s.organizations ?? [];
+  let map = defenseIndex.get(orgs);
+  if (!map) {
+    map = new Map();
+    for (const o of orgs) if (o.kind === "defense") for (const m of o.members) if (!map.has(m)) map.set(m, o);
+    defenseIndex.set(orgs, map);
+  }
+  return map;
+}
+export const defenseOrgOf = (s: GameState, c: CountryId): Organization | undefined => defenseMap(s).get(c);
+/** Fellow members of a defense organization (e.g. NATO). */
+export function sameDefenseOrg(s: GameState, a: CountryId, b: CountryId): boolean {
+  const map = defenseMap(s);
+  const o = map.get(a);
+  return !!o && o === map.get(b);
+}
+
+/** Bilateral alliance only (the ones made and broken with proposeAlliance / breakAlliance). */
+export const bilateralAlly = (s: GameState, a: CountryId, b: CountryId) => a !== b && s.alliances.includes(pairKey(a, b));
+/** Allied: a bilateral alliance, or members of the same defense organization. */
+export const allied = (s: GameState, a: CountryId, b: CountryId) => a !== b && (s.alliances.includes(pairKey(a, b)) || sameDefenseOrg(s, a, b));
+export const alliesOf = (s: GameState, c: CountryId): CountryId[] => {
+  const out = new Set<CountryId>();
+  for (const k of s.alliances) {
     const [a, b] = k.split("|") as [CountryId, CountryId];
-    return a === c ? [b] : b === c ? [a] : [];
-  });
+    if (a === c) out.add(b);
+    else if (b === c) out.add(a);
+  }
+  const org = defenseOrgOf(s, c);
+  if (org) for (const m of org.members) if (m !== c) out.add(m);
+  return [...out];
+};
 
 export function relationLabel(v: number): string {
   if (v >= 60) return "Friendly";
@@ -66,6 +96,7 @@ export function declareWar(s: GameState, attacker: CountryId, target: CountryId)
     // Declaring war on someone breaks any alliance with them.
     s.alliances = s.alliances.filter((k) => k !== pairKey(attacker, d));
   }
+  breakTreatiesForWar(s, attacker, defenders);
   const joined = defenders.slice(1).map((c) => nameOf(s, c));
   logEvent(
     s,
@@ -161,7 +192,7 @@ export function sendTroopsHome(s: GameState, countries: CountryId[]) {
   for (const u of Object.values(s.units)) {
     if (!set.has(u.owner)) continue;
     const p = s.provinces[u.province];
-    if (p && friendly(s, u.owner, p.controller)) continue;
+    if (p && (friendly(s, u.owner, p.controller) || (p.owner === p.controller && hasAccess(s, u.owner, p.owner)))) continue;
     const home = s.countries[u.owner]?.capital;
     if (home) {
       u.province = home;
@@ -202,6 +233,7 @@ function eliminate(s: GameState, c: CountryId) {
   country.gdp = 0;
   for (const u of Object.values(s.units)) if (u.owner === c) delete s.units[u.id];
   s.alliances = s.alliances.filter((k) => !k.split("|").includes(c));
+  removeFromTreaties(s, c);
   for (const w of s.wars) {
     w.attackers = w.attackers.filter((x) => x !== c);
     w.defenders = w.defenders.filter((x) => x !== c);
@@ -265,9 +297,15 @@ export function checkCapitulations(s: GameState) {
  * at war), and neighbours' relations wander a little: rivalries come and go.
  */
 export function diplomacyMonthly(s: GameState, neighbors: Map<CountryId, Set<CountryId>>) {
+  // Treaties and shared (economic or political) organizations make a friendlier baseline, up to 30.
+  // Only pairs that already have a relation value drift, so this never grows the relations table.
+  const baselines = treatyPairBaselines(s);
+  const orgsOf = new Map<CountryId, Organization[]>();
+  for (const o of s.organizations) if (o.kind !== "defense") for (const m of o.members) orgsOf.set(m, [...(orgsOf.get(m) ?? []), o]);
+  const sharedOrgs = (a: CountryId, b: CountryId) => Math.min(20, (orgsOf.get(a) ?? []).filter((o) => o.members.includes(b)).length * 10);
   for (const k of Object.keys(s.relations)) {
     const [a, b] = k.split("|") as [CountryId, CountryId];
-    const target = allied(s, a, b) ? 40 : atWar(s, a, b) ? -80 : 0;
+    const target = allied(s, a, b) ? 40 : atWar(s, a, b) ? -80 : Math.min(30, (baselines.get(k) ?? 0) + sharedOrgs(a, b));
     adjustRelation(s, a, b, (target - s.relations[k]!) * 0.03);
   }
   for (const [a, set] of neighbors) {

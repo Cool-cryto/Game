@@ -2,6 +2,8 @@ import { useState } from "react";
 import type { CountryId } from "@gs/shared";
 import {
   alliesOf,
+  bilateralAlly,
+  defenseOrgOf,
   dateAt,
   isAtWar,
   relation,
@@ -22,6 +24,7 @@ import { Relations, SimpleWar } from "../simple/SimpleHud";
 import { Sparkline } from "../Sparkline";
 import { ProvinceList } from "./CoreScreens";
 import { Card, NeedCountry, Planned, Rows, ScreenFrame } from "./Screen";
+import { OrganizationsTab, TreatiesTab } from "./TreatiesScreen";
 
 const money = formatMoneyMillions;
 const nameOf = (id: CountryId) => getCountry(id)?.name ?? id;
@@ -35,12 +38,13 @@ export function DiplomacyScreen() {
         <ScreenFrame
           id="diplomacy"
           title="Diplomacy"
-          subtitle="Friends, enemies, war and peace"
+          subtitle="Friends, enemies, treaties, war and peace"
           tabs={[
             { id: "relations", label: "Relations" },
             { id: "wars", label: "Wars & peace" },
             { id: "alliances", label: "Alliances" },
-            { id: "treaties", label: "Treaties & organizations" },
+            { id: "treaties", label: "Treaties" },
+            { id: "organizations", label: "Organizations" },
           ]}
         >
           {(tab) =>
@@ -50,12 +54,10 @@ export function DiplomacyScreen() {
               <WarsTab me={c.id} />
             ) : tab === "alliances" ? (
               <AlliancesTab me={c.id} />
+            ) : tab === "treaties" ? (
+              <TreatiesTab me={c.id} />
             ) : (
-              <Planned
-                title="Treaties and international organizations"
-                items={["Non-aggression pacts and military access", "Trade and research agreements", "International organizations you can join or found", "Guarantees of independence"]}
-                note="Today diplomacy covers relations, defensive alliances, war and peace."
-              />
+              <OrganizationsTab me={c.id} />
             )
           }
         </ScreenFrame>
@@ -105,9 +107,21 @@ function WarsTab({ me }: { me: CountryId }) {
 function AlliancesTab({ me }: { me: CountryId }) {
   const s = useGame((x) => x.state);
   const send = useGame((x) => x.send);
-  const allies = alliesOf(s, me);
+  const org = defenseOrgOf(s, me);
+  const allies = alliesOf(s, me).filter((a) => bilateralAlly(s, me, a));
   return (
     <div className="grid">
+      {org && (
+        <Card title={`${org.name} (${org.members.length - 1} allies)`} hint="Members of your defense alliance defend each other. Leave it on the Organizations tab." wide>
+          <p className="screen__note">
+            {org.members
+              .filter((m) => m !== me)
+              .map((m) => nameOf(m))
+              .sort()
+              .join(", ")}
+          </p>
+        </Card>
+      )}
       <Card title={`Your allies (${allies.length})`} hint="Allies come to each other's defence when attacked." wide>
         {allies.length ? (
           <table className="table">

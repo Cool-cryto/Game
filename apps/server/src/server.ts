@@ -92,7 +92,7 @@ export function startServer(cfg: ServerConfig) {
       const text = r.state ? gunzipSync(r.state).toString("utf8") : null;
       // Saves from before governments existed are upgraded using their scenario's data.
       const scenarioId = text ? (JSON.parse(text) as { scenarioId?: string }).scenarioId : undefined;
-      const state = text ? deserialize(text, (cfg.scenarios[scenarioId ?? ""] ?? cfg.scenarios.modern)?.countries) : undefined;
+      const state = text ? deserialize(text, (cfg.scenarios[scenarioId ?? ""] ?? cfg.scenarios.modern)?.countries, (id) => cfg.scenarios[id]?.organizations) : undefined;
       const room = makeRoom({ id: r.id, name: r.name, code: r.code, isPublic: r.is_public === 1, hostUserId: r.host_user_id }, state);
       for (const m of cfg.db.members(r.id)) room.restoreMember(m.user_id, m.username, m.country as CountryId | null);
       room.savedTick = room.state.tick;
