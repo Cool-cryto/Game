@@ -22,12 +22,17 @@ import {
   DIFFICULTIES,
   DIFFICULTY_RULES,
   type Difficulty,
+  hasGuarantee,
+  hasSanction,
+  PEACE_DEMANDS,
+  PERSONALITY_RULES,
+  type PeaceTerms,
 } from "@gs/sim";
 import { flagUrl, GEOGRAPHY, getCountry } from "../../data/countries";
 import { playerCountry, useGame } from "../../state/gameStore";
 import { useUi } from "../../state/uiStore";
 import { useOnline } from "../../net/online";
-import { formatCompact } from "../format";
+import { formatCompact, formatMoneyMillions } from "../format";
 
 // ---------- Helpers (shared with the management screens) ----------
 
@@ -112,6 +117,7 @@ export function SimpleWar({ war, me }: { war: War; me: CountryId }) {
   const attack = attackOrders(s, me, enemy);
   const enemyAi = s.countries[enemy]?.controller === "ai";
   const terms = wouldAcceptPeace(s, war, enemy, "occupied") ? ("occupied" as const) : wouldAcceptPeace(s, war, enemy, "white") ? ("white" as const) : null;
+  const [demand, setDemand] = useState<PeaceTerms | null>(null);
   const status = score > 0.15 ? "You're winning" : score < -0.15 ? "You're losing" : "Even fight";
   return (
     <div className="swar" data-testid={`war-${war.id}`}>
@@ -125,7 +131,9 @@ export function SimpleWar({ war, me }: { war: War; me: CountryId }) {
       <WarStats war={war} side={side} />
       {offers.map((o) => (
         <div key={o.id} className="offer">
-          <span>{nameOf(o.from)} offers peace{o.terms === "occupied" ? " and wants the land they hold" : ""}.</span>
+          <span>
+            {nameOf(o.from)} offers peace {PEACE_DEMANDS[o.terms]}.
+          </span>
           <button className="btn btn--primary btn--small" onClick={() => send({ type: "answerOffer", country: me, offerId: o.id, accept: true })}>
             Accept
           </button>
@@ -150,10 +158,39 @@ export function SimpleWar({ war, me }: { war: War; me: CountryId }) {
         )}
       </div>
       {leader && enemyAi && !terms && <p className="panel__small">They won't accept peace yet. Capture more of their land first.</p>}
+      {leader && (
+        <details className="peace-conf" data-testid="peace-conference">
+          <summary>Peace conference: choose your terms</summary>
+          <div className="peace-conf__terms">
+            {PEACE_TERMS.map((t) => {
+              const ok = !enemyAi || wouldAcceptPeace(s, war, enemy, t.id);
+              return (
+                <label key={t.id} className={`peace-term ${demand === t.id ? "is-on" : ""}`}>
+                  <input type="radio" name={`terms-${war.id}`} checked={demand === t.id} onChange={() => setDemand(t.id)} />
+                  <span>
+                    <strong>{t.label}</strong> <span className={ok ? "pos" : "neg"}>{enemyAi ? (ok ? "they would accept" : "they would refuse") : "they decide"}</span>
+                    <span className="panel__small">{t.help}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          <button className="btn btn--primary btn--small" disabled={!demand} onClick={() => demand && send({ type: "offerPeace", country: me, warId: war.id, terms: demand })}>
+            Offer these terms
+          </button>
+        </details>
+      )}
       {!leader && <p className="panel__small">{nameOf(war[side][0]!)} leads your side and decides on peace.</p>}
     </div>
   );
 }
+
+const PEACE_TERMS: { id: PeaceTerms; label: string; help: string }[] = [
+  { id: "white", label: "White peace", help: "Everyone goes home; no land changes hands." },
+  { id: "occupied", label: "Keep the land you hold", help: "Enemy provinces your side occupies become yours." },
+  { id: "reparations", label: "Reparations", help: "No land changes; they pay you 5% of their GDP." },
+  { id: "puppet", label: "Puppet state", help: "They keep their land but follow you into war and pay 10% of their taxes as tribute. Needs a crushing win." },
+];
 
 /** Duration, losses and provinces taken by each side, from the war's own record. */
 export function WarStats({ war, side }: { war: War; side: "attackers" | "defenders" }) {
@@ -252,8 +289,52 @@ export function Relations({ me, them, compact = false }: { me: CountryId; them: 
           )}
         </div>
       )}
+      {!war && !compact && <Statecraft me={me} them={them} />}
       {treaties.length > 0 && <p className="panel__small">Treaties: {treaties.map((t) => TREATY_INFO[t.type].short).join(", ")}</p>}
+      {statusLine(s, me, them) && <p className="panel__small" data-testid="status-line">{statusLine(s, me, them)}</p>}
       {!war && !isAllied && allyReason && !compact && <p className="panel__small">Alliance: {allyReason}</p>}
+    </div>
+  );
+}
+
+/** Puppets, guarantees and sanctions between you and them, in words. */
+function statusLine(s: GameState, me: CountryId, them: CountryId): string {
+  const parts: string[] = [];
+  if (s.countries[them]?.overlord === me) parts.push("Your puppet state (pays you tribute)");
+  if (s.countries[me]?.overlord === them) parts.push("You are their puppet state");
+  if (hasGuarantee(s, me, them)) parts.push("You guarantee their independence");
+  if (hasGuarantee(s, them, me)) parts.push("They guarantee your independence");
+  if (hasSanction(s, me, them)) parts.push("You sanction them");
+  if (hasSanction(s, them, me)) parts.push("They sanction you");
+  return parts.join(" · ");
+}
+
+/** Sanctions, aid and guarantees towards one country. */
+function Statecraft({ me, them }: { me: CountryId; them: CountryId }) {
+  const s = useGame((x) => x.state);
+  const send = useGame((x) => x.send);
+  const c = s.countries[me]!;
+  const amount = Math.round(0.005 * c.gdp);
+  const check = (cmd: Parameters<typeof validateCommand>[2]) => validateCommand(s, GEOGRAPHY, cmd);
+  const sanctioned = hasSanction(s, me, them);
+  const guaranteed = hasGuarantee(s, me, them);
+  const sanctionCmd = { type: sanctioned ? ("liftSanction" as const) : ("sanction" as const), country: me, target: them };
+  const guaranteeCmd = { type: guaranteed ? ("revokeGuarantee" as const) : ("guarantee" as const), country: me, target: them };
+  const aid = (kind: "economic" | "military") => ({ type: "sendAid" as const, country: me, target: them, aid: kind, amount });
+  return (
+    <div className="srel__actions srel__actions--more">
+      <button className="btn btn--ghost btn--small" disabled={!!check(guaranteeCmd)} title={check(guaranteeCmd) ?? (guaranteed ? "Stop protecting them (they won't like it)." : "If anyone attacks them, you join the war.")} onClick={() => send(guaranteeCmd)} data-testid="guarantee">
+        {guaranteed ? "Revoke guarantee" : "Guarantee"}
+      </button>
+      <button className="btn btn--ghost btn--small" disabled={!!check(aid("economic"))} title={check(aid("economic")) ?? `Send ${formatMoneyMillions(amount)} from your treasury. They will like you more.`} onClick={() => send(aid("economic"))} data-testid="aid-economic">
+        Aid {formatMoneyMillions(amount)}
+      </button>
+      <button className="btn btn--ghost btn--small" disabled={!!check(aid("military"))} title={check(aid("military")) ?? `Send ${formatMoneyMillions(amount)} of military money.`} onClick={() => send(aid("military"))}>
+        Military aid
+      </button>
+      <button className="btn btn--ghost btn--small" disabled={!!check(sanctionCmd)} title={check(sanctionCmd) ?? (sanctioned ? "Lift your sanctions." : "Costs them 0.15% growth a year (you 0.03%), ends trade deals, angers them.")} onClick={() => send(sanctionCmd)} data-testid="sanction">
+        {sanctioned ? "Lift sanctions" : "Sanction"}
+      </button>
     </div>
   );
 }
@@ -303,6 +384,12 @@ export function SimpleCountryView({ id, onDetails }: { id: CountryId; onDetails:
             Government: <strong>{governmentLabel(c.government)}</strong>
             {c.government.source === "estimate" ? " (estimate)" : ""}
           </p>
+          {c.controller === "ai" && c.personality && (
+            <p className="panel__small" data-testid="personality-line" title={PERSONALITY_RULES[c.personality].summary}>
+              Computer personality: <strong>{PERSONALITY_RULES[c.personality].label}</strong> (game-generated)
+            </p>
+          )}
+          {c.overlord && <p className="panel__small">Puppet state of {nameOf(c.overlord)}</p>}
           {orgsOf(s, id).length > 0 && (
             <p className="panel__small" data-testid="orgs-line">
               Member of: {orgsOf(s, id).map((o) => o.name).join(", ")}

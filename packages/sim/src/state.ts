@@ -9,9 +9,10 @@ import { resourceBonus, startingResearch, type Research } from "./tech";
 import { outputMultiplier, type Buildings, type Project } from "./construction";
 import type { Organization, Proposal, Treaty } from "./treaties";
 import type { UnitKind } from "./units";
+import { startingPersonality, type Personality } from "./personality";
 import type { General } from "./generals";
 
-export const SAVE_VERSION = 10;
+export const SAVE_VERSION = 11;
 
 /**
  * Difficulty. It never gives computer-run countries free money or units: it changes the player's starting
@@ -148,6 +149,14 @@ export interface CountryState {
   ledger?: Ledger;
   /** Construction paid for so far this month (moves into the ledger at the month's end). */
   monthConstruction?: number;
+  /** Aid given (negative) and received (positive) so far this month, for the ledger. */
+  monthAid?: number;
+  /** How the computer runs this country (see personality.ts). */
+  personality?: Personality;
+  /** A puppet state's overlord (see statecraft.ts). */
+  overlord?: CountryId;
+  /** Months in a row with very low stability (political crises, see upheaval.ts). */
+  crisisMonths?: number;
   /** Kind of government, ruling bloc, party support, laws and elections (see government.ts). */
   government: Government;
   history: { gdp: number[]; population: number[] };
@@ -165,6 +174,10 @@ export interface Ledger {
   defense: number;
   interest: number;
   construction: number;
+  /** Tribute paid to an overlord (negative) or received from puppets (positive). */
+  tribute: number;
+  /** Aid sent (negative) or received (positive). */
+  aid: number;
   net: number;
 }
 
@@ -203,7 +216,11 @@ export interface War {
   captured?: Record<string, number>;
 }
 
-export type PeaceTerms = "white" | "occupied";
+/**
+ * white: no changes. occupied: the winners keep the enemy land they hold. reparations: no border changes, the losers
+ * pay 5% of their GDP to the winners' leader. puppet: the losers' leader becomes a puppet state of the winners' leader.
+ */
+export type PeaceTerms = "white" | "occupied" | "reparations" | "puppet";
 
 export interface PeaceOffer {
   id: number;
@@ -283,6 +300,10 @@ export interface GameState {
   events: GameEvent[];
   /** Military commanders (see generals.ts). */
   generals: General[];
+  /** Sanctions, "FROM>TO" (see statecraft.ts). */
+  sanctions: string[];
+  /** Guarantees of independence, "GUARANTOR>GUARANTEED". */
+  guarantees: string[];
 }
 
 const DEFAULT_TAX: Record<string, number> = {
@@ -397,9 +418,14 @@ export function createGameState(scenario: Scenario, geo: Geography, seed: number
     proposals: [],
     events: [],
     generals: [],
+    sanctions: [],
+    guarantees: [],
   };
   refreshResources(state);
-  for (const c of Object.values(countries)) c.capital = largestProvince(state, c.id);
+  for (const c of Object.values(countries)) {
+    c.capital = largestProvince(state, c.id);
+    if (c.active) c.personality = startingPersonality(c, seed);
+  }
   createStartingMilitaries(state, geo);
   return state;
 }

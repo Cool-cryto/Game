@@ -150,7 +150,13 @@ Built: scenario system; **End of the Cold War (1991)** with the Soviet Union, Yu
 browser, export/import, play, host online); server support for scenarios and custom worlds; borders computed from the
 live map.
 
-### Stage 20 — Overhaul Stage D: military depth ✅ (current)
+### Stage 21 — Overhaul Stage E: diplomacy, politics, AI ✅ (current)
+Built: five AI personalities that drive war, armies, building and friendliness (8 wars in a 20-year run instead of
+0–1, with finances still sane); sanctions, economic and military aid, guarantees of independence; a peace conference
+with white peace, keeping occupied land, reparations and puppet states (tribute, following the overlord); coups,
+revolutions and breakaway states that start civil wars. Save version 11.
+
+### Stage 20 — Overhaul Stage D: military depth ✅
 Built: 22 unit types across army, air force and navy, each with attack, defense, speed, price, training time, a
 research unlock and fuel use; recruiting by type and quantity with training time; counters (anti-tank, anti-air,
 destroyers against submarines), fuel shortages, air support by type, strategic bombing and paratrooper drops;

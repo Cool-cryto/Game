@@ -15,6 +15,12 @@ import {
   tick,
   unitCap,
   DIFFICULTY_RULES,
+  breakaway,
+  coup,
+  revolution,
+  makePeace,
+  sanctionGrowth,
+  PERSONALITIES,
   UNIT_KINDS,
   planMove,
   recruitCost,
@@ -118,7 +124,10 @@ const armies = (s: GameState, c: CountryId) => unitsOf(s, c).filter((u) => u.typ
 /** Hand the human player to A and stop B/C/D's AI from interfering with a scripted test. */
 function scripted(s: GameState) {
   tick(s, geo, [{ type: "claimCountry", country: A }]);
-  for (const c of [B, C, D]) s.countries[c]!.stability = 0; // unstable countries never start wars
+  for (const c of [B, C, D]) {
+    s.countries[c]!.stability = 0; // unstable countries never start wars
+    s.countries[c]!.personality = "defensive"; // and defensive ones rarely want to
+  }
 }
 
 describe("rng", () => {
@@ -643,6 +652,114 @@ describe("unit types and generals", () => {
   });
 });
 
+describe("statecraft, peace terms and upheaval", () => {
+  it("every country gets a personality, and it shapes peacetime armies", () => {
+    const s = newGame();
+    for (const c of Object.values(s.countries)) if (c.active) expect(PERSONALITIES).toContain(c.personality);
+  });
+
+  it("sanctions cost the target growth, end trade deals, and can be lifted", () => {
+    const s = newGame();
+    scripted(s);
+    expect(sanctionGrowth(s, B)).toBe(0);
+    run(s, 1, [{ type: "sanction", country: A, target: B }]);
+    expect(s.sanctions).toContain("AAA>BBB");
+    expect(sanctionGrowth(s, B)).toBeLessThan(0);
+    expect(sanctionGrowth(s, A)).toBeLessThan(0); // it costs the sanctioner a little too
+    expect(validateCommand(s, geo, { type: "sanction", country: A, target: B })).toMatch(/already/);
+    run(s, 1, [{ type: "liftSanction", country: A, target: B }]);
+    expect(s.sanctions).toHaveLength(0);
+  });
+
+  it("aid moves money and improves relations", () => {
+    const s = newGame();
+    scripted(s);
+    const a = s.countries[A]!;
+    a.treasury = 0.1 * a.gdp;
+    const before = s.countries[B]!.treasury;
+    const rel = s.relations["AAA|BBB"] ?? 0;
+    expect(validateCommand(s, geo, { type: "sendAid", country: A, target: B, aid: "economic", amount: 1 })).toMatch(/at least/);
+    run(s, 1, [{ type: "sendAid", country: A, target: B, aid: "economic", amount: 0.01 * a.gdp }]);
+    expect(s.countries[B]!.treasury - before).toBeGreaterThan(0.009 * a.gdp);
+    expect(s.relations["AAA|BBB"] ?? 0).toBeGreaterThan(rel);
+  });
+
+  it("a guarantor joins the war when the guaranteed country is attacked", () => {
+    const s = newGame();
+    scripted(s);
+    s.relations["BBB|DDD"] = 20;
+    // D guarantees B (applied directly: D is computer-run in this test).
+    run(s, 1, [{ type: "guarantee", country: A, target: C }]);
+    expect(s.guarantees).toContain("AAA>CCC");
+    s.guarantees.push("DDD>BBB");
+    run(s, 1, [{ type: "declareWar", country: A, target: B }]);
+    expect(s.wars[0]!.defenders).toContain(D);
+  });
+
+  it("peace with reparations moves money; a puppet pays tribute and follows its overlord", () => {
+    const s = newGame();
+    scripted(s);
+    run(s, 1, [{ type: "declareWar", country: A, target: B }]);
+    const war = s.wars[0]!;
+    const tA = s.countries[A]!.treasury;
+    const tB = s.countries[B]!.treasury;
+    makePeace(s, war, "reparations", "attackers");
+    expect(s.countries[A]!.treasury).toBeGreaterThan(tA);
+    expect(s.countries[B]!.treasury).toBeLessThan(tB);
+    // A second war, ending with a puppet.
+    run(s, 1, [{ type: "declareWar", country: A, target: B }]);
+    makePeace(s, s.wars[0]!, "puppet", "attackers");
+    expect(s.countries[B]!.overlord).toBe(A);
+    expect(validateCommand(s, geo, { type: "declareWar", country: B, target: C })).toMatch(/puppet/);
+    run(s, 40);
+    expect(s.countries[A]!.ledger!.tribute).toBeGreaterThan(0);
+    expect(s.countries[B]!.ledger!.tribute).toBeLessThan(0);
+    // The puppet follows its overlord into war.
+    run(s, 1, [{ type: "declareWar", country: A, target: D }]);
+    expect(s.wars.find((w) => w.attackers[0] === A)!.attackers).toContain(B);
+  });
+
+  it("coups and revolutions change the kind of government", () => {
+    const s = newGame();
+    const c = s.countries[A]!;
+    c.stability = 10;
+    coup(s, c);
+    expect(c.government.regime).toBe("closed_autocracy");
+    expect(c.government.nextElection).toBeNull();
+    expect(c.stability).toBeGreaterThan(10);
+    revolution(s, c);
+    expect(c.government.regime).toBe("electoral_democracy");
+    expect(c.government.nextElection).not.toBeNull();
+    expect(s.events.some((e) => e.text.includes("military coup"))).toBe(true);
+  });
+});
+
+describe("a breakaway state in the modern world", () => {
+  const read = (p: string) => JSON.parse(readFileSync(new URL(`../../../apps/web/src/data/${p}`, import.meta.url), "utf8"));
+  const world = geographyFrom(read("geography.json") as GeographyData);
+  it("a region far from the capital breaks away with its soldiers, and a civil war starts", () => {
+    const s = createGameState(read("scenario-modern.json") as Scenario, world, 3);
+    const parent = s.countries["RUS" as CountryId]!;
+    const provinces = Object.values(s.provinces).filter((p) => p.owner === parent.id).length;
+    const gdp = parent.gdp;
+    expect(breakaway(s, world, parent)).toBe(true);
+    const rebel = Object.values(s.countries).find((c) => c.id.startsWith("R-"))!;
+    expect(rebel.active).toBe(true);
+    expect(rebel.name).toBe("Free Russia");
+    expect(rebel.color).toMatch(/^#[0-9a-f]{6}$/);
+    const theirs = Object.values(s.provinces).filter((p) => p.owner === rebel.id);
+    expect(theirs.length).toBeGreaterThan(1);
+    expect(theirs.length).toBeLessThan(provinces / 2);
+    expect(theirs.some((p) => p.id === parent.capital)).toBe(false);
+    expect(parent.gdp).toBeLessThan(gdp);
+    expect(Object.values(s.units).some((u) => u.owner === rebel.id && u.type === "army")).toBe(true);
+    expect(s.wars.some((w) => w.attackers[0] === rebel.id && w.defenders[0] === parent.id)).toBe(true);
+    // The game keeps running.
+    for (let i = 0; i < 120; i++) tick(s, world);
+    expect(Number.isFinite(rebel.gdp)).toBe(true);
+  });
+});
+
 describe("difficulty", () => {
   it("is chosen before taking a country, and sets the player's starting money once", () => {
     const easy = newGame();
@@ -871,7 +988,7 @@ describe("organizations", () => {
     for (const p of Object.values(s.provinces)) if (p.owner === D) p.controller = A;
     for (const u of unitsOf(s, D)) delete s.units[u.id]; // (an army at home would simply take its capital back)
     s.wars.push({ id: 999, name: "Test War", attackers: [A], defenders: [D], startTick: s.tick });
-    run(s, 2);
+    run(s, 6); // (surrender by lost land is checked every 5 days)
     expect(s.countries[D]!.active).toBe(false);
     expect(orgsOf(s, D)).toHaveLength(0);
     expect(hasTreaty(s, A, D, "trade")).toBe(false);
@@ -946,6 +1063,10 @@ describe("the modern world over 20 years", () => {
         `${s.treaties.length} treaties (${["trade", "research", "nonAggression", "access"].map((t) => `${t} ${s.treaties.filter((x) => x.type === t).length}`).join(", ")}), ` +
         `organizations: ${s.organizations.map((o) => `${o.id.replace("data:", "")} ${o.members.length}`).join(", ")}, ` +
         `GDP ${((Math.pow(worldGdp(s) / gdp0, 1 / 20) - 1) * 100).toFixed(2)}%/yr, ` +
+        `puppets ${Object.values(s.countries).filter((c) => c.active && c.overlord).length}, sanctions ${s.sanctions.length}, guarantees ${s.guarantees.length}, ` +
+        `coups ${s.events.filter((e) => e.text.includes("military coup")).length}, revolutions ${s.events.filter((e) => e.text.includes("revolution in")).length}, ` +
+        `breakaways ${s.events.filter((e) => e.text.includes("declared independence")).length}, ` +
+        `personalities ${Object.entries(Object.values(s.countries).reduce<Record<string, number>>((a, c) => (c.active && c.personality ? ((a[c.personality] = (a[c.personality] ?? 0) + 1), a) : a), {})).map(([k, n]) => `${k} ${n}`).join("/")}, ` +
         `${s.generals.length} generals (${s.generals.filter((g) => g.unit !== null).length} in command, best skill ${Math.max(0, ...s.generals.map((g) => g.skill))}), ` +
         `kinds: ${Object.entries(Object.values(s.units).reduce<Record<string, number>>((a, u) => ((a[u.kind] = (a[u.kind] ?? 0) + 1), a), {}))
           .sort((x, y) => y[1] - x[1])
@@ -1127,6 +1248,8 @@ describe("government", () => {
   it("democracies and electoral autocracies hold elections every four years; closed autocracies don't", () => {
     const s = withGov();
     scripted(s);
+    // Calm enough for no coups (crises start below 20), too unsettled to start wars (below 45).
+    for (const c of [A, C, D]) s.countries[c]!.stability = 35;
     run(s, ELECTION_INTERVAL + 60);
     for (const c of [A, C, D]) {
       const g = s.countries[c]!.government;

@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { RESOURCES, type CountryId, type CountryInfo, type ProvinceId, type ResourceId } from "@gs/shared";
 import {
   tradeGrowth,
+  sanctionGrowth,
   ADMIN_COST,
   planMove,
   BUDGET_RANGE,
@@ -232,7 +233,7 @@ export function CountryView({ id }: { id: CountryId }) {
                 <Sparkline values={state.history.population} label="Population history" />
               </div>
             </div>
-            <Why title="Why is GDP growing at this rate?" parts={growthBreakdown(state, avgInfra, weightedLevel(useGame.getState().state, id, "factory"), tradeGrowth(useGame.getState().state, id)).parts} format={(v) => formatPercent(v, 2, true)} labels={GROWTH_LABELS} />
+            <Why title="Why is GDP growing at this rate?" parts={growthBreakdown(state, avgInfra, weightedLevel(useGame.getState().state, id, "factory"), tradeGrowth(useGame.getState().state, id), sanctionGrowth(useGame.getState().state, id)).parts} format={(v) => formatPercent(v, 2, true)} labels={GROWTH_LABELS} />
           </section>
 
           <section>
@@ -351,6 +352,7 @@ export const GROWTH_LABELS: Record<string, string> = {
   technology: "Technology",
   factories: "Factories",
   trade: "Trade agreements and unions",
+  sanctions: "Sanctions",
 };
 export const STABILITY_LABELS: Record<string, string> = {
   base: "Baseline",

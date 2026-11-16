@@ -318,3 +318,16 @@ Serverless platforms are not a good fit, because players keep a connection open.
   `generalAt`, `generalBonus`, `generalsFought`, `releaseOrphanedGenerals`.
 - Commands: `recruit` (`kind`, `count`), `hireGeneral`, `assignGeneral`, `dismissGeneral`.
 - UI: `apps/web/src/ui/screens/MilitaryForces.tsx` (recruitment, unit catalogue, generals).
+
+### Diplomacy, politics, AI (Stage 21)
+
+- `personality.ts`: `CountryState.personality`, `PERSONALITY_RULES`, `startingPersonality` (hash of id and seed).
+  Used by `ai.ts` (`diplomacy`, `buildForces`, `peaceTalks`, `statecraft`) and `construction.ts` (`aiConstruction`).
+- `statecraft.ts`: `GameState.sanctions` and `guarantees` ("FROM>TO", replaced, never edited in place, so `StateDiffer`
+  sends them whole), `CountryState.overlord`, `sanctionGrowth` (a part of `growthBreakdown`), `tribute` (ledger),
+  `makePuppet`. `allied()` treats a puppet and its overlord as allies; `declareWar` brings in guarantors, puppets and
+  overlords.
+- `PeaceTerms`: `white | occupied | reparations | puppet` (`makePeace`, `wouldAcceptPeace`, `PEACE_DEMANDS`).
+- `upheaval.ts`: `upheavalMonthly` (after `politicsMonthly`): `coup`, `revolution`, `breakaway` (new country `R-<n>` with
+  a generated `color`). The web client calls `registerStateCountries` when the number of countries changes.
+- `checkCapitulations`: the population-share surrender check runs every 5 days.

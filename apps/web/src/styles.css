@@ -4342,3 +4342,41 @@ tr.is-locked {
   border-radius: 6px;
   padding: 4px 6px;
 }
+
+/* ----- Statecraft and peace conference ----- */
+.srel__actions--more {
+  margin-top: 6px;
+}
+.peace-conf {
+  margin-top: 10px;
+  border-top: 1px solid var(--line, var(--border));
+  padding-top: 8px;
+}
+.peace-conf summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--accent);
+}
+.peace-conf__terms {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0;
+}
+.peace-term {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 6px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--line, var(--border));
+  cursor: pointer;
+  font-size: 13px;
+}
+.peace-term.is-on {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.peace-term .panel__small {
+  display: block;
+  margin: 2px 0 0;
+}

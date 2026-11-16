@@ -43,7 +43,7 @@ export function registerStateCountries(state: GameState) {
         currencies: [],
         demonym: null,
         borders: [],
-        note: "A country from a custom world.",
+        note: c.id.startsWith("R-") ? "A state that broke away during this game." : "A country from a custom world.",
         economy: null,
         incomeGroup: null,
         colorSlot: 0,

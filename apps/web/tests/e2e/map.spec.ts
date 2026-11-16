@@ -885,3 +885,25 @@ test("military: recruit a chosen unit type in numbers, it trains first; hire and
     .poll(() => page.evaluate(() => (window as unknown as { __gsGame: { getState: () => { state: { generals: { unit: number | null }[] } } } }).__gsGame.getState().state.generals.filter((g) => g.unit !== null).length))
     .toBeGreaterThan(0);
 });
+
+test("statecraft: sanction and guarantee another country; the peace conference offers four kinds of terms", async ({ page }) => {
+  await openMap(page);
+  await playAs(page, "France");
+  await searchFor(page, "brazil");
+  await expect(panel(page).getByTestId("personality-line")).toContainText("Computer personality");
+  // Guarantee first: sanctions sour relations, and a guarantee needs them at least neutral.
+  await panel(page).getByTestId("guarantee").click();
+  await expect(panel(page).getByTestId("status-line")).toContainText("You guarantee their independence");
+  await panel(page).getByTestId("sanction").click();
+  await expect(panel(page).getByTestId("status-line")).toContainText("You sanction them");
+  // A war, and its peace conference.
+  await searchFor(page, "monaco");
+  await panel(page).getByRole("button", { name: "War", exact: true }).click();
+  await panel(page).getByRole("button", { name: "Yes, declare war" }).click();
+  await expect(page.getByTestId("player-card")).toContainText("At war");
+  await page.getByTestId("nav-diplomacy").click();
+  await page.getByTestId("screen-diplomacy").getByRole("tab", { name: "Wars & peace" }).click();
+  const conf = page.getByTestId("peace-conference").first();
+  await conf.locator("summary").click();
+  for (const t of ["White peace", "Keep the land you hold", "Reparations", "Puppet state"]) await expect(conf).toContainText(t);
+});
