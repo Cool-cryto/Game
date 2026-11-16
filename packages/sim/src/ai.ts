@@ -1,3 +1,4 @@
+import { aiGovernment } from "./government";
 import type { CountryId, ProvinceId } from "@gs/shared";
 import { nextRandom } from "./rng";
 import { findLandPath, type Geography } from "./geography";
@@ -36,6 +37,7 @@ export function aiMonthly(s: GameState, geo: Geography, neighbors: Map<CountryId
 
   for (const c of ai(s)) {
     economyPolicy(s, c);
+    aiGovernment(s, c, isAtWar(s, c.id));
     buildForces(s, geo, c, unitCount.get(c.id) ?? { all: 0, navy: 0, air: 0 }, port.get(c.id) ?? null);
     diplomacy(s, c, neighbors.get(c.id) ?? new Set(), sidePower);
   }

@@ -1,3 +1,4 @@
+import { canCallElection, canChangeLaw, changeLaw, type LawId } from "./government";
 import type { CountryId, ProvinceId } from "@gs/shared";
 import type { Geography } from "./geography";
 import {
@@ -32,7 +33,9 @@ export type Command =
   | { type: "answerOffer"; country: CountryId; offerId: number; accept: boolean }
   | { type: "improveRelations"; country: CountryId; target: CountryId }
   | { type: "proposeAlliance"; country: CountryId; target: CountryId }
-  | { type: "breakAlliance"; country: CountryId; target: CountryId };
+  | { type: "breakAlliance"; country: CountryId; target: CountryId }
+  | { type: "setLaw"; country: CountryId; law: LawId; value: string }
+  | { type: "callElection"; country: CountryId };
 
 export const TAX_RANGE = [0.05, 0.6] as const;
 export const BUDGET_RANGE = [0, 0.3] as const;
@@ -115,6 +118,10 @@ export function validateCommand(s: GameState, geo: Geography, cmd: Command): str
     case "breakAlliance":
       if (!allied(s, cmd.country, cmd.target)) return `You're not allied with ${target!.name}.`;
       return null;
+    case "setLaw":
+      return canChangeLaw(s, c, cmd.law, cmd.value);
+    case "callElection":
+      return canCallElection(s, c);
   }
 }
 
@@ -210,6 +217,14 @@ export function applyCommand(s: GameState, geo: Geography, cmd: Command): string
       s.alliances = s.alliances.filter((k) => k !== pairKey(cmd.country, cmd.target));
       adjustRelation(s, cmd.country, cmd.target, -30);
       logEvent(s, "alliance", `${c.name} broke its alliance with ${nameOf(s, cmd.target)}.`, [cmd.country, cmd.target]);
+      break;
+    case "setLaw":
+      changeLaw(s, c, cmd.law, cmd.value);
+      break;
+    case "callElection":
+      // The vote happens in a month.
+      c.government.nextElection = s.tick + 30;
+      logEvent(s, "politics", `${c.name} called an early election, to be held in a month.`, [cmd.country]);
       break;
   }
   return null;

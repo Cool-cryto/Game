@@ -5,6 +5,7 @@ import {
   planMove,
   BUDGET_RANGE,
   budgetBalance,
+  governmentLabel,
   growthBreakdown,
   MAX_INFRASTRUCTURE,
   MAX_TECH,
@@ -300,6 +301,7 @@ export function CountryView({ id }: { id: CountryId }) {
           <Fact label="Area" value={c.areaKm2 ? `${formatInt(c.areaKm2)} km²` : null} />
           <Fact label="Provinces" value={formatInt(provinceIds.length)} />
           <Fact label="Income group" value={c.incomeGroup} />
+          {state.active && <Fact label="Government" value={`${governmentLabel(state.government)}${state.government.source === "estimate" ? " (estimate)" : ""}`} />}
           <Fact label="Languages" value={c.languages.join(", ")} />
           <Fact label="Currency" value={c.currencies.map((x) => `${x.name}${x.symbol ? ` (${x.symbol})` : ""}`).join(", ")} />
         </dl>
@@ -341,6 +343,7 @@ export const GROWTH_LABELS: Record<string, string> = {
   taxes: "Tax burden",
   stability: "Stability",
   debt: "Debt",
+  government: "Government and laws",
 };
 export const STABILITY_LABELS: Record<string, string> = {
   base: "Baseline",
@@ -349,6 +352,7 @@ export const STABILITY_LABELS: Record<string, string> = {
   growth: "Economic growth",
   food: "Food shortage",
   debt: "Debt",
+  government: "Government and laws",
 };
 
 export function Why({ title, parts, format, labels }: { title: string; parts: Record<string, number>; format: (v: number) => string; labels: Record<string, string> }) {

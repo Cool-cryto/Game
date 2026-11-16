@@ -566,7 +566,7 @@ test.describe("top navigation (first-time player)", () => {
       ["economy", ["Overview", "Budget & taxes", "Resources & trade", "Debt", "Detailed budget"]],
       ["military", ["Overview", "Forces", "Recruit", "Military budget", "Equipment"]],
       ["diplomacy", ["Relations", "Wars & peace", "Alliances", "Treaties & organizations"]],
-      ["government", ["Stability", "Policies", "Parties, laws & elections"]],
+      ["government", ["Overview", "Parties & elections", "Laws", "Stability"]],
       ["research", ["Technology", "Research spending", "Technology tree"]],
       ["construction", ["Infrastructure", "By province", "Buildings"]],
       ["statistics", ["Economy (GDP)", "Population", "GDP per person", "Military spending", "Technology", "Your charts"]],
@@ -639,4 +639,34 @@ test.describe("top navigation (first-time player)", () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
     }
   });
+});
+
+test("government: real starting government, party support, changing a law, early elections only for democracies", async ({ page }) => {
+  await openMap(page);
+  // Short panels say how a country is governed (V-Dem / Wikidata).
+  await searchFor(page, "saudi arabia");
+  await expect(page.getByTestId("government-line")).toContainText("Absolute monarchy");
+  await searchFor(page, "united kingdom");
+  await expect(page.getByTestId("government-line")).toContainText("Constitutional monarchy");
+  await panel(page).getByRole("button", { name: "Play as United Kingdom" }).click();
+
+  await page.getByTestId("nav-government").click();
+  const screen = page.getByTestId("screen-government");
+  await expect(screen).toContainText("Liberal democracy");
+  await expect(screen).toContainText("V-Dem");
+  await screen.getByRole("tab", { name: "Parties & elections" }).click();
+  await expect(screen.getByTestId("party-support")).toContainText("In government");
+  // Too soon? No: no election has happened yet, so an early one can be called.
+  await expect(screen.getByRole("button", { name: "Call an early election" })).toBeEnabled();
+
+  await screen.getByRole("tab", { name: "Laws" }).click();
+  await screen.getByRole("button", { name: /Limited conscription/ }).click();
+  await expect(screen.getByRole("button", { name: /Limited conscription/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(screen.getByRole("button", { name: /Mass mobilisation/ })).toBeDisabled(); // cooldown
+  await expect(page.getByTestId("news-list")).toContainText("changed its conscription law");
+
+  // The map can show every country's government.
+  await page.getByTestId("nav-world").click();
+  await page.getByLabel("Map mode").selectOption("government");
+  await expect(page.locator(".legend")).toContainText("Closed autocracy");
 });

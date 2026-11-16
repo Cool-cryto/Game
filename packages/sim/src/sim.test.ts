@@ -27,6 +27,10 @@ import {
   playerView,
   ViewSync,
   visibleProvinces,
+  startingGovernment,
+  governmentEffects,
+  ELECTION_INTERVAL,
+  LAW_COOLDOWN,
   type Command,
   type GameState,
   type GeographyData,
@@ -512,6 +516,87 @@ function invadeB(s: GameState) {
   scripted(s);
   run(s, 1, [{ type: "declareWar", country: A, target: B }]);
 }
+
+describe("government", () => {
+  const withGov = () => {
+    const sc = structuredClone(small);
+    sc.countries[A]!.regime = "liberal_democracy";
+    sc.countries[A]!.monarchy = true;
+    sc.countries[B]!.regime = "closed_autocracy";
+    sc.countries[C]!.regime = "electoral_autocracy";
+    return createGameState(sc, geo, 5);
+  };
+
+  it("starts from the scenario's data, and says when it's an estimate", () => {
+    const s = withGov();
+    expect(s.countries[A]!.government).toMatchObject({ regime: "liberal_democracy", monarchy: true, source: "data" });
+    expect(s.countries[A]!.government.laws).toEqual({ conscription: "volunteer", economy: "free_market", press: "free" });
+    expect(s.countries[B]!.government).toMatchObject({ regime: "closed_autocracy", nextElection: null });
+    expect(s.countries[D]!.government.source).toBe("estimate"); // no data in the scenario
+    expect(startingGovernment("C-NEW" as CountryId, undefined, true).source).toBe("custom");
+    const sum = Object.values(s.countries[A]!.government.support).reduce((a, b) => a + b, 0);
+    expect(sum).toBeCloseTo(1, 3);
+  });
+
+  it("democracies and electoral autocracies hold elections every four years; closed autocracies don't", () => {
+    const s = withGov();
+    scripted(s);
+    run(s, ELECTION_INTERVAL + 60);
+    for (const c of [A, C, D]) {
+      const g = s.countries[c]!.government;
+      expect(g.lastElection).not.toBeNull();
+      expect(g.nextElection! - g.lastElection!.tick).toBe(ELECTION_INTERVAL);
+    }
+    expect(s.countries[B]!.government.lastElection).toBeNull();
+    // Managed elections: the ruling bloc always wins, by a large margin.
+    expect(s.countries[C]!.government.lastElection!.share).toBeGreaterThanOrEqual(0.6);
+    expect(s.events.some((e) => e.kind === "politics" && e.text.includes("held an election"))).toBe(true);
+  });
+
+  it("laws have effects, a cooldown, and conscription raises the unit limit", () => {
+    const s = withGov();
+    scripted(s);
+    const a = s.countries[A]!;
+    const capBefore = unitCap(a);
+    expect(validateCommand(s, geo, { type: "setLaw", country: A, law: "conscription", value: "nonsense" })).toMatch(/Unknown option/);
+    run(s, 1, [{ type: "setLaw", country: A, law: "conscription", value: "mass" }]);
+    expect(a.government.laws.conscription).toBe("mass");
+    expect(unitCap(a)).toBeGreaterThan(capBefore);
+    expect(governmentEffects(a, false).stability.conscription).toBeLessThan(0); // unrest in peacetime…
+    expect(governmentEffects(a, true).stability.conscription).toBe(0); // …but not in war
+    expect(validateCommand(s, geo, { type: "setLaw", country: A, law: "press", value: "restricted" })).toMatch(/Wait/);
+    run(s, LAW_COOLDOWN);
+    expect(validateCommand(s, geo, { type: "setLaw", country: A, law: "press", value: "restricted" })).toBeNull();
+    // A democracy resents press restrictions; an autocracy gains control from them.
+    expect(governmentEffects({ ...a, government: { ...a.government, laws: { ...a.government.laws, press: "state_controlled" } } }, false).stability.press).toBeLessThan(0);
+    const b = s.countries[B]!;
+    expect(governmentEffects(b, false).stability.press).toBeGreaterThan(0);
+  });
+
+  it("only democracies can call early elections, and not too often", () => {
+    const s = withGov();
+    scripted(s);
+    expect(validateCommand(s, geo, { type: "callElection", country: B })).toMatch(/Only democracies/);
+    const a = s.countries[A]!;
+    a.government.nextElection = s.tick + 1000;
+    run(s, 1, [{ type: "callElection", country: A }]);
+    expect(a.government.nextElection).toBe(s.tick + 29);
+    run(s, 40);
+    expect(a.government.lastElection).not.toBeNull();
+    expect(validateCommand(s, geo, { type: "callElection", country: A })).toMatch(/Wait a year/);
+  });
+
+  it("saves from before governments existed still load, with the scenario's governments", () => {
+    const s = withGov();
+    const old = JSON.parse(serialize(s));
+    old.version = 4;
+    for (const c of Object.values(old.countries) as { government?: unknown }[]) delete c.government;
+    const loaded = deserialize(JSON.stringify(old), { BBB: { regime: "closed_autocracy" } });
+    expect(loaded.version).toBe(5);
+    expect(loaded.countries[B]!.government.regime).toBe("closed_autocracy");
+    expect(loaded.countries[A]!.government.source).toBe("estimate");
+  });
+});
 
 describe("custom worlds", () => {
   const world = (over: Partial<CustomWorld> = {}): CustomWorld => ({

@@ -2,7 +2,8 @@ import { Component, type ReactNode } from "react";
 import { useUi } from "../../state/uiStore";
 import { CountryScreen, EconomyScreen, MilitaryScreen } from "./CoreScreens";
 import { useEscapeCloses } from "./Screen";
-import { ConstructionScreen, DiplomacyScreen, GovernmentScreen, MoreScreen, ResearchScreen, StatisticsScreen } from "./WorldScreens";
+import { ConstructionScreen, DiplomacyScreen, MoreScreen, ResearchScreen, StatisticsScreen } from "./WorldScreens";
+import { GovernmentScreen } from "./GovernmentScreen";
 
 /** Shows the one open management screen (if any) over the left of the map. */
 export function ScreenHost() {

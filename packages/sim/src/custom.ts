@@ -73,7 +73,7 @@ export function applyCustomWorld(base: Scenario, w: CustomWorld): Scenario {
       population: alive ? Math.round(people) : null,
       gdpMillionUsd: alive ? Math.round(money) : null,
       incomeGroup: b?.incomeGroup ?? null,
-      ...(n ? { color: n.color } : {}),
+      ...(n ? { color: n.color } : { regime: b?.regime ?? null, monarchy: b?.monarchy ?? false, ...(b?.regimeEstimated ? { regimeEstimated: true } : {}) }),
     };
   }
   return {
