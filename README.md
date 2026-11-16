@@ -42,30 +42,30 @@ Not built yet: government types, naval battles, trade deals. To put the game onl
 
 ## How to play
 
-The game starts in **simple mode**:
+1. **Choose a country**: click it on the map (or search for it) and press **Play as …**. First-time players get a
+   start screen with suggestions and a short guide. Your choice is locked in; to lead another country, start a new game.
+2. **The bar at the top** opens one management screen at a time, each with its own tabs. **World** (or Esc, or
+   **Back to map**) returns to the map:
+   - **Country**: overview, your provinces, history
+   - **Economy**: treasury, income and expenses, a national focus and Low/Normal/High taxes (always a balanced budget),
+     resources and trade, debt, and exact sliders under **Detailed budget**
+   - **Military**: your forces and where they are, recruiting, military budget
+   - **Diplomacy**: relations (make friends, ally, declare war), wars with one-click **Attack** and **Make peace**, alliances
+   - **Government**: stability and national policy · **Research**: technology level and research spending ·
+     **Construction**: infrastructure by province · **Statistics**: world rankings and charts ·
+     **More**: population, the full news log, intelligence (what fog of war lets you see), settings
+   - Parties and elections, a technology tree, buildings, equipment, treaties and spies are shown as
+     **coming in a later update**, never with made-up numbers.
+3. Under the navigation, the **information bar** shows your flag, treasury, world rank, the date, and Play/Pause with
+   five speeds. **Settings** (top right) holds saves, new games, the world editor and options.
+4. On the map, the **Map** menu (top left) switches between 12 map modes; clicking a place shows a short panel with
+   **Show all details** for everything.
 
-1. **Choose a country** on the start screen (or click any country and press **Lead …**). Your goal: make it the
-   strongest in the world. Your choice is locked in; to lead another country, start a new game.
-2. Use the three buttons at the bottom left:
-   - **🏛️ My country**: pick a focus (balanced, grow the economy, build the army, keep people happy) and a tax level.
-     Your budget always balances, so you never fall into debt.
-   - **🛡️ Army**: recruit armies, fleets and air forces; see where they are.
-   - **🌍 World**: make friends, form alliances, declare war, then press **Attack** and your armies march on the
-     enemy's capital. **Make peace** offers the best terms they'd accept.
-3. Press **Play** to let time run and watch your **world rank** climb.
-
-**Advanced mode** (Game → Options → Advanced controls) shows every detail. That is what the steps below describe:
-
-1. Click a country (or search for it) and press **Play as …**.
-2. Press **Play** (or Space) to start time; pick a speed with the bars next to the date.
-3. **Economy**: in your country's panel, set the tax rate and spending. Defense spending fills your defense fund.
-4. **Military**: in the Military section, click a group of units (or click a unit marker on the map), press
-   **Move…**, then click a province, or right-click a province with your units selected. For tiny places,
-   search for them and press **Send units here**. Recruit new units with the Army / Fleet / Air wing buttons.
-5. **Diplomacy**: open another country to improve relations, propose an alliance or declare war.
-6. **War**: march armies into enemy provinces to besiege and occupy them. In your panel's **Your wars** section,
-   offer peace: demand the provinces you occupy, or a white peace. The button says whether they'd accept.
-7. Use **Game → Save** to keep your progress.
+**Moving armies:** click a unit marker on the map (or a row in Military → Forces), press **Move…**, then click a
+province, or right-click a province with your units selected. For tiny places, search for them and press
+**Send units here**. Armies besiege and occupy enemy provinces; in Diplomacy → Wars & peace, **Make peace** offers the
+best terms the enemy would accept. Keyboard: Space pauses, 1-5 set the speed, G switches to the 3D globe, Esc returns
+to the map.
 
 ## Playing online with friends
 

@@ -27,15 +27,15 @@ interface UiState {
   /** Is the "Play online" dialog open? */
   onlineDialog: boolean;
   setOnlineDialog: (open: boolean) => void;
-  /**
-   * Advanced controls (all map modes, policy sliders, full country details). Off by
-   * default: the game starts in simple mode. Remembered in this browser.
-   */
-  advanced: boolean;
-  setAdvanced: (on: boolean) => void;
-  /** Simple mode's main panels, opened from the action bar. */
-  hud: Hud;
-  setHud: (hud: Hud) => void;
+  /** The management screen open over the map (null = just the world map). One at a time. */
+  screen: ScreenId | null;
+  setScreen: (screen: ScreenId | null) => void;
+  /** Map panels show every detail (after "Show all details"), not just the essentials. */
+  details: boolean;
+  setDetails: (on: boolean) => void;
+  /** The tab last opened on each screen. */
+  tabs: Partial<Record<ScreenId, string>>;
+  setTab: (screen: ScreenId, tab: string) => void;
   /** Fog of war in single player (online it's always on). Remembered in this browser. */
   fog: boolean;
   setFog: (on: boolean) => void;
@@ -55,24 +55,8 @@ interface UiState {
 
 let nonce = 0;
 
-export type Hud = "country" | "army" | "world" | null;
-
-const ADVANCED_KEY = "wa.advanced";
-function loadFlag(key: string, fallback: boolean): boolean {
-  try {
-    const v = localStorage.getItem(key);
-    return v === null ? fallback : v === "on";
-  } catch {
-    return fallback;
-  }
-}
-function saveFlag(key: string, on: boolean) {
-  try {
-    localStorage.setItem(key, on ? "on" : "off");
-  } catch {
-    /* private browsing: just not remembered */
-  }
-}
+export const SCREENS = ["country", "economy", "military", "diplomacy", "government", "research", "construction", "statistics", "more"] as const;
+export type ScreenId = (typeof SCREENS)[number];
 
 const FOG_KEY = "wa.fog";
 function loadFog(): boolean {
@@ -102,14 +86,12 @@ export const useUi = create<UiState>((set) => ({
   setEditor: (editor) => set({ editor }),
   setOnlineDialog: (onlineDialog) => set({ onlineDialog }),
   setView: (view) => set({ view }),
-  advanced: loadFlag(ADVANCED_KEY, false),
-  setAdvanced: (advanced) => {
-    saveFlag(ADVANCED_KEY, advanced);
-    // Simple mode shows only the political map.
-    set(advanced ? { advanced } : { advanced, mapMode: "political", hud: null });
-  },
-  hud: null,
-  setHud: (hud) => set(hud ? { hud, selected: null } : { hud }),
+  screen: null,
+  setScreen: (screen) => set({ screen, moveOrder: null }),
+  details: false,
+  setDetails: (details) => set({ details }),
+  tabs: {},
+  setTab: (screen, tab) => set((s) => ({ tabs: { ...s.tabs, [screen]: tab } })),
   fog: loadFog(),
   setFog: (fog) => {
     try {
@@ -125,10 +107,8 @@ export const useUi = create<UiState>((set) => ({
   select: (selected, opts) =>
     set(
       opts?.focus && selected
-        ? { selected, hud: null, camera: { kind: "focus", target: selected, nonce: ++nonce } }
-        : selected
-          ? { selected, hud: null }
-          : { selected },
+        ? { selected, camera: { kind: "focus", target: selected, nonce: ++nonce } }
+        : { selected },
     ),
   setMapMode: (mapMode) => set({ mapMode }),
   setZoom: (zoom) => set({ zoom }),

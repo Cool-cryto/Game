@@ -446,9 +446,10 @@ export function GlobeView({ active }: { active: boolean }) {
       const { w, h } = size;
       const panelOpen = !!useUi.getState().selected;
       const wide = w > 760;
-      if (panelOpen && wide) return { x0: 0, x1: w - PANEL_SPACE, y0: 64, y1: h - 40 };
+      const left = wide && useUi.getState().screen ? Math.min(800, w / 2) : 0;
+      if (panelOpen && wide) return { x0: left, x1: w - PANEL_SPACE, y0: 94, y1: h - 40 };
       if (panelOpen) return { x0: 0, x1: w, y0: 140, y1: Math.max(h * 0.45, 260) };
-      return { x0: 0, x1: w, y0: wide ? 64 : 140, y1: h - 40 };
+      return { x0: left, x1: w, y0: wide ? 94 : 98, y1: h - 40 };
     }
 
     function animateTo(to: Partial<GlobeCamera>, ms = 750) {

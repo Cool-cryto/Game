@@ -17,16 +17,15 @@ function OnlineDialogHost() {
   return <OnlineDialog open={open} onClose={() => setOpen(false)} />;
 }
 import { Legend } from "./ui/Legend";
-import { PlayerCard } from "./ui/PlayerCard";
-import { TimeControls } from "./ui/TimeControls";
-import { TopBar } from "./ui/TopBar";
 import { ZoomControls } from "./ui/ZoomControls";
-import { ActionBar, Guide, HudPanel, StartScreen } from "./ui/simple/SimpleHud";
+import { Guide, StartScreen } from "./ui/simple/SimpleHud";
+import { InfoBar, TopNav } from "./ui/nav/TopNav";
+import { MapModeControl } from "./ui/nav/MapModeControl";
+import { ScreenHost } from "./ui/screens/ScreenHost";
 
 export function App() {
   useEffect(() => startSimulation(), []);
   const view = useUi((s) => s.view);
-  const advanced = useUi((s) => s.advanced);
   const editorWanted = useUi((s) => s.editor);
   const editing = useEditor((s) => s.active);
   useEffect(() => {
@@ -43,14 +42,13 @@ export function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).closest("input, textarea, select, dialog")) return;
-      if (e.key === "Escape" && useUi.getState().hud) useUi.getState().setHud(null);
       if (e.key === "g" || e.key === "G") useUi.getState().setView(useUi.getState().view === "flat" ? "globe" : "flat");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
   return (
-    <div className={`app app--${view} ${advanced ? "app--advanced" : "app--simple"}`}>
+    <div className={`app app--${view}`}>
       <div className="view view--flat" aria-hidden={view !== "flat"}>
         <WorldMap />
       </div>
@@ -59,16 +57,15 @@ export function App() {
           <GlobeView active={view === "globe"} />
         </div>
       )}
-      <TopBar />
-      {!editing && <PlayerCard />}
+      <TopNav />
+      <InfoBar />
+      {!editing && <ScreenHost />}
       {editing ? <EditorPanel /> : <InfoPanel />}
-      {!editing && !advanced && <HudPanel />}
-      {!editing && !advanced && <ActionBar />}
-      {!editing && !advanced && <StartScreen />}
-      {!editing && !advanced && <Guide />}
-      {advanced && <Legend />}
-      {advanced && <ZoomControls />}
-      {!editing && <TimeControls />}
+      {!editing && <StartScreen />}
+      {!editing && <Guide />}
+      <MapModeControl />
+      <Legend />
+      <ZoomControls />
       <GameErrors />
       <NewsFeed />
       <OnlinePanel />
