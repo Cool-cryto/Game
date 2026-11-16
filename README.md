@@ -8,7 +8,7 @@ and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the project is put toge
 ## What works today
 
 - World map of **4,596 provinces** in 248 countries, territories and disputed regions, with **7,333 cities**
-- **Time**: starts 1 Jan 2020, paused. Play/pause (Space) and 5 speeds (keys 1–5, from 1 to 120 days per second)
+- **Time**: starts 1 Jan 2020 and runs by itself at 21 days per second once you lead a country (no pause, no speeds)
 - **Economy**, monthly for every country: GDP growth, taxes and spending, treasury and debt, stability,
   technology, infrastructure, population, and food / energy / minerals with a world market
 - **Military**: armies, fleets and air wings on the map. Recruit with your defense fund, pay upkeep,
@@ -57,15 +57,14 @@ Not built yet: government types, naval battles, trade deals. To put the game onl
      **More**: population, the full news log, intelligence (what fog of war lets you see), settings
    - Equipment, treaties and spies are shown as
      **coming in a later update**, never with made-up numbers.
-3. Under the navigation, the **information bar** shows your flag, treasury, world rank, the date, and Play/Pause with
-   five speeds. **Settings** (top right) holds saves, new games, the world editor and options.
+3. The same top bar shows your flag, treasury, world rank and the date (time runs by itself). **Settings** (top right) holds saves, new games, the world editor and options.
 4. On the map, the **Map** menu (top left) switches between 12 map modes; clicking a place shows a short panel with
    **Show all details** for everything.
 
 **Moving armies:** click a unit marker on the map (or a row in Military → Forces), press **Move…**, then click a
 province, or right-click a province with your units selected. For tiny places, search for them and press
 **Send units here**. Armies besiege and occupy enemy provinces; in Diplomacy → Wars & peace, **Make peace** offers the
-best terms the enemy would accept. Keyboard: W/A/S/D or the arrow keys move the camera (Shift for faster), Space pauses, 1-5 set the speed, G switches to the 3D globe, Esc returns
+best terms the enemy would accept. Keyboard: W/A/S/D or the arrow keys move the camera (Shift for faster), G switches to the 3D globe, Esc returns
 to the map.
 
 ## Playing online with friends

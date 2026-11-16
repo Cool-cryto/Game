@@ -11,15 +11,20 @@ import { logEvent, nameOf, type CountryState, type GameState, type Unit, type Un
  * real-world formation, and starting militaries are estimated from defense budgets.
  */
 export const UNIT_STATS: Record<UnitType, { label: string; recruit: number; power: number }> = {
-  army: { label: "Army", recruit: 1000, power: 1 },
-  navy: { label: "Fleet", recruit: 3000, power: 1 },
-  air: { label: "Air wing", recruit: 2000, power: 1 },
+  army: { label: "Army", recruit: 500, power: 1 },
+  navy: { label: "Fleet", recruit: 1500, power: 1 },
+  air: { label: "Air wing", recruit: 1000, power: 1 },
 };
-/** Yearly upkeep as a share of the recruiting cost. */
-const UPKEEP_SHARE = 0.3;
-const LAND_KM_PER_DAY = 50;
-const SEA_KM_PER_DAY = 800;
-const AIR_KM_PER_DAY = 1600;
+/** Yearly upkeep as a share of the recruiting cost (recruiting is cheap; keeping a big army is what costs). */
+const UPKEEP_SHARE = 0.6;
+// Time runs at 21 days a second, so these are also on-screen speeds: an army crosses France in about
+// three seconds on good roads (infrastructure, railways and technology make it faster), a fleet the
+// Atlantic in about five.
+const LAND_KM_PER_DAY = 10;
+const SEA_KM_PER_DAY = 50;
+const AIR_KM_PER_DAY = 100;
+/** Strength lost per day of battle at even odds (a battle lasts a couple of seconds). */
+const BATTLE_LOSS_PER_DAY = 2.5;
 /** Air wings support battles within this distance of their base. */
 export const AIR_RANGE_KM = 1200;
 /** A unit this weak falls back from battle. */
@@ -55,6 +60,8 @@ export function createStartingMilitaries(s: GameState, geo: Geography) {
   for (const c of Object.values(s.countries)) {
     if (!c.active || !c.capital) continue;
     const yearly = c.gdp * c.budget.defense;
+    // Three months of defense spending in the bank, so a new player can recruit straight away.
+    c.defenseFund = yearly / 4;
     const affordable = Math.floor((yearly * 0.6) / upkeepPerYear(c, "army"));
     const n = Math.min(Math.round(unitCap(c) * 0.6), affordable);
     if (n <= 0) continue;
@@ -88,8 +95,8 @@ export function canRecruit(s: GameState, geo: Geography, country: CountryId, typ
 export function recruit(s: GameState, country: CountryId, type: UnitType, province: ProvinceId): Unit {
   const c = s.countries[country]!;
   c.defenseFund -= recruitCost(c, type);
-  // New units start under strength and fill up at home.
-  return addUnit(s, country, type, province, 50);
+  // New units start a little under strength and fill up at home.
+  return addUnit(s, country, type, province, 75);
 }
 
 // ---------- Movement ----------
@@ -152,7 +159,9 @@ function legDays(s: GameState, geo: Geography, u: Unit, mode: "land" | "sea" | "
 
 export function startMove(s: GameState, geo: Geography, u: Unit, path: ProvinceId[], mode: "land" | "sea" | "air") {
   u.path = path;
-  u.travel = path.length ? { mode, daysLeft: legDays(s, geo, u, mode, path[0]!) } : null;
+  const days = path.length ? legDays(s, geo, u, mode, path[0]!) : 0;
+  // `total` is the length of the current leg, so the map can draw the unit part of the way along.
+  u.travel = path.length ? { mode, daysLeft: days, total: days } : null;
 }
 
 /** Days until a unit reaches the end of its path (estimate, for the UI). */
@@ -191,7 +200,10 @@ export function advanceMovement(s: GameState, geo: Geography) {
       const p = s.provinces[next]!;
       if (atWar(s, u.owner, p.controller) && !(p.buildings?.fort ?? 0)) captureProvince(s, next, u.owner);
     }
-    if (u.path.length) u.travel = { mode: u.travel.mode, daysLeft: legDays(s, geo, u, u.travel.mode, u.path[0]!) };
+    if (u.path.length) {
+      const days = legDays(s, geo, u, u.travel.mode, u.path[0]!);
+      u.travel = { mode: u.travel.mode, daysLeft: days, total: days };
+    }
     else {
       u.travel = null;
       u.retreating = false;
@@ -237,7 +249,7 @@ export function resolveBattles(s: GameState, geo: Geography) {
     const pa = powerOf(sideA);
     const pb = powerOf(sideB);
     const hit = (side: Unit[], ratio: number) => {
-      for (const u of side) u.strength = Math.max(0, u.strength - 6 * ratio * (0.8 + 0.4 * nextRandom(s.rng)));
+      for (const u of side) u.strength = Math.max(0, u.strength - BATTLE_LOSS_PER_DAY * 2 * ratio * (0.8 + 0.4 * nextRandom(s.rng)));
     };
     hit(sideA, pb / (pa + pb));
     hit(sideB, pa / (pa + pb));
@@ -278,9 +290,10 @@ function retreat(s: GameState, geo: Geography, u: Unit) {
 
 /**
  * Days of siege needed for a province with full-strength armies. Without fortifications there's no siege:
- * the first army to walk in takes it. Each fortification level adds 4 days (a little more where infrastructure is high).
+ * the first army to walk in takes it. Each fortification level adds about 15 days (under a second; a little more where
+ * infrastructure is high).
  */
-export const siegeDays = (infrastructure: number, fort = 0) => fort * (4 + 0.2 * infrastructure);
+export const siegeDays = (infrastructure: number, fort = 0) => fort * (15 + 0.5 * infrastructure);
 
 /** An enemy province changes hands (or one of yours or an ally's is freed and goes back to its owner). */
 export function captureProvince(s: GameState, id: ProvinceId, by: CountryId) {
@@ -336,6 +349,24 @@ export function advanceSieges(s: GameState) {
 // ---------- Monthly upkeep ----------
 
 /**
+ * A country that can no longer support all its units (it lost land, or eased conscription) stands the
+ * weakest down. Checked daily, so no country is ever over its limit.
+ */
+export function enforceUnitCaps(s: GameState) {
+  const count = new Map<CountryId, number>();
+  for (const u of Object.values(s.units)) count.set(u.owner, (count.get(u.owner) ?? 0) + 1);
+  for (const [owner, n] of count) {
+    const excess = n - unitCap(s.countries[owner]!);
+    if (excess <= 0) continue;
+    const units = Object.values(s.units)
+      .filter((u) => u.owner === owner)
+      .sort((a, b) => a.strength - b.strength);
+    for (const u of units.slice(0, excess)) delete s.units[u.id];
+    logEvent(s, "military", `${nameOf(s, owner)} demobilized ${excess} unit${excess > 1 ? "s" : ""} it can no longer support.`, [owner]);
+  }
+}
+
+/**
  * Upkeep comes out of the defense fund. Units at home and fully paid regain
  * strength; if the fund runs dry, every unit weakens.
  */
@@ -347,19 +378,7 @@ export function militaryMonthly(s: GameState) {
     upkeep.set(u.owner, (upkeep.get(u.owner) ?? 0) + upkeepPerYear(c, u.type) / 12);
   }
   for (const [id, cost] of upkeep) s.countries[id]!.defenseFund -= cost;
-  // A country that lost territory can't support as many units: the weakest stand down.
-  const byOwner = new Map<CountryId, Unit[]>();
-  for (const u of Object.values(s.units)) {
-    if (!byOwner.has(u.owner)) byOwner.set(u.owner, []);
-    byOwner.get(u.owner)!.push(u);
-  }
-  for (const [owner, units] of byOwner) {
-    const excess = units.length - unitCap(s.countries[owner]!);
-    if (excess <= 0) continue;
-    units.sort((a, b) => a.strength - b.strength);
-    for (const u of units.slice(0, excess)) delete s.units[u.id];
-    logEvent(s, "military", `${nameOf(s, owner)} demobilized ${excess} unit${excess > 1 ? "s" : ""} it can no longer support.`, [owner]);
-  }
+  enforceUnitCaps(s);
   for (const u of Object.values(s.units)) {
     const c = s.countries[u.owner]!;
     if (c.defenseFund < 0) {

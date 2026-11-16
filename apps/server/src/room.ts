@@ -14,6 +14,7 @@ import {
   validateCommand,
   type ChatMessage,
   type Clock,
+  GAME_DAYS_PER_SECOND,
   type Command,
   type GameState,
   type Geography,
@@ -24,8 +25,6 @@ import {
   type Unit,
 } from "@gs/sim";
 
-/** In-game days per real second at each speed (same as single player). */
-const DAYS_PER_SECOND = [0, 1, 4, 15, 45, 120] as const;
 const MAX_DAYS_PER_STEP = 20;
 /** How often players get updates. */
 export const PATCH_MS = 250;
@@ -103,7 +102,8 @@ export class Room {
     this.hostUserId = opts.hostUserId;
     this.state = state;
     this.differ = new StateDiffer(state, { units: false });
-    this.clock = { paused: true, speed: opts.fixedSpeed ?? 1, fixed: opts.fixedSpeed !== null };
+    // Time always runs at the same pace while anyone is here; nobody controls it.
+    this.clock = { paused: true, speed: opts.fixedSpeed ?? 1, fixed: true };
   }
 
   /** Restore members saved in the database (they start offline). */
@@ -166,7 +166,7 @@ export class Room {
     // Fog of war: the newcomer sees only what their country can see.
     const view = fogView(this.state, this.opts.geo, m.country);
     this.views.set(conn, new ViewSync(view));
-    if (this.clock.fixed && this.clock.paused) this.clock.paused = false; // the global world runs while anyone is online
+    if (this.clock.paused) this.clock.paused = false; // time runs while anyone is online
     this.send(conn, {
       t: "joined",
       room: this.summary(m.userId),
@@ -177,7 +177,7 @@ export class Room {
       you: { country: m.country, host: this.hostUserId === m.userId },
     });
     this.broadcastPlayers();
-    if (this.clock.fixed) this.broadcast({ t: "clock", clock: this.clock });
+    this.broadcast({ t: "clock", clock: this.clock });
     return null;
   }
 
@@ -229,13 +229,7 @@ export class Room {
         return;
       }
       case "clock": {
-        if (this.clock.fixed) return this.error(conn, "The global world runs at a fixed speed.");
-        if (this.hostUserId !== m.userId) return this.error(conn, "Only the host can change the game speed.");
-        if (typeof msg.paused === "boolean") this.clock.paused = msg.paused;
-        if (typeof msg.speed === "number" && [1, 2, 3, 4, 5].includes(msg.speed)) this.clock.speed = msg.speed as Clock["speed"];
-        this.carry = 0;
-        this.broadcast({ t: "clock", clock: this.clock });
-        return;
+        return this.error(conn, "Time always runs at the same pace.");
       }
       case "chat": {
         const text = typeof msg.text === "string" ? msg.text.trim().slice(0, CHAT_MAX_LENGTH) : "";
@@ -289,7 +283,7 @@ export class Room {
         this.changed = true;
       }
     } else {
-      this.carry += seconds * DAYS_PER_SECOND[this.clock.speed];
+      this.carry += seconds * GAME_DAYS_PER_SECOND;
       const days = Math.min(Math.floor(this.carry), MAX_DAYS_PER_STEP);
       this.carry = Math.min(this.carry - days, 5);
       for (let i = 0; i < days; i++) tick(this.state, this.opts.geo, i === 0 ? this.queue.splice(0) : []);

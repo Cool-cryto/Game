@@ -177,7 +177,7 @@ describe("rooms", () => {
 });
 
 describe("playing together", () => {
-  it("one player per country; you can only command your own country; only the host controls time", async () => {
+  it("one player per country; you can only command your own country; time runs by itself", async () => {
     const host = await newUser("hostb");
     const guest = await newUser("guestb");
     const h = await TestClient.signedIn(server.port, host.token);
@@ -209,15 +209,15 @@ describe("playing together", () => {
     g.send({ t: "cmd", command: { type: "setTaxRate", country: "DEU" as CountryId, value: 0.4 } });
     await h.next("patch", (m) => m.patch.countries["DEU"]?.taxRate === 0.4);
 
-    // Time: guests can't change it, the host can, and everyone's copy keeps up.
-    g.send({ t: "clock", paused: false });
-    expect((await g.next("error")).message).toMatch(/Only the host/);
-    h.send({ t: "clock", paused: false, speed: 5 });
-    await g.next("clock", (m) => !m.clock.paused && m.clock.speed === 5);
-    await g.next("patch", (m) => m.patch.tick > 60);
+    // Time: nobody can change it, not even the host; it runs by itself and everyone's copy keeps up.
+    g.send({ t: "clock", paused: true });
+    expect((await g.next("error")).message).toMatch(/always runs/);
     h.send({ t: "clock", paused: true });
-    await g.next("clock", (m) => m.clock.paused);
-    await new Promise((r) => setTimeout(r, 400));
+    expect((await h.next("error")).message).toMatch(/always runs/);
+    await g.next("patch", (m) => m.patch.tick > 60);
+    // Stop the room's clock from the test (players can't), so the copies can be compared.
+    server.rooms.get(room.id)!.clock.paused = true;
+    await new Promise((r) => setTimeout(r, 600));
     const real = server.rooms.get(room.id)!.state;
     expect(g.state!.tick).toBe(real.tick);
     // Numbers travel rounded to 5 significant digits; everything else is exact.
@@ -270,7 +270,6 @@ describe("playing together", () => {
     checkFog("BRA" as CountryId);
 
     // Still true while time runs and armies move about.
-    h.send({ t: "clock", paused: false, speed: 5 });
     for (let i = 0; i < 6; i++) await h.next("patch");
     checkFog("BRA" as CountryId);
     h.close();
@@ -359,10 +358,8 @@ describe("saving", () => {
       const { room } = await c.next("joined");
       c.send({ t: "claim", country: "JPN" as CountryId });
       await c.next("you");
-      c.send({ t: "clock", paused: false, speed: 5 });
       await c.next("patch", (m) => m.patch.tick > 30);
-      c.send({ t: "clock", paused: true });
-      await c.next("clock", (m) => m.clock.paused);
+      s.rooms.get(room.id)!.clock.paused = true; // (from the test: hold time still to compare after the restart)
       const tickBefore = s.rooms.get(room.id)!.state.tick;
       c.close();
       await s.close();
@@ -399,28 +396,25 @@ describe("load", () => {
     const biggest = Object.values(live.state.countries).filter((c) => c.active).sort((a, b) => b.population - a.population).slice(0, 50);
     clients.forEach((c, i) => c.send({ t: "claim", country: biggest[i]!.id }));
     await Promise.all(clients.map((c, i) => c.next("you", (m) => m.country === biggest[i]!.id)));
-    for (const speed of [2, 5] as const) {
-      await new Promise((r) => setTimeout(r, 300));
-      const wire0 = clients.map((c) => c.wireBytes);
-      const tick0 = live.state.tick;
-      clients[0]!.send({ t: "clock", paused: false, speed });
-      const started = Date.now();
-      let worstStep = 0;
-      const watch = setInterval(() => (worstStep = Math.max(worstStep, live.lastStepMs)), 20);
-      await new Promise((r) => setTimeout(r, 4000));
-      clearInterval(watch);
-      console.log(`LOAD speed ${speed}: slowest server step ${worstStep.toFixed(1)} ms`);
-      clients[0]!.send({ t: "clock", paused: true });
-      const seconds = (Date.now() - started) / 1000;
-      const perClient = clients.reduce((a, c, i) => a + c.wireBytes - wire0[i]!, 0) / clients.length / seconds;
-      console.log(`LOAD speed ${speed}: 50 players, ${Math.round((live.state.tick - tick0) / seconds)} game days/s, ~${(perClient / 1024).toFixed(1)} KB/s per player on the wire`);
-      // Speed 2 is the global world's pace; it must be light. Top speed is allowed to cost more.
-      expect(perClient / 1024).toBeLessThan(speed === 2 ? 20 : 150);
-    }
+    // Time runs by itself (21 days a second) as soon as players are in the room.
+    await new Promise((r) => setTimeout(r, 300));
+    const wire0 = clients.map((c) => c.wireBytes);
+    const tick0 = live.state.tick;
+    const started = Date.now();
+    let worstStep = 0;
+    const watch = setInterval(() => (worstStep = Math.max(worstStep, live.lastStepMs)), 20);
+    await new Promise((r) => setTimeout(r, 4000));
+    clearInterval(watch);
+    live.clock.paused = true; // (from the test, to check everyone has caught up)
+    const seconds = (Date.now() - started) / 1000;
+    const perClient = clients.reduce((a, c, i) => a + c.wireBytes - wire0[i]!, 0) / clients.length / seconds;
+    console.log(`LOAD: slowest server step ${worstStep.toFixed(1)} ms`);
+    console.log(`LOAD: 50 players, ${Math.round((live.state.tick - tick0) / seconds)} game days/s, ~${(perClient / 1024).toFixed(1)} KB/s per player on the wire`);
+    expect(perClient / 1024).toBeLessThan(150);
     // The 50 test players run in this same process as the server, so they need a moment to catch up.
     for (let i = 0; i < 50 && clients.some((c) => c.state?.tick !== live.state.tick); i++) await new Promise((r) => setTimeout(r, 100));
     const behind = clients.filter((c) => c.state?.tick !== live.state.tick).map((c) => c.state?.tick);
-    console.log("LOAD after pause: server tick", live.state.tick, "clients behind:", behind.length, behind.slice(0, 5));
+    console.log("LOAD after stopping: server tick", live.state.tick, "clients behind:", behind.length, behind.slice(0, 5));
     expect(behind).toEqual([]);
     for (const c of clients) c.close();
   }, 60_000);

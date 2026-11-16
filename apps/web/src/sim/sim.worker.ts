@@ -1,10 +1,10 @@
 /// <reference lib="webworker" />
 // Runs the game simulation in the background so the map and menus never stutter.
-// The page sends commands and speed changes; this worker sends back the game state
+// The page sends commands (time always runs at the same pace once you lead a country); this worker sends back the game state
 // a few times a second (and right away while paused, so changes show instantly).
-import { applyCommand, tick, type Command, type GameState } from "@gs/sim";
+import { applyCommand, GAME_DAYS_PER_SECOND, tick, type Command, type GameState } from "@gs/sim";
 import { GEOGRAPHY } from "../data/countries";
-import { DAYS_PER_SECOND, type SimRequest, type SimResponse, type Speed } from "./protocol";
+import type { SimRequest, SimResponse } from "./protocol";
 
 const STEP_MS = 50;
 const POST_EVERY_MS = 200;
@@ -12,7 +12,6 @@ const POST_EVERY_MS = 200;
 const MAX_DAYS_PER_STEP = 20;
 
 let state: GameState | null = null;
-let speed: Speed = 1;
 let paused = true;
 let queue: Command[] = [];
 let carry = 0;
@@ -31,7 +30,6 @@ self.onmessage = (e: MessageEvent<SimRequest>) => {
     carry = 0;
     dirty = true;
   } else if (msg.type === "command") queue.push(msg.command);
-  else if (msg.type === "setSpeed") speed = msg.speed;
   else if (msg.type === "setPaused") {
     paused = msg.paused;
     carry = 0;
@@ -53,7 +51,7 @@ setInterval(() => {
       dirty = true;
     }
   } else {
-    carry += seconds * DAYS_PER_SECOND[speed];
+    carry += seconds * GAME_DAYS_PER_SECOND;
     const days = Math.min(Math.floor(carry), MAX_DAYS_PER_STEP);
     carry = Math.min(carry - days, 5); // drop backlog rather than racing to catch up
     for (let i = 0; i < days; i++) {

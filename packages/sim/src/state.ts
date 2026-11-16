@@ -68,6 +68,8 @@ export interface CountryState {
   defenseFund: number;
   /** Seat of government: the most populous province owned. Null once a country has no provinces. */
   capital: ProvinceId | null;
+  /** An enemy holds this country's capital: who, and since which day. Held for CAPITAL_HOLD_DAYS, the country falls. */
+  capitalLost?: { by: CountryId; since: number };
   /** Kind of government, ruling bloc, party support, laws and elections (see government.ts). */
   government: Government;
   history: { gdp: number[]; population: number[] };
@@ -86,7 +88,7 @@ export interface Unit {
   /** Provinces still to travel through; path[0] is the next stop. Empty when not moving. */
   path: ProvinceId[];
   /** How the unit is travelling to path[0], and how many days are left. */
-  travel: { mode: "land" | "sea" | "air"; daysLeft: number } | null;
+  travel: { mode: "land" | "sea" | "air"; daysLeft: number; total?: number } | null;
   /** Set while falling back from a lost battle; retreating units don't fight. */
   retreating: boolean;
 }

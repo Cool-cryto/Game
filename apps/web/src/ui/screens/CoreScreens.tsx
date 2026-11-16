@@ -408,7 +408,6 @@ export function MilitaryScreen() {
           tabs={[
             { id: "overview", label: "Overview" },
             { id: "forces", label: "Forces", hint: "Where your units are and what they're doing" },
-            { id: "recruit", label: "Recruit" },
             { id: "budget", label: "Military budget" },
             { id: "equipment", label: "Equipment" },
           ]}
@@ -418,8 +417,6 @@ export function MilitaryScreen() {
               <MilitaryOverview c={c} />
             ) : tab === "forces" ? (
               <Forces c={c} />
-            ) : tab === "recruit" ? (
-              <Recruit c={c} />
             ) : tab === "budget" ? (
               <MilitaryBudget c={c} />
             ) : (
@@ -443,6 +440,8 @@ function MilitaryOverview({ c }: { c: CountryState }) {
   const upkeep = units.reduce((a, u) => a + upkeepPerYear(c, u.type), 0);
   const strength = units.length ? units.reduce((a, u) => a + u.strength, 0) / units.length : 0;
   return (
+    <>
+    <Recruit c={c} />
     <div className="grid">
       <Card title="Forces">
         <Rows
@@ -466,6 +465,7 @@ function MilitaryOverview({ c }: { c: CountryState }) {
         {upkeep > c.budget.defense * c.gdp && <p className="screen__note neg">Upkeep is higher than defense spending: the fund will run down, then units lose strength.</p>}
       </Card>
     </div>
+    </>
   );
 }
 
@@ -475,7 +475,7 @@ function Forces({ c }: { c: CountryState }) {
   const units = useMyUnits(c.id);
   const stacks = new Map<ProvinceId, typeof units>();
   for (const u of units) stacks.set(u.province, [...(stacks.get(u.province) ?? []), u]);
-  if (!units.length) return <p className="screen__note">No units. Recruit some in the Recruit tab.</p>;
+  if (!units.length) return <p className="screen__note">No units. Recruit some on the Overview tab.</p>;
   return (
     <table className="table" data-testid="forces-table">
       <thead>
@@ -509,7 +509,7 @@ function Recruit({ c }: { c: CountryState }) {
   const send = useGame((x) => x.send);
   return (
     <div className="grid">
-      <Card title="Recruit new units" hint="Armies and air forces are raised at your capital; fleets at your largest port." wide>
+      <Card title="Recruit (one click)" hint="Armies and air forces are raised at your capital; fleets at your largest port." wide>
         <div className="choices choices--3">
           {TYPES.map((t) => {
             const at = recruitProvince(s, c.id, t.type);

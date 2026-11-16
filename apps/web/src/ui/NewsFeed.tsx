@@ -69,7 +69,7 @@ export function NewsFeed() {
         </div>
         {open && (
           <ul className="news__list" data-testid="news-list">
-            {shown.length === 0 && <li className="news__empty">{filter === "mine" && !me ? "Pick a country to see your news." : "Nothing yet. Start time to see the world move."}</li>}
+            {shown.length === 0 && <li className="news__empty">{filter === "mine" && !me ? "Pick a country to see your news." : "Nothing yet. News appears here as time runs."}</li>}
             {shown.map((e, i) => (
               <li key={`${e.tick}-${i}`} className={`news__item news__item--${e.kind}`}>
                 <span className="news__icon" aria-hidden>

@@ -74,7 +74,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   busy: false,
   open: async (baseId = "modern") => {
     if (get().active) return;
-    useGame.getState().setPaused(true);
+    useGame.getState().hold("editor", true);
     previous = useGame.getState().state;
     setPreviewMode(true);
     // Busy until the starting world has loaded, so nothing done meanwhile gets wiped.
@@ -86,6 +86,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ active: false, picking: false });
     if (previous) useGame.getState().replace(previous);
     previous = null;
+    useGame.getState().hold("editor", false);
   },
   setBase: async (baseId) => {
     set({ busy: true });

@@ -398,7 +398,7 @@ export function Guide() {
           <strong>Diplomacy:</strong> make friends and allies, or declare war and press Attack.
         </li>
         <li>
-          <strong>Play:</strong> press Play in the bar at the top to let time run. Watch your world rank climb!
+          <strong>Time</strong> runs by itself, 21 days every second, from the moment you lead a country. Watch your world rank climb!
         </li>
       </ol>
       <button className="btn btn--primary" onClick={finish}>

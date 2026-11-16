@@ -32,6 +32,8 @@ export interface Patch {
   events: GameEvent[];
   /** Changed fields of countries (never their history arrays). Numbers are rounded to 5 significant digits. */
   countries: Record<string, Partial<Omit<CountryState, "history">>>;
+  /** Country fields that no longer exist (e.g. a warning that ended), per country. */
+  removed?: Record<string, string[]>;
   /** New monthly history values to append: [gdp, population]. */
   history: Record<string, [number, number]>;
   /** Provinces that changed noticeably. */
@@ -142,8 +144,10 @@ export class StateDiffer {
       const last = this.countries.get(c.id) ?? {};
       const changed: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(fields)) if (last[k] !== v) changed[k] = JSON.parse(v);
-      if (Object.keys(changed).length) {
-        patch.countries[c.id] = changed as Partial<CountryState>;
+      const gone = Object.keys(last).filter((k) => !(k in fields));
+      if (gone.length) (patch.removed ??= {})[c.id] = gone;
+      if (Object.keys(changed).length || gone.length) {
+        if (Object.keys(changed).length) patch.countries[c.id] = changed as Partial<CountryState>;
         this.countries.set(c.id, fields);
       }
       const hk = historyKey(c);
@@ -240,13 +244,13 @@ export function applyPatch(s: GameState, p: Patch, maxEvents = 300, historyMonth
     next.organizations = [...kept, ...updated].sort((a, b) => (order.get(a.id) ?? 1e9) - (order.get(b.id) ?? 1e9));
   }
   if (p.proposals) next.proposals = p.proposals;
-  const changedCountries = new Set([...Object.keys(p.countries), ...Object.keys(p.history)]);
+  const changedCountries = new Set([...Object.keys(p.countries), ...Object.keys(p.history), ...Object.keys(p.removed ?? {})]);
   if (changedCountries.size) {
     next.countries = { ...s.countries };
     for (const id of changedCountries) {
       const old = s.countries[id as CountryId];
       const base = { ...old, ...p.countries[id] } as CountryState;
-      if (!base) continue;
+      for (const k of p.removed?.[id] ?? []) delete (base as unknown as Record<string, unknown>)[k];
       let history = old?.history ?? { gdp: [], population: [] };
       const h = p.history[id];
       if (h) history = { gdp: [...history.gdp, h[0]].slice(-historyMonths), population: [...history.population, h[1]].slice(-historyMonths) };

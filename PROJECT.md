@@ -150,7 +150,20 @@ Built: scenario system; **End of the Cold War (1991)** with the Soviet Union, Yu
 browser, export/import, play, host online); server support for scenarios and custom worlds; borders computed from the
 live map.
 
-### Stage 15 — Faster war ✅ (current)
+### Stage 16 — Steady clock, gliding units, slim interface ✅ (current)
+Built: time always runs at 21 game days per real second once you lead a country (single player and every online room,
+while anyone is connected); no play, pause or speed buttons. Unit speeds are set so movement looks right at that pace
+(land 10 km/day before roads, railways and technology; sea 50; air 100), and units glide smoothly along their route
+instead of jumping from province to province. Armies, fleets and air wings have their own marker shapes (box, ship's
+hull with an anchor, circle with a plane). A captured capital must be held for 210 days (about 10 seconds) before the
+country falls; the defender gets a warning and computer countries send their armies to retake it. Recruiting is
+easier: half the price (upkeep unchanged), every country starts with three months of defense money, new units start
+at 75% strength, and one-click recruit buttons sit on the Military overview. Province borders are no longer drawn and
+clicking the map always picks a country (province names still show up close and in the tooltip). One slim top bar
+(section icons, your country and the date, tools), narrower panels and news. Unit limits are now enforced daily.
+In 20-year runs 0–1 countries are conquered, with 2–6 wars; the 50-player load test is ~21 KB/s per player.
+
+### Stage 15 — Faster war ✅
 Built: an army that walks into an undefended enemy province without fortifications takes it at once (no siege);
 fortifications still mean a short siege (about 4 days per level). When a country at war loses its capital, the whole
 country falls: the enemy that took the capital annexes it (provinces another enemy holds go to that enemy). Armies,

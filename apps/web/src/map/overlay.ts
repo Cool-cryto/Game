@@ -3,7 +3,7 @@
 // `project` function that turns a province into a screen position (or null when
 // it isn't visible, e.g. on the far side of the globe).
 import type { CountryId, ProvinceId } from "@gs/shared";
-import { atWar, planMove, UNIT_STATS, type GameState, type Unit } from "@gs/sim";
+import { atWar, GAME_DAYS_PER_SECOND, planMove, UNIT_STATS, type GameState, type Unit, type UnitType } from "@gs/sim";
 import { COUNTRIES, GEOGRAPHY, getCountry } from "../data/countries";
 import { useUi, type Selection } from "../state/uiStore";
 import { MAP_MODES } from "./mapModes";
@@ -38,11 +38,15 @@ export function stripes(ctx: CanvasRenderingContext2D, color: string, k = 1, siz
 }
 
 export interface Stack {
+  /** Where the units are (for moving units: the province they left). */
   province: ProvinceId;
   owner: CountryId;
+  type: UnitType;
   units: Unit[];
+  /** Screen position of the province (or of the moving units, between provinces). */
   x: number;
   y: number;
+  moving: boolean;
 }
 export interface Marker {
   x0: number;
@@ -63,32 +67,80 @@ interface UnitsOverlayOptions {
   me: CountryId | undefined;
   selected: Selection;
   moveOrder: { units: number[] } | null;
+  /** Is time running? Moving units glide on between updates only while it is. */
+  running: boolean;
 }
 
-/** Draw unit stacks, routes and battles in screen space. Returns marker boxes for clicking. */
-export function drawUnitsOverlay(ctx: CanvasRenderingContext2D, o: UnitsOverlayOptions): Marker[] {
-  const { project, w, h, zoom, game, me, selected, moveOrder } = o;
-  const markers: Marker[] = [];
+// ---------- Smooth movement ----------
+//
+// The game moves units a day at a time (21 days a second) and the page hears about it a few times a second.
+// To glide instead of jump, each moving unit keeps the progress it was last drawn at along its current leg,
+// and creeps forward at the game's pace between updates (never more than a moment ahead of the real game).
+const shown = new Map<number, { leg: string; progress: number; at: number }>();
 
-  // Group into stacks: one marker per country per province.
+/** How far along its current leg (0 = just left, 1 = arrived) a moving unit should be drawn. */
+function legProgress(u: Unit, running: boolean, now: number): number {
+  const t = u.travel!;
+  const total = Math.max(1, t.total ?? t.daysLeft);
+  const actual = Math.max(0, Math.min(1, 1 - t.daysLeft / total));
+  const leg = `${u.province}>${u.path[0]}`;
+  const last = shown.get(u.id);
+  if (!last || last.leg !== leg) {
+    shown.set(u.id, { leg, progress: actual, at: now });
+    return actual;
+  }
+  const dt = Math.min(0.25, (now - last.at) / 1000);
+  // Creep forward at the game's pace, but stay within half a second of the real position, and catch up if behind.
+  const ahead = running ? last.progress + (dt * GAME_DAYS_PER_SECOND) / total : last.progress;
+  const lead = (0.5 * GAME_DAYS_PER_SECOND) / total;
+  let progress = Math.min(Math.max(ahead, actual), actual + lead, 1);
+  if (progress < actual) progress = actual;
+  last.progress = progress;
+  last.at = now;
+  return progress;
+}
+
+/** Draw unit stacks, routes and battles in screen space. Returns marker boxes for clicking, and whether anything is moving. */
+export function drawUnitsOverlay(ctx: CanvasRenderingContext2D, o: UnitsOverlayOptions): { markers: Marker[]; animating: boolean } {
+  const { project, w, h, zoom, game, me, selected, moveOrder, running } = o;
+  const markers: Marker[] = [];
+  const now = performance.now();
+  let animating = false;
+
+  // Group into stacks: one marker per country per kind of unit per place. Units on the move are drawn
+  // between the two provinces of their current leg, grouped with others making the same move.
   const stacks = new Map<string, Stack>();
+  const alive = new Set<number>();
   for (const u of Object.values(game.units)) {
-    const k = `${u.province}|${u.owner}`;
-    let st = stacks.get(k);
-    if (!st) {
-      const pos = project(u.province);
-      if (!pos) continue;
-      stacks.set(k, (st = { province: u.province, owner: u.owner, units: [], x: pos[0], y: pos[1] }));
+    alive.add(u.id);
+    const from = project(u.province);
+    if (!from) continue;
+    let x = from[0];
+    let y = from[1];
+    let key = `${u.province}|${u.owner}|${u.type}`;
+    const moving = !!u.travel && u.path.length > 0;
+    if (moving) {
+      const to = project(u.path[0]!);
+      if (to) {
+        const f = legProgress(u, running, now);
+        x += (to[0] - from[0]) * f;
+        y += (to[1] - from[1]) * f;
+        animating = animating || running;
+        key = `${u.province}>${u.path[0]}|${u.owner}|${u.type}|${Math.round(f * 10)}`;
+      }
     }
+    let st = stacks.get(key);
+    if (!st) stacks.set(key, (st = { province: u.province, owner: u.owner, type: u.type, units: [], x, y, moving }));
     st.units.push(u);
   }
+  for (const id of shown.keys()) if (!alive.has(id)) shown.delete(id);
 
   // Routes of the player's moving units (the selected stack's more strongly), with an arrow and a ring
   // where they're going. One line per destination, not per unit.
-  const selectedStack = selected?.kind === "units" ? `${selected.province}|${selected.owner}` : null;
+  const selectedPlace = selected?.kind === "units" ? `${selected.province}|${selected.owner}` : null;
   for (const st of stacks.values()) {
-    if (st.owner !== me) continue;
-    const emphasised = `${st.province}|${st.owner}` === selectedStack;
+    if (st.owner !== me || !st.moving) continue;
+    const emphasised = `${st.province}|${st.owner}` === selectedPlace || (moveOrder?.units.some((id) => st.units.some((u) => u.id === id)) ?? false);
     const drawn = new Set<string>();
     for (const u of st.units) {
       if (!u.path.length) continue;
@@ -131,33 +183,42 @@ export function drawUnitsOverlay(ctx: CanvasRenderingContext2D, o: UnitsOverlayO
     }
   }
 
-  const byProvince = new Map<ProvinceId, Stack[]>();
+  // Markers side by side where several share a spot. Zoomed out, only your own units and battles show.
+  const bySpot = new Map<string, Stack[]>();
   for (const st of stacks.values()) {
-    if (!byProvince.has(st.province)) byProvince.set(st.province, []);
-    byProvince.get(st.province)!.push(st);
+    const k = st.moving ? `${Math.round(st.x / 30)}:${Math.round(st.y / 30)}` : st.province;
+    if (!bySpot.has(k)) bySpot.set(k, []);
+    bySpot.get(k)!.push(st);
   }
-
-  // Zoomed out, show only your own units and battles, to keep the map readable.
-  for (const [province, list] of byProvince) {
-    const battle = list.some((a) => list.some((b) => a !== b && atWar(game, a.owner, b.owner)));
+  for (const list of bySpot.values()) {
+    const battle = list.some((a) => !a.moving && list.some((b) => a !== b && !b.moving && atWar(game, a.owner, b.owner)));
     const show = zoom >= 2.5 || battle || list.some((st) => st.owner === me) || moveOrder != null;
     if (!show) continue;
+    list.sort((a, b) => TYPE_ORDER[a.type] - TYPE_ORDER[b.type]);
     list.forEach((st, i) => {
       const x = st.x + (i - (list.length - 1) / 2) * 42;
       const y = st.y - 22;
       if (x < -40 || y < -40 || x > w + 40 || y > h + 40) return;
-      drawMarker(ctx, game, st, x, y, st.owner === me, `${province}|${st.owner}` === selectedStack);
-      markers.push({ x0: x - 20, y0: y - 14, x1: x + 20, y1: y + 18, stack: st });
+      const isSelected = `${st.province}|${st.owner}` === selectedPlace && (!moveOrder || st.units.some((u) => moveOrder.units.includes(u.id)));
+      drawMarker(ctx, game, st, x, y, st.owner === me, isSelected);
+      markers.push({ x0: x - 20, y0: y - 16, x1: x + 20, y1: y + 18, stack: st });
     });
-    if (battle) drawBattle(ctx, list[0]!.x, list[0]!.y - 50);
+    if (battle) drawBattle(ctx, list[0]!.x, list[0]!.y - 52);
   }
-  return markers;
+  return { markers, animating };
 }
 
-/** Unit markers are drawn at this size (1 = the old 26×18 box). */
+const TYPE_ORDER: Record<UnitType, number> = { army: 0, air: 1, navy: 2 };
+
+/** Unit markers are drawn at this size (1 = a 26×18 box). */
 const S = 1.4;
 
+/**
+ * Each kind of unit has its own shape, so they're easy to tell apart at a glance:
+ * armies a box with crossed lines, fleets a ship's hull, air wings a circle with a plane.
+ */
 function drawMarker(ctx: CanvasRenderingContext2D, game: GameState, st: Stack, x0: number, y0: number, mine: boolean, isSelected: boolean) {
+  const strength = st.units.reduce((a, u) => a + u.strength, 0) / st.units.length;
   ctx.save();
   ctx.translate(x0, y0);
   ctx.scale(S, S);
@@ -166,14 +227,17 @@ function drawMarker(ctx: CanvasRenderingContext2D, game: GameState, st: Stack, x
     ctx.shadowColor = isSelected ? "rgba(255, 214, 120, 0.9)" : "rgba(255, 255, 255, 0.55)";
     ctx.shadowBlur = isSelected ? 10 : 6;
   }
-  const x = 0;
-  const y = 0;
-  const counts = { army: 0, navy: 0, air: 0 };
-  for (const u of st.units) counts[u.type]++;
-  const main = (["army", "navy", "air"] as const).reduce((a, b) => (counts[b] > counts[a] ? b : a));
-  const strength = st.units.reduce((a, u) => a + u.strength, 0) / st.units.length;
   ctx.beginPath();
-  ctx.roundRect(x - 13, y - 9, 26, 18, 3);
+  if (st.type === "army") ctx.roundRect(-13, -9, 26, 18, 3);
+  else if (st.type === "navy") {
+    // A hull: flat deck, pointed bow.
+    ctx.moveTo(-13, -8);
+    ctx.lineTo(9, -8);
+    ctx.lineTo(14, 0);
+    ctx.lineTo(9, 9);
+    ctx.lineTo(-13, 9);
+    ctx.closePath();
+  } else ctx.arc(0, 0, 11, 0, Math.PI * 2);
   ctx.fillStyle = politicalColor(st.owner, game);
   ctx.fill();
   ctx.shadowBlur = 0;
@@ -181,36 +245,66 @@ function drawMarker(ctx: CanvasRenderingContext2D, game: GameState, st: Stack, x
   ctx.lineWidth = isSelected ? 2.5 : 1.5;
   ctx.strokeStyle = isSelected ? "#ffd678" : mine ? "#ffffff" : "rgba(5, 10, 16, 0.9)";
   ctx.stroke();
-  // Unit symbol, in the style of military map symbols.
   ctx.strokeStyle = "rgba(255,255,255,0.95)";
-  ctx.lineWidth = 1.3;
+  ctx.fillStyle = "rgba(255,255,255,0.95)";
+  ctx.lineWidth = 1.4;
   ctx.beginPath();
-  if (main === "army") {
-    ctx.moveTo(x - 9, y - 5);
-    ctx.lineTo(x + 3, y + 5);
-    ctx.moveTo(x - 9, y + 5);
-    ctx.lineTo(x + 3, y - 5);
-  } else if (main === "navy") {
-    ctx.moveTo(x - 9, y + 1);
-    ctx.quadraticCurveTo(x - 3, y + 7, x + 3, y + 1);
-    ctx.moveTo(x - 3, y - 5);
-    ctx.lineTo(x - 3, y + 4);
+  if (st.type === "army") {
+    ctx.moveTo(-9, -5);
+    ctx.lineTo(3, 5);
+    ctx.moveTo(-9, 5);
+    ctx.lineTo(3, -5);
+    ctx.stroke();
+  } else if (st.type === "navy") {
+    // An anchor.
+    ctx.moveTo(-4, -5);
+    ctx.lineTo(-4, 5);
+    ctx.moveTo(-8, 1);
+    ctx.quadraticCurveTo(-4, 7, 0, 1);
+    ctx.moveTo(-6.5, -3);
+    ctx.lineTo(-1.5, -3);
+    ctx.stroke();
   } else {
-    ctx.moveTo(x - 9, y + 3);
-    ctx.lineTo(x - 3, y - 4);
-    ctx.lineTo(x + 3, y + 3);
+    // A plane seen from above.
+    ctx.moveTo(-1, -8);
+    ctx.lineTo(1, -8);
+    ctx.lineTo(1.5, -2);
+    ctx.lineTo(8, 1);
+    ctx.lineTo(8, 3);
+    ctx.lineTo(1.5, 1.5);
+    ctx.lineTo(1, 6);
+    ctx.lineTo(3.5, 8);
+    ctx.lineTo(-3.5, 8);
+    ctx.lineTo(-1, 6);
+    ctx.lineTo(-1.5, 1.5);
+    ctx.lineTo(-8, 3);
+    ctx.lineTo(-8, 1);
+    ctx.lineTo(-1.5, -2);
+    ctx.closePath();
+    ctx.fill();
   }
-  ctx.stroke();
-  ctx.font = "700 10px Inter, system-ui, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillStyle = "#fff";
-  ctx.fillText(String(st.units.length), x + 8.5, y + 0.5);
+  // How many: a small badge in the corner.
+  if (st.units.length > 1 || st.type === "army") {
+    ctx.font = "700 9px Inter, system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#fff";
+    const bx = st.type === "army" ? 8.5 : 9;
+    const by = st.type === "army" ? 0.5 : -8;
+    if (st.type !== "army") {
+      ctx.beginPath();
+      ctx.arc(bx, by, 5, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(5,10,16,0.9)";
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+    }
+    ctx.fillText(String(st.units.length), bx, by + 0.5);
+  }
   // Strength bar.
   ctx.fillStyle = "rgba(5,10,16,0.85)";
-  ctx.fillRect(x - 13, y + 10, 26, 3);
+  ctx.fillRect(-13, 12, 26, 3);
   ctx.fillStyle = strength > 60 ? "#7fd39a" : strength > 30 ? "#e8c25a" : "#f08a7a";
-  ctx.fillRect(x - 13, y + 10, (26 * strength) / 100, 3);
+  ctx.fillRect(-13, 12, (26 * strength) / 100, 3);
   ctx.restore();
 }
 
