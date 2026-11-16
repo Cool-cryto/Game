@@ -45,6 +45,12 @@ export class Db {
         country TEXT,
         PRIMARY KEY (room_id, user_id)
       );
+      CREATE TABLE IF NOT EXISTS checkouts (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        provider TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS payments (
         checkout_id TEXT PRIMARY KEY,
         user_id INTEGER NOT NULL REFERENCES users(id),
@@ -75,6 +81,21 @@ export class Db {
   addPayment(checkoutId: string, userId: number, amountCents: number): boolean {
     const r = this.db.prepare("INSERT OR IGNORE INTO payments (checkout_id, user_id, amount_cents, created_at) VALUES (?, ?, ?, ?)").run(checkoutId, userId, amountCents, Date.now());
     return Number(r.changes) > 0;
+  }
+  /** A checkout we started (e.g. a Square order), so a payment can be matched to its player. */
+  addCheckout(id: string, userId: number, provider: string) {
+    this.db.prepare("INSERT OR IGNORE INTO checkouts (id, user_id, provider, created_at) VALUES (?, ?, ?, ?)").run(id, userId, provider, Date.now());
+  }
+  checkoutUser(id: string, provider: string): number | null {
+    const r = this.db.prepare("SELECT user_id FROM checkouts WHERE id = ? AND provider = ?").get(id, provider) as { user_id: number } | undefined;
+    return r?.user_id ?? null;
+  }
+  /** A player's most recent checkouts (newest first). */
+  checkoutsOf(userId: number, provider: string, limit = 20): string[] {
+    return this.db
+      .prepare("SELECT id FROM checkouts WHERE user_id = ? AND provider = ? ORDER BY created_at DESC LIMIT ?")
+      .all(userId, provider, limit)
+      .map((r) => (r as { id: string }).id);
   }
   userById(id: number) {
     return this.db.prepare("SELECT id, username FROM users WHERE id = ?").get(id) as { id: number; username: string } | undefined;

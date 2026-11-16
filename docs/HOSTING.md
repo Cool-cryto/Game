@@ -61,7 +61,29 @@ without access it won't send the map files or allow online play.
 | `STRIPE_WEBHOOK_SECRET` | `whsec_…` (optional) | Stripe also tells the server directly about payments, in case a player closes the page before returning. |
 | `PUBLIC_URL` | e.g. `https://game-production-f031a71a.up.railway.app` (optional) | Where Stripe sends players back after paying. Worked out automatically if not set. |
 
-### Setting up Stripe
+### Setting up Square (used for this game)
+
+| Variable | Value |
+|---|---|
+| `SQUARE_ACCESS_TOKEN` | The app's access token (Sandbox to test, Production to take real money). Secret. |
+| `SQUARE_LOCATION_ID` | The location that receives the money (Sandbox and Production have different ones). |
+| `SQUARE_ENVIRONMENT` | `sandbox` (default) or `production`. |
+| `SQUARE_WEBHOOK_SIGNATURE_KEY` | Optional: the webhook subscription's signature key. |
+| `SQUARE_WEBHOOK_URL` | Optional: exactly the URL the webhook posts to, e.g. `https://<your address>/api/square/webhook`. |
+
+1. Sign in at developer.squareup.com with your Square account and **create an application** (any name).
+2. Open it, switch to **Sandbox**, and copy the **Sandbox access token** (Credentials) and a **Sandbox location ID**
+   (Locations). Put them in `SQUARE_ACCESS_TOKEN` and `SQUARE_LOCATION_ID` with `SQUARE_ENVIRONMENT=sandbox`.
+3. Buy the game on your site: Square's sandbox checkout accepts its test card `4111 1111 1111 1111`, any future date,
+   any CVV and any postal code. Nothing is charged.
+4. Optional webhook: Webhooks → Subscriptions → Add, URL `https://<your address>/api/square/webhook`, event
+   `payment.updated`; copy its signature key into `SQUARE_WEBHOOK_SIGNATURE_KEY` and the URL into `SQUARE_WEBHOOK_URL`.
+5. To take real money, switch to **Production** in the developer dashboard, and replace the token and location ID
+   with the production ones and `SQUARE_ENVIRONMENT=production`.
+
+When Square is set up it's used instead of Stripe. Square takes its usual fee per sale; there's no monthly cost.
+
+### Setting up Stripe (alternative)
 
 1. Create an account at stripe.com (Stripe takes a small fee per payment; there's no monthly cost).
 2. Try it first in **test mode**: Developers → API keys → copy the **secret key** (`sk_test_…`) into `STRIPE_SECRET_KEY`.

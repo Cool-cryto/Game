@@ -7,7 +7,8 @@ import { WebSocketServer, type WebSocket } from "ws";
 import type { CountryId, Scenario } from "@gs/shared";
 import { applyCustomWorld, createGameState, deserialize, GLOBAL_ROOM_ID, validateCustomWorld, type ClientMessage, type Geography, type ServerMessage } from "@gs/sim";
 import { login, logout, register, userForToken } from "./auth";
-import { accessKind, completeCheckout, confirmCheckout, createCheckout, hasAccess, isAdmin, verifyStripeSignature, type PaywallConfig } from "./paywall";
+import { accessKind, completeCheckout, confirmCheckout, createCheckout, hasAccess, isAdmin, paymentProvider, verifyStripeSignature, type PaywallConfig } from "./paywall";
+import { confirmSquare, createSquareCheckout, handleSquareEvent, verifySquareSignature } from "./square";
 import type { Db } from "./db";
 import { Room, type Conn } from "./room";
 
@@ -151,7 +152,7 @@ export function startServer(cfg: ServerConfig) {
     // ----- Paywall -----
     const pw = cfg.paywall ?? null;
     if (req.method === "GET" && url.pathname === "/api/config") {
-      return json(res, 200, { paywall: !!pw, priceCents: pw?.priceCents ?? 0, currency: pw?.currency ?? "usd", canBuy: !!pw?.stripeSecretKey });
+      return json(res, 200, { paywall: !!pw, priceCents: pw?.priceCents ?? 0, currency: pw?.currency ?? "usd", canBuy: !!paymentProvider(pw), provider: paymentProvider(pw) });
     }
     if (req.method === "GET" && url.pathname === "/api/me") {
       const user = userForToken(cfg.db, bearer(req));
@@ -162,13 +163,15 @@ export function startServer(cfg: ServerConfig) {
     if (req.method === "POST" && url.pathname === "/api/checkout") {
       const user = userForToken(cfg.db, bearer(req));
       if (!user) return json(res, 401, { error: "Please sign in first." });
-      if (!pw?.stripeSecretKey) return json(res, 400, { error: "Purchases aren't open yet." });
+      const provider = paymentProvider(pw);
+      if (!pw || !provider) return json(res, 400, { error: "Purchases aren't open yet." });
       if (hasAccess(pw, cfg.db, user)) return json(res, 400, { error: "You already have the full game." });
       if (tooManyAttempts(clientAddress(req, cfg.trustProxy ?? false))) return json(res, 429, { error: "Too many attempts. Try again in a few minutes." });
       try {
-        return json(res, 200, { url: await createCheckout(pw, user, publicBase(req)) });
+        const url = provider === "square" ? await createSquareCheckout(pw, cfg.db, user, publicBase(req)) : await createCheckout(pw, user, publicBase(req));
+        return json(res, 200, { url });
       } catch (e) {
-        log(`Stripe checkout failed: ${e instanceof Error ? e.message : String(e)}`);
+        log(`${provider} checkout failed: ${e instanceof Error ? e.message : String(e)}`);
         return json(res, 502, { error: "The payment page couldn't be opened. Try again in a moment." });
       }
     }
@@ -176,11 +179,13 @@ export function startServer(cfg: ServerConfig) {
       const user = userForToken(cfg.db, bearer(req));
       const body = await readJson(req);
       if (!user) return json(res, 401, { error: "Please sign in first." });
-      if (!pw?.stripeSecretKey || typeof body?.id !== "string") return json(res, 400, { error: "Bad request." });
+      const provider = paymentProvider(pw);
+      if (!pw || !provider || typeof body?.id !== "string") return json(res, 400, { error: "Bad request." });
       try {
-        await confirmCheckout(pw, cfg.db, user.id, body.id);
+        if (provider === "square") await confirmSquare(pw, cfg.db, user.id);
+        else await confirmCheckout(pw, cfg.db, user.id, body.id);
       } catch (e) {
-        log(`Stripe confirm failed: ${e instanceof Error ? e.message : String(e)}`);
+        log(`${provider} confirm failed: ${e instanceof Error ? e.message : String(e)}`);
       }
       return json(res, 200, accessInfo(user));
     }
@@ -193,6 +198,22 @@ export function startServer(cfg: ServerConfig) {
       if ((event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") && event.data?.object) {
         const unlocked = completeCheckout(pw, cfg.db, event.data.object);
         if (unlocked !== null) log(`Game unlocked by payment for user ${unlocked}`);
+      }
+      return json(res, 200, { received: true });
+    }
+    if (req.method === "POST" && url.pathname === "/api/square/webhook") {
+      const sq = pw?.square;
+      if (!pw || !sq?.webhookSignatureKey) return json(res, 404, { error: "Not found" });
+      const raw = await readRaw(req, 256 * 1024);
+      const sig = req.headers["x-square-hmacsha256-signature"];
+      const notifyUrl = sq.webhookUrl ?? `${publicBase(req)}/api/square/webhook`;
+      if (raw === null || !verifySquareSignature(raw, Array.isArray(sig) ? sig[0] : sig, sq.webhookSignatureKey, notifyUrl)) return json(res, 400, { error: "Bad signature" });
+      try {
+        const unlocked = await handleSquareEvent(pw, cfg.db, JSON.parse(raw) as Record<string, unknown>);
+        if (unlocked !== null) log(`Game unlocked by Square payment for user ${unlocked}`);
+      } catch (e) {
+        log(`Square webhook failed: ${e instanceof Error ? e.message : String(e)}`);
+        return json(res, 500, { error: "Try again" }); // Square retries
       }
       return json(res, 200, { received: true });
     }

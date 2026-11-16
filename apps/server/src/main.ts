@@ -4,7 +4,8 @@
 //   GRACE_MS    ms before the AI takes over a disconnected player's country (default 30000)
 //   WEB_DIST    built web client to serve (default apps/web/dist, if it exists)
 //   PAYWALL     set to 1 to require buying the game (or a free pass); also ADMIN_USERS, STRIPE_SECRET_KEY,
-//               STRIPE_WEBHOOK_SECRET, PRICE_CENTS (default 500), PUBLIC_URL. See docs/HOSTING.md.
+//               STRIPE_WEBHOOK_SECRET, PRICE_CENTS (default 500), PUBLIC_URL; for Square: SQUARE_ACCESS_TOKEN,
+//               SQUARE_LOCATION_ID, SQUARE_ENVIRONMENT, SQUARE_WEBHOOK_SIGNATURE_KEY, SQUARE_WEBHOOK_URL. See docs/HOSTING.md.
 //   TRUST_PROXY set to 1 when running behind a hosting provider's proxy (see ServerConfig.trustProxy)
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
