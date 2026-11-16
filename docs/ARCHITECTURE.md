@@ -296,3 +296,13 @@ Serverless platforms are not a good fit, because players keep a connection open.
   to hidden and on `pagehide` (the connection is kept open so that last save starts synchronously); restores on
   startup unless a country is already being played. `GameMenu` clears it for a new game.
 - `apps/web/src/ui/StartScreen.tsx`: country selection (`useStartScreen` opens it; first-time players see it at once).
+
+### Economy (Stage 19)
+
+- `systems.ts`: `economy()` writes `CountryState.ledger` each month; `RESOURCE_PRICE`, `TRADE_STATE_SHARE` (0.3) and
+  `TRADE_INCOME_CAP` (2% of GDP a year) give `tradeIncome`. Construction is paid when ordered (`monthConstruction`
+  collects it for the ledger).
+- `state.ts`: `BUDGET_RESERVE` (5% of taxes) is kept back by `defaultBudget` and the simple-mode focuses.
+- `construction.ts`: `farm`, `powerPlant`, `mine` (`outputMultiplier`, used by `rawProduction`), `lab` (research
+  speed in `investment`, `labBonus` for the UI), `base` (recovery in `militaryMonthly`, full-strength recruits in
+  `recruit`), `airbase` (air-support range in `resolveBattles`).

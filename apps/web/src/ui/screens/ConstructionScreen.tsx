@@ -8,6 +8,7 @@ import {
   canBuild,
   dateAt,
   factoryGrowth,
+  labBonus,
   MAX_INFRASTRUCTURE,
   MAX_PROJECTS,
   weightedLevel,
@@ -78,6 +79,7 @@ function Overview({ c }: { c: CountryState }) {
           rows={[
             ["Growth from factories", `${formatPercent(factoryGrowth(factories), 2, true)} / yr`, "Factories count by how many people live where they are"],
             ["Factory coverage", `${((factories / BUILDINGS.factory.max) * 100).toFixed(0)}%`, "Population-weighted factory level, out of level 5 everywhere"],
+            ["Research from facilities", `${formatPercent(labBonus(s, c.id), 0, true)} speed`, "+4% per research facility level, up to +40%"],
           ]}
         />
         <p className="screen__note">Buildings are paid from the treasury. You may borrow, but debt costs interest. Provinces start with no buildings: real industry is already in each country's GDP.</p>
@@ -163,11 +165,7 @@ function ByProvince({ c }: { c: CountryState }) {
         <tr>
           <th>Province</th>
           <th title="Roads, power and services, 0 to 10">Infra</th>
-          {BUILDING_TYPES.map((b) => (
-            <th key={b} className="num" title={BUILDINGS[b].effect}>
-              {BUILDINGS[b].label}
-            </th>
-          ))}
+          <th>Buildings</th>
         </tr>
       </thead>
       <tbody>
@@ -175,11 +173,11 @@ function ByProvince({ c }: { c: CountryState }) {
           <tr key={p.id} className="table__click" onClick={() => select({ kind: "province", id: p.id }, { focus: true })}>
             <td>{getProvince(p.id)?.name ?? p.id}</td>
             <td>{p.infrastructure.toFixed(1)}</td>
-            {BUILDING_TYPES.map((b) => (
-              <td key={b} className="num">
-                {buildingLevel(p, b) || "—"}
-              </td>
-            ))}
+            <td className="table__buildings">
+              {BUILDING_TYPES.filter((b) => buildingLevel(p, b) > 0)
+                .map((b) => `${BUILDINGS[b].label} ${buildingLevel(p, b)}`)
+                .join(" · ") || "—"}
+            </td>
           </tr>
         ))}
       </tbody>

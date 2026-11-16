@@ -1,11 +1,11 @@
-import { ADMIN_COST, BUDGET_CATEGORIES, type BudgetCategory, type CountryState } from "@gs/sim";
+import { ADMIN_COST, BUDGET_CATEGORIES, BUDGET_RESERVE, type BudgetCategory, type CountryState } from "@gs/sim";
 import type { CountryId } from "@gs/shared";
 
 /**
  * Simple mode's economy: instead of a tax slider and four spending sliders, the
  * player picks a tax level and a national focus. Each choice sets the real
- * policies, always to a balanced budget (spending = taxes), so simple-mode
- * players never sink into debt by accident.
+ * policies, always to a budget that keeps a small reserve (5% of taxes), so
+ * simple-mode players never sink into debt by accident and the treasury grows.
  */
 export const TAX_LEVELS = [
   { id: "low", label: "Low", rate: 0.18, help: "Happier people and faster growth, but less money to spend." },
@@ -27,7 +27,7 @@ const round = (n: number) => Math.round(n * 10000) / 10000;
 /** The commands that set this tax level and focus. */
 export function policyCommands(country: CountryId, taxRate: number, focusId: string) {
   const focus = FOCUSES.find((f) => f.id === focusId) ?? FOCUSES[0]!;
-  const spendable = Math.max(0, taxRate - ADMIN_COST);
+  const spendable = Math.max(0, taxRate * (1 - BUDGET_RESERVE) - ADMIN_COST);
   return [
     { type: "setTaxRate" as const, country, value: taxRate },
     ...BUDGET_CATEGORIES.map((category) => ({ type: "setBudget" as const, country, category, value: Math.min(0.3, round(spendable * focus.split[category])) })),

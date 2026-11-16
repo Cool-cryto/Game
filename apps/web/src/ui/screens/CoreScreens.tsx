@@ -19,8 +19,11 @@ import {
   unitCap,
   upkeepPerYear,
   type CountryState,
+  type Ledger as LedgerData,
   type UnitType,
   tradeGrowth,
+  RESOURCE_PRICE,
+  TRADE_STATE_SHARE,
 } from "@gs/sim";
 import { flagUrl, GEOGRAPHY, getCountry, getProvince, landNeighbours } from "../../data/countries";
 import { gdpPerCapita } from "../../map/mapModes";
@@ -274,10 +277,58 @@ function EconomyOverview({ c }: { c: CountryState }) {
           ]}
         />
       </Card>
+      <Ledger c={c} />
       <Card title="Why is the economy growing at this rate?" wide>
         <Why title="Show the breakdown" parts={growthBreakdown(c, infra, factories, tradeGrowth(useGame.getState().state, c.id)).parts} format={(v) => pct(v, 2, true)} labels={GROWTH_LABELS} />
       </Card>
     </div>
+  );
+}
+
+const LEDGER_ROWS: [keyof Omit<LedgerData, "net">, string, string?][] = [
+  ["taxes", "Taxes"],
+  ["trade", "Trade", "The state's share of selling surplus resources, minus its share of paying for imports"],
+  ["admin", "Running the state"],
+  ["welfare", "Welfare"],
+  ["infrastructure", "Infrastructure"],
+  ["research", "Research"],
+  ["defense", "Defense", "Goes into the army fund for recruiting and upkeep"],
+  ["interest", "Interest on debt"],
+  ["construction", "Construction", "Paid when each building was ordered"],
+];
+
+/** Last month's money, line by line, from the simulation's own ledger. */
+function Ledger({ c }: { c: CountryState }) {
+  const l = c.ledger;
+  return (
+    <Card title="Last month's ledger" hint="Exactly what came in and went out of the treasury last month." wide>
+      {!l ? (
+        <p className="screen__note">The first month's figures appear on the 1st of next month.</p>
+      ) : (
+        <table className="table ledger" data-testid="ledger">
+          <tbody>
+            {LEDGER_ROWS.filter(([k]) => Math.abs(l[k]) >= 0.05 || k === "taxes" || k === "trade").map(([k, label, hint]) => (
+              <tr key={k} title={hint}>
+                <th>{label}</th>
+                <td className={`num ${l[k] < 0 ? "neg" : l[k] > 0 ? "pos" : ""}`}>
+                  {l[k] < 0 ? "−" : "+"}
+                  {money(Math.abs(l[k]))}
+                </td>
+              </tr>
+            ))}
+            <tr className="ledger__total">
+              <th>Change in the treasury</th>
+              <td className={`num ${l.net < 0 ? "neg" : "pos"}`}>
+                <strong>
+                  {l.net < 0 ? "−" : "+"}
+                  {money(Math.abs(l.net))}
+                </strong>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      )}
+    </Card>
   );
 }
 
@@ -329,6 +380,7 @@ function Trade({ c }: { c: CountryState }) {
               <th className="num">Need</th>
               <th className="num">Supplied</th>
               <th>Trade</th>
+              <th className="num" title="Value of last month's exports (+) or imports (−) at world prices">Value</th>
             </tr>
           </thead>
           <tbody>
@@ -344,12 +396,19 @@ function Trade({ c }: { c: CountryState }) {
                   <td className={sup < 0.999 ? "neg" : b.exports > 0 ? "pos" : undefined}>
                     {sup < 0.999 ? "Shortage" : b.exports > 0 ? `Exports ${formatCompact(b.exports)}` : b.imports > 0 ? `Imports ${formatCompact(b.imports)}` : "Self-sufficient"}
                   </td>
+                  <td className={`num ${b.imports > b.exports ? "neg" : b.exports > 0 ? "pos" : ""}`}>
+                    {b.exports - b.imports === 0 ? "—" : `${b.exports > b.imports ? "+" : "−"}${money(Math.abs((b.exports - b.imports) * RESOURCE_PRICE[r]))}`}
+                  </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
-        <p className="screen__note">Food shortages hurt stability; energy and mineral shortages slow growth. Resource deposits are game-generated, not real-world data.</p>
+        <p className="screen__note">
+          Food shortages hurt stability; energy and mineral shortages slow growth. Values are per month at world prices; the state keeps{" "}
+          {pct(TRADE_STATE_SHARE, 0)} of the trade balance (taxes on exports, subsidies for imports). Farms, power plants and mines raise output. Resource
+          deposits are game-generated, not real-world data.
+        </p>
       </Card>
       <Planned title="Trade agreements" items={["Trade deals with other countries", "Sanctions and embargoes", "Deals for specific resources"]} note="Today all trade happens automatically on one world market." />
     </div>
