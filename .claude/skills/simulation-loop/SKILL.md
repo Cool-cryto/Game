@@ -31,7 +31,7 @@ The simulation is the game's rules engine. It must be predictable, testable and 
 ## The clock
 
 - The game advances in fixed **ticks** (default: 1 tick = 1 in-game day).
-- Game speed (pause, 1x–5x) controls how many ticks run per real second; it never changes what a tick does.
+- Game speed (pause, 1x–4x in single player: `SPEED_DAYS_PER_SECOND` in protocol.ts; online rooms run at the fixed `GAME_DAYS_PER_SECOND`) controls how many ticks run per real second; it never changes what a tick does.
 - Run ticks from a fixed-timestep loop driven by `requestAnimationFrame`; cap ticks per frame so a slow frame can't freeze the browser.
 - Some systems run daily, others monthly or yearly. Schedule them by checking the date inside the tick, not with separate timers.
 

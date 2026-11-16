@@ -100,6 +100,10 @@ export interface War {
   attackers: CountryId[];
   defenders: CountryId[];
   startTick: number;
+  /** Strength lost in battle per country, in units' worth (100 strength = one unit). */
+  losses?: Record<string, number>;
+  /** Enemy provinces each country has taken during this war. */
+  captured?: Record<string, number>;
 }
 
 export type PeaceTerms = "white" | "occupied";

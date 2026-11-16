@@ -120,6 +120,7 @@ export function SimpleWar({ war, me }: { war: War; me: CountryId }) {
       <div className="war__score-bar" aria-hidden>
         <span style={{ width: `${(score + 1) * 50}%` }} />
       </div>
+      <WarStats war={war} side={side} />
       {offers.map((o) => (
         <div key={o.id} className="offer">
           <span>{nameOf(o.from)} offers peace{o.terms === "occupied" ? " and wants the land they hold" : ""}.</span>
@@ -149,6 +150,35 @@ export function SimpleWar({ war, me }: { war: War; me: CountryId }) {
       {leader && enemyAi && !terms && <p className="panel__small">They won't accept peace yet. Capture more of their land first.</p>}
       {!leader && <p className="panel__small">{nameOf(war[side][0]!)} leads your side and decides on peace.</p>}
     </div>
+  );
+}
+
+/** Duration, losses and provinces taken by each side, from the war's own record. */
+export function WarStats({ war, side }: { war: War; side: "attackers" | "defenders" }) {
+  const tick = useGame((x) => x.state.tick);
+  const other = side === "attackers" ? "defenders" : "attackers";
+  const sum = (rec: Record<string, number> | undefined, who: CountryId[]) => who.reduce((a, c) => a + (rec?.[c] ?? 0), 0);
+  const days = tick - war.startTick;
+  const dur = days >= 365 ? `${(days / 365).toFixed(1)} years` : days >= 60 ? `${Math.round(days / 30)} months` : `${days} days`;
+  return (
+    <dl className="warstats" data-testid="war-stats">
+      <div>
+        <dt>Duration</dt>
+        <dd>{dur}</dd>
+      </div>
+      <div>
+        <dt title="Strength lost in battle, in full units' worth">Losses (you / them)</dt>
+        <dd>
+          {sum(war.losses, war[side]).toFixed(1)} / {sum(war.losses, war[other]).toFixed(1)}
+        </dd>
+      </div>
+      <div>
+        <dt title="Enemy provinces occupied during this war">Provinces taken</dt>
+        <dd>
+          {sum(war.captured, war[side])} / {sum(war.captured, war[other])}
+        </dd>
+      </div>
+    </dl>
   );
 }
 
@@ -392,13 +422,13 @@ export function Guide() {
           <strong>Economy:</strong> choose what your country focuses on, like growing the economy or building the army.
         </li>
         <li>
-          <strong>Military:</strong> recruit armies to defend yourself or attack. Click your army on the map, then click where it should go: it takes every undefended enemy province it walks into. Guard your capital: if it falls, your whole country falls.
+          <strong>Military:</strong> recruit armies to defend yourself or attack. Click your army on the map, then click where it should go: it occupies each enemy province on the way, which takes a few days each (forts take longer). Guard your capital: if it falls, your whole country falls.
         </li>
         <li>
           <strong>Diplomacy:</strong> make friends and allies, or declare war and press Attack.
         </li>
         <li>
-          <strong>Time</strong> runs by itself, 21 days every second, from the moment you lead a country. Watch your world rank climb!
+          <strong>Time</strong> starts the moment you lead a country. Pause with Space or the pause button, and pick 1x-4x speed at the top. Watch your world rank climb!
         </li>
       </ol>
       <button className="btn btn--primary" onClick={finish}>

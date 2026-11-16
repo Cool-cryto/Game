@@ -5,7 +5,7 @@ import { feature, merge } from "topojson-client";
 import type { GeometryObject } from "topojson-specification";
 import type { CountryId, ProvinceId } from "@gs/shared";
 import { COUNTRIES, GEOGRAPHY, getCountry, getProvince, loadCities } from "../../data/countries";
-import { ownersRecord, playerCountry, useGame } from "../../state/gameStore";
+import { daysPerSecondNow, ownersRecord, playerCountry, useGame } from "../../state/gameStore";
 import { sameSelection, useUi, type CameraCommand, type Selection } from "../../state/uiStore";
 import { createEquirectFrame, type Bounds, type CountryShape, type ProvinceShape, type ProvinceTopology } from "../geo";
 import { MAP_MODES, NO_DATA } from "../mapModes";
@@ -330,6 +330,7 @@ export function GlobeView({ active }: { active: boolean }) {
         selected,
         moveOrder,
         running: !useGame.getState().paused,
+        daysPerSecond: daysPerSecondNow(),
       });
       markers = drawn.markers;
       // Keep drawing while units glide between provinces.

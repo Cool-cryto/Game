@@ -8,7 +8,7 @@ and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the project is put toge
 ## What works today
 
 - World map of **4,596 provinces** in 248 countries, territories and disputed regions, with **7,333 cities**
-- **Time**: starts 1 Jan 2020 and runs by itself at 21 days per second once you lead a country (no pause, no speeds)
+- **Time**: starts 1 Jan 2020 and runs once you lead a country: pause (button or Space) and 1x–4x speed (buttons or +/-); 2x is 21 days a second. Online, the server keeps one pace for everyone
 - **Economy**, monthly for every country: GDP growth, taxes and spending, treasury and debt, stability,
   technology, infrastructure, population, and food / energy / minerals with a world market
 - **Military**: armies, fleets and air wings on the map. Recruit with your defense fund, pay upkeep,

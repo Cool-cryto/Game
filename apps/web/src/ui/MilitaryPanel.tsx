@@ -223,8 +223,8 @@ export function ProvinceWarStatus({ province }: { province: ProvinceId }) {
       {occupied && <p>Occupied by {getCountry(p.controller)?.name ?? p.controller}.</p>}
       {p.siege && (
         <p>
-          Under siege by {getCountry(p.siege.by)?.name ?? p.siege.by}: {Math.round(p.siege.progress * 100)}% (its fortifications hold out about{" "}
-          {Math.round(siegeDays(p.infrastructure, p.buildings?.fort ?? 0))} days against full-strength armies).
+          {p.buildings?.fort ? "Under siege" : "Being occupied"} by {getCountry(p.siege.by)?.name ?? p.siege.by}: {Math.round(p.siege.progress * 100)}% (about{" "}
+          {Math.round(siegeDays(p.infrastructure, p.buildings?.fort ?? 0, p.areaKm2))} days for one full-strength army; up to three armies go three times as fast).
         </p>
       )}
     </div>

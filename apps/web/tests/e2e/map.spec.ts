@@ -190,26 +190,42 @@ test("works on a phone-sized screen", async ({ page }) => {
 
 const gameDate = (page: Page) => page.getByTestId("game-date");
 
-test("time stands still until you lead a country, then runs by itself at 21 days a second", async ({ page }) => {
+test("time stands still until you lead a country, then runs at the chosen speed; pause and 1x-4x work", async ({ page }) => {
   await openMap(page);
   await expect(gameDate(page)).toContainText("1 Jan 2020");
   await page.waitForTimeout(1000);
   await expect(gameDate(page)).toContainText("1 Jan 2020");
-  // No play, pause or speed buttons.
-  await expect(page.getByRole("button", { name: /^(Play|Pause)$/ })).toHaveCount(0);
-  await expect(page.getByRole("radio", { name: /Speed/ })).toHaveCount(0);
+  // No speed controls before you lead a country.
+  await expect(page.getByTestId("pause")).toHaveCount(0);
   await playAs(page, "Japan");
   const days = () =>
     page.evaluate(() => (window as unknown as { __gsGame: { getState: () => { state: { tick: number } } } }).__gsGame.getState().state.tick);
-  const t0 = await days();
-  await page.waitForTimeout(2000);
-  const perSecond = ((await days()) - t0) / 2;
+  const rate = async () => {
+    await page.waitForTimeout(400); // let a speed change settle
+    const t0 = await days();
+    await page.waitForTimeout(2000);
+    return ((await days()) - t0) / 2;
+  };
+  // 2x (21 days a second) is the default.
+  await expect(page.getByTestId("speed-2")).toHaveAttribute("aria-checked", "true");
+  let perSecond = await rate();
   expect(perSecond).toBeGreaterThan(15);
   expect(perSecond).toBeLessThan(27);
-  // Space doesn't pause any more.
-  await page.keyboard.press("Space");
+  await page.getByTestId("speed-4").click();
+  perSecond = await rate();
+  expect(perSecond).toBeGreaterThan(45);
+  await page.getByTestId("speed-1").click();
+  perSecond = await rate();
+  expect(perSecond).toBeLessThan(15);
+  // Pause with the button, resume with Space.
+  await page.getByTestId("pause").click();
+  await expect(gameDate(page)).toContainText("Paused");
+  await page.waitForTimeout(300); // the step already running when you pressed pause finishes
   const t1 = await days();
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(700);
+  expect(await days()).toBe(t1);
+  await page.keyboard.press("Space");
+  await page.waitForTimeout(700);
   expect(await days()).toBeGreaterThan(t1);
 });
 

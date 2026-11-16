@@ -260,19 +260,21 @@ describe("military", () => {
 
 describe("war", () => {
   /** A declares war on B and marches its whole army in (towards P-5, or `to`). */
-  function invade(s: GameState, to = P(5)) {
+  function invade(s: GameState, to?: ProvinceId) {
     scripted(s);
     run(s, 1, [{ type: "declareWar", country: A, target: B }]);
     pushOn(s, to);
   }
   /** Like a player would: send idle armies on towards the target (they halt when they meet the enemy). */
-  function pushOn(s: GameState, to = P(5)) {
+  function pushOn(s: GameState, target?: ProvinceId) {
+    // By default, the next enemy province not yet taken (nothing falls instantly, so the enemy can retake land behind you).
+    const to = target ?? [P(4), P(5)].find((p) => s.provinces[p]!.controller === B) ?? P(5);
     const ids = armies(s, A)
       .filter((u) => !u.travel && u.province !== to && s.provinces[u.province]!.controller !== B)
       .map((u) => u.id);
     if (ids.length && s.wars.length) run(s, 1, [{ type: "moveUnits", country: A, units: ids, to }]);
   }
-  function runWar(s: GameState, done: () => boolean, limit: number, to = P(5)) {
+  function runWar(s: GameState, done: () => boolean, limit: number, to?: ProvinceId) {
     for (let i = 0; i < limit && !done(); i += 5) {
       run(s, 5);
       pushOn(s, to);
@@ -285,7 +287,7 @@ describe("war", () => {
     invade(s, P(4));
   }
 
-  it("an army takes an undefended province the moment it walks in; fortifications make it a siege", () => {
+  it("an army occupies an undefended province over a few days; fortifications make it a longer siege", () => {
     const s = newGame();
     s.countries[B]!.capital = P(5);
     scripted(s);
@@ -296,13 +298,53 @@ describe("war", () => {
     army.province = P(3);
     startMove(s, geo, army, [P(4)], "land");
     runUntil(s, () => army.province === P(4), 100);
-    expect(s.provinces[P(4)]!.controller).toBe(A);
+    // Nothing falls instantly: arriving starts the occupation.
+    expect(s.provinces[P(4)]!.controller).toBe(B);
+    const need = siegeDays(s.provinces[P(4)]!.infrastructure, 0, s.provinces[P(4)]!.areaKm2);
+    const t0 = s.tick;
+    expect(runUntil(s, () => s.provinces[P(4)]!.controller === A, 100)).toBe(true);
+    expect(s.tick - t0).toBeGreaterThanOrEqual(Math.floor(need) - 1);
+    // The war keeps a record of it.
+    expect(s.wars[0]!.captured?.[A]).toBe(1);
     // A fort: the army has to besiege it for a while.
     s.provinces[P(5)]!.buildings = { fort: 2 };
     startMove(s, geo, army, [P(5)], "land");
     runUntil(s, () => army.province === P(5), 100);
     expect(s.provinces[P(5)]!.controller).toBe(B);
     expect(runUntil(s, () => s.provinces[P(5)]!.controller !== B, 100)).toBe(true);
+  });
+
+  it("an advancing army must occupy each enemy province on its way before marching on", () => {
+    const s = newGame();
+    s.countries[B]!.capital = P(5);
+    scripted(s);
+    for (const u of unitsOf(s, B)) delete s.units[u.id];
+    s.countries[B]!.defenseFund = -1e6;
+    run(s, 1, [{ type: "declareWar", country: A, target: B }]);
+    const army = armies(s, A)[0]!;
+    army.province = P(3);
+    startMove(s, geo, army, [P(4), P(5)], "land");
+    runUntil(s, () => army.province === P(4), 100);
+    // It waits in P-4 until P-4 is taken, then moves on.
+    run(s, 1);
+    expect(army.province).toBe(P(4));
+    runUntil(s, () => army.province === P(5), 200);
+    expect(s.provinces[P(4)]!.controller).toBe(A);
+  });
+
+  it("battles record each side's losses in the war", () => {
+    const s = newGame();
+    s.countries[B]!.capital = P(5);
+    scripted(s);
+    run(s, 1, [{ type: "declareWar", country: A, target: B }]);
+    const a = armies(s, A)[0]!;
+    const b = armies(s, B)[0]!;
+    a.province = P(4);
+    b.province = P(4);
+    run(s, 3);
+    const w = s.wars[0]!;
+    expect(w.losses?.[A] ?? 0).toBeGreaterThan(0);
+    expect(w.losses?.[B] ?? 0).toBeGreaterThan(0);
   });
 
   it("when an enemy holds a country's capital for seven months, the whole country falls", () => {
@@ -349,7 +391,8 @@ describe("war", () => {
     const s = newGame();
     const gdpA = s.countries[A]!.gdp;
     invade(s);
-    expect(runWar(s, () => !s.countries[B]!.active, 1500)).toBe(true);
+    const ok = runWar(s, () => !s.countries[B]!.active, 1500);
+    expect(ok).toBe(true);
     expect(s.provinces[P(4)]!.owner).toBe(A);
     expect(s.provinces[P(5)]!.owner).toBe(A);
     expect(s.ownershipVersion).toBeGreaterThan(0);
@@ -357,6 +400,8 @@ describe("war", () => {
     expect(unitsOf(s, B)).toHaveLength(0);
     expect(s.wars).toHaveLength(0);
     expect(s.events.some((e) => e.kind === "annexation")).toBe(true);
+    // News names both sides even after the loser no longer exists.
+    expect(s.events.some((e) => e.text.includes("undefined"))).toBe(false);
   });
 
   it("a peace treaty can hand over occupied provinces, and the AI only accepts when losing", () => {
@@ -984,8 +1029,9 @@ describe("construction", () => {
     p.buildings = { factory: 3, fort: 2, railway: 1 };
     expect(rawProduction(p, 5, "minerals") / plain).toBeCloseTo(1.3, 5);
     expect(rawProduction(p, 5, "food")).toBe(rawProduction({ ...p, buildings: {} }, 5, "food")); // food unaffected
-    expect(siegeDays(5, 0)).toBe(0); // no fort: taken at once
-    expect(siegeDays(5, 2)).toBeCloseTo(35, 5);
+    expect(siegeDays(5, 0)).toBeCloseTo(5, 5); // no fort: a few days to occupy
+    expect(siegeDays(5, 2)).toBeCloseTo(40, 5);
+    expect(siegeDays(5, 0, 1_000_000)).toBeGreaterThan(siegeDays(5, 0, 1_000)); // big provinces take longer
     expect(growthBreakdown(s.countries[A]!, 5, 5).parts.factories).toBeCloseTo(0.008, 5);
     // A railway into P-2 shortens the march from P-1.
     const army = armies(s, A)[0]!;
