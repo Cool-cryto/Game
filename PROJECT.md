@@ -8,7 +8,7 @@ This document is the single place to see **what we set out to build, what exists
 still left**. It is written for a beginner: technical terms are explained the first time they appear.
 
 - Code: GitHub `Cool-cryto/Game`, branch `claude/browser-game-skills-gq45g9`
-- More detail: [README.md](README.md) (how to run and play), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (how it's built),
+- More detail: [docs/OVERHAUL.md](docs/OVERHAUL.md) (the grand-strategy overhaul: findings and stages), [README.md](README.md) (how to run and play), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (how it's built),
   [docs/HOSTING.md](docs/HOSTING.md) (putting it online),
   [docs/ROADMAP.md](docs/ROADMAP.md) (stage checklists), [apps/web/public/maps/SOURCES.md](apps/web/public/maps/SOURCES.md) (data sources)
 
@@ -150,7 +150,15 @@ Built: scenario system; **End of the Cold War (1991)** with the Soviet Union, Yu
 browser, export/import, play, host online); server support for scenarios and custom worlds; borders computed from the
 live map.
 
-### Stage 16 — Steady clock, gliding units, slim interface ✅ (current)
+### Stage 17 — Overhaul Stage A: clock and conquest ✅ (current)
+Start of the grand-strategy overhaul (findings and the stage plan are in [docs/OVERHAUL.md](docs/OVERHAUL.md)).
+Built: pause and 1x–4x speed in single player (button, Space, +/-), with 2x the old pace and still one clock; online
+rooms keep the server's fixed pace. Provinces are no longer taken the moment an army walks in. Occupying takes 2–12
+days (bigger provinces take longer), forts add siege time, and an advancing army must take each enemy province on its
+way before moving on. Each war records losses and provinces taken per country, shown on the war card. Fixed peace
+news that read "undefined made peace…" after an annexation.
+
+### Stage 16 — Steady clock, gliding units, slim interface ✅
 Built: time always runs at 21 game days per real second once you lead a country (single player and every online room,
 while anyone is connected); no play, pause or speed buttons. Unit speeds are set so movement looks right at that pace
 (land 3 km/day before roads, railways and technology, so about 120 km a second on screen; sea 15; air 40), and units glide smoothly along their route

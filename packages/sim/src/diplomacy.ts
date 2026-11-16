@@ -144,6 +144,11 @@ export function wouldAcceptPeace(s: GameState, war: War, receiver: CountryId, te
 
 /** End a war. With "occupied" terms, the winners keep the enemy provinces they hold. */
 export function makePeace(s: GameState, war: War, terms: PeaceTerms, winner: "attackers" | "defenders") {
+  // Name the leaders now: a loser annexed by the transfers below drops out of the war's lists.
+  const leader = war[winner][0]!;
+  const other = war[otherSide(winner)][0]!;
+  const [firstAttacker, firstDefender] = [war.attackers[0]!, war.defenders[0]!];
+  const everyone = [...war.attackers, ...war.defenders];
   const winners = new Set(war[winner]);
   const losers = new Set(war[otherSide(winner)]);
   const transferred: CountryId[] = [];
@@ -163,16 +168,14 @@ export function makePeace(s: GameState, war: War, terms: PeaceTerms, winner: "at
   s.offers = s.offers.filter((o) => o.warId !== war.id);
   for (const a of war.attackers) for (const d of war.defenders) adjustRelation(s, a, d, 30);
   sendTroopsHome(s, [...winners, ...losers]);
-  const leader = war[winner][0]!;
-  const other = war[otherSide(winner)][0]!;
   const gained = new Set(transferred);
   logEvent(
     s,
     "peace",
     terms === "white"
-      ? `${nameOf(s, war.attackers[0]!)} and ${nameOf(s, war.defenders[0]!)} made peace with no border changes.`
+      ? `${nameOf(s, firstAttacker)} and ${nameOf(s, firstDefender)} made peace with no border changes.`
       : `${nameOf(s, other)} made peace with ${nameOf(s, leader)}${gained.size ? ` and gave up the provinces occupied by ${[...gained].map((c) => nameOf(s, c)).join(", ")}` : ""}.`,
-    [...war.attackers, ...war.defenders],
+    everyone,
   );
 }
 

@@ -2,9 +2,9 @@ import { techMods } from "./tech";
 import type { CountryId, ProvinceId } from "@gs/shared";
 import { nextRandom } from "./rng";
 import { distanceKm, findLandPath, type Geography } from "./geography";
-import { allied, atWar, friendly } from "./diplomacy";
+import { allied, atWar, friendly, warBetween } from "./diplomacy";
 import { hasAccess } from "./treaties";
-import { logEvent, nameOf, type CountryState, type GameState, type Unit, type UnitType } from "./state";
+import { logEvent, nameOf, provinceSize, type CountryState, type GameState, type Unit, type UnitType } from "./state";
 
 /**
  * Strategic units. Numbers are game rules: an "army" is an abstract corps, not a
@@ -179,9 +179,23 @@ export function etaDays(s: GameState, geo: Geography, u: Unit): number {
 const hostileArmiesIn = (s: GameState, p: ProvinceId, owner: CountryId, type: UnitType) =>
   Object.values(s.units).some((x) => x.province === p && x.type === type && !x.retreating && atWar(s, owner, x.owner));
 
+/**
+ * An advancing army standing in a province held by an enemy must occupy it before marching on (falling back
+ * towards friendly ground is always allowed). This is what makes conquest take time: every province on the
+ * way has to be taken, one after another.
+ */
+export function stalled(s: GameState, u: Unit): boolean {
+  if (u.type !== "army" || u.retreating || !u.travel || !u.path.length) return false;
+  const here = s.provinces[u.province];
+  if (!here || !atWar(s, u.owner, here.controller)) return false;
+  const next = s.provinces[u.path[0]!];
+  return !!next && !friendly(s, u.owner, next.controller);
+}
+
 export function advanceMovement(s: GameState, geo: Geography) {
   for (const u of Object.values(s.units)) {
     if (!u.travel || !u.path.length) continue;
+    if (stalled(s, u)) continue;
     u.travel.daysLeft -= 1;
     if (u.travel.daysLeft > 0) continue;
     const next = u.path[0]!;
@@ -194,12 +208,8 @@ export function advanceMovement(s: GameState, geo: Geography) {
     u.province = next;
     u.path.shift();
     // Walking into enemy forces stops the march: there's a battle here.
+    // (An army arriving in an undefended enemy province occupies it over a few days; see advanceSieges.)
     if (!u.retreating && u.type !== "air" && hostileArmiesIn(s, next, u.owner, u.type)) u.path = [];
-    // An army that walks into an undefended enemy province without fortifications takes it at once.
-    else if (u.type === "army" && !u.retreating) {
-      const p = s.provinces[next]!;
-      if (atWar(s, u.owner, p.controller) && !(p.buildings?.fort ?? 0)) captureProvince(s, next, u.owner);
-    }
     if (u.path.length) {
       const days = legDays(s, geo, u, u.travel.mode, u.path[0]!);
       u.travel = { mode: u.travel.mode, daysLeft: days, total: days };
@@ -222,7 +232,7 @@ export function resolveBattles(s: GameState, geo: Geography) {
   if (!s.wars.length) return;
   const byPlace = new Map<string, Unit[]>();
   for (const u of Object.values(s.units)) {
-    if (u.type === "air" || u.retreating || u.travel) continue;
+    if (u.type === "air" || u.retreating || (u.travel && !stalled(s, u))) continue;
     const k = `${u.province}#${u.type}`;
     if (!byPlace.has(k)) byPlace.set(k, []);
     byPlace.get(k)!.push(u);
@@ -248,8 +258,14 @@ export function resolveBattles(s: GameState, geo: Geography) {
     };
     const pa = powerOf(sideA);
     const pb = powerOf(sideB);
+    const war = warBetween(s, sideA[0]!.owner, sideB[0]!.owner);
     const hit = (side: Unit[], ratio: number) => {
-      for (const u of side) u.strength = Math.max(0, u.strength - BATTLE_LOSS_PER_DAY * 2 * ratio * (0.8 + 0.4 * nextRandom(s.rng)));
+      for (const u of side) {
+        const before = u.strength;
+        u.strength = Math.max(0, u.strength - BATTLE_LOSS_PER_DAY * 2 * ratio * (0.8 + 0.4 * nextRandom(s.rng)));
+        // War statistics: losses in "units' worth" (100 strength = one full unit).
+        if (war) (war.losses ??= {})[u.owner] = round2((war.losses[u.owner] ?? 0) + (before - u.strength) / 100);
+      }
     };
     hit(sideA, pb / (pa + pb));
     hit(sideB, pa / (pa + pb));
@@ -289,18 +305,26 @@ function retreat(s: GameState, geo: Geography, u: Unit) {
 // ---------- Sieges and occupation ----------
 
 /**
- * Days of siege needed for a province with full-strength armies. Without fortifications there's no siege:
- * the first army to walk in takes it. Each fortification level adds about 15 days (under a second; a little more where
- * infrastructure is high).
+ * Days a full-strength army needs to occupy an undefended enemy province. Nothing falls instantly: occupying takes
+ * 2-12 days (bigger and better-connected provinces take longer), and each fortification level adds about 15 days
+ * of siege (a little more where infrastructure is high). Up to three armies together go three times as fast.
  */
-export const siegeDays = (infrastructure: number, fort = 0) => fort * (15 + 0.5 * infrastructure);
+export const siegeDays = (infrastructure: number, fort = 0, areaKm2 = 10_000) =>
+  2 + 1.5 * provinceSize(areaKm2) + 0.3 * infrastructure + fort * (15 + 0.5 * infrastructure);
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /** An enemy province changes hands (or one of yours or an ally's is freed and goes back to its owner). */
 export function captureProvince(s: GameState, id: ProvinceId, by: CountryId) {
   const p = s.provinces[id]!;
   const liberated = friendly(s, by, p.owner);
+  const from = p.controller;
   p.controller = liberated ? p.owner : by;
   p.siege = null;
+  // War statistics: provinces taken from the enemy in this war.
+  if (!liberated) {
+    const war = warBetween(s, by, from);
+    if (war) (war.captured ??= {})[by] = (war.captured[by] ?? 0) + 1;
+  }
   if (p.population > 0) {
     logEvent(
       s,
@@ -320,7 +344,7 @@ export function advanceSieges(s: GameState) {
   if (!s.wars.length) return;
   const armiesAt = new Map<ProvinceId, Unit[]>();
   for (const u of Object.values(s.units)) {
-    if (u.type !== "army" || u.travel || u.retreating) continue;
+    if (u.type !== "army" || u.retreating || (u.travel && !stalled(s, u))) continue;
     if (!armiesAt.has(u.province)) armiesAt.set(u.province, []);
     armiesAt.get(u.province)!.push(u);
   }
@@ -334,11 +358,7 @@ export function advanceSieges(s: GameState) {
     }
     // Defenders still in the province must be beaten first.
     if (armies.some((u) => friendly(s, u.owner, p.controller))) continue;
-    const days = siegeDays(p.infrastructure, p.buildings?.fort ?? 0);
-    if (days <= 0) {
-      captureProvince(s, id, besieger.owner);
-      continue;
-    }
+    const days = siegeDays(p.infrastructure, p.buildings?.fort ?? 0, p.areaKm2);
     if (!p.siege || p.siege.by !== besieger.owner) p.siege = { by: besieger.owner, progress: 0 };
     const force = Math.min(3, armies.filter((u) => friendly(s, u.owner, besieger.owner)).reduce((a, u) => a + u.strength / 100, 0));
     p.siege.progress += force / days;

@@ -3,7 +3,7 @@
 // `project` function that turns a province into a screen position (or null when
 // it isn't visible, e.g. on the far side of the globe).
 import type { CountryId, ProvinceId } from "@gs/shared";
-import { atWar, GAME_DAYS_PER_SECOND, planMove, UNIT_STATS, type GameState, type Unit, type UnitType } from "@gs/sim";
+import { atWar, GAME_DAYS_PER_SECOND, planMove, stalled, UNIT_STATS, type GameState, type Unit, type UnitType } from "@gs/sim";
 import { COUNTRIES, GEOGRAPHY, getCountry } from "../data/countries";
 import { useUi, type Selection } from "../state/uiStore";
 import { MAP_MODES } from "./mapModes";
@@ -69,6 +69,8 @@ interface UnitsOverlayOptions {
   moveOrder: { units: number[] } | null;
   /** Is time running? Moving units glide on between updates only while it is. */
   running: boolean;
+  /** In-game days per real second at the current speed. */
+  daysPerSecond?: number;
 }
 
 // ---------- Smooth movement ----------
@@ -79,7 +81,7 @@ interface UnitsOverlayOptions {
 const shown = new Map<number, { leg: string; progress: number; at: number }>();
 
 /** How far along its current leg (0 = just left, 1 = arrived) a moving unit should be drawn. */
-function legProgress(u: Unit, running: boolean, now: number): number {
+function legProgress(u: Unit, running: boolean, now: number, pace: number): number {
   const t = u.travel!;
   const total = Math.max(1, t.total ?? t.daysLeft);
   const actual = Math.max(0, Math.min(1, 1 - t.daysLeft / total));
@@ -91,8 +93,8 @@ function legProgress(u: Unit, running: boolean, now: number): number {
   }
   const dt = Math.min(0.25, (now - last.at) / 1000);
   // Creep forward at the game's pace, but stay within half a second of the real position, and catch up if behind.
-  const ahead = running ? last.progress + (dt * GAME_DAYS_PER_SECOND) / total : last.progress;
-  const lead = (0.5 * GAME_DAYS_PER_SECOND) / total;
+  const ahead = running ? last.progress + (dt * pace) / total : last.progress;
+  const lead = (0.5 * pace) / total;
   let progress = Math.min(Math.max(ahead, actual), actual + lead, 1);
   if (progress < actual) progress = actual;
   last.progress = progress;
@@ -103,6 +105,7 @@ function legProgress(u: Unit, running: boolean, now: number): number {
 /** Draw unit stacks, routes and battles in screen space. Returns marker boxes for clicking, and whether anything is moving. */
 export function drawUnitsOverlay(ctx: CanvasRenderingContext2D, o: UnitsOverlayOptions): { markers: Marker[]; animating: boolean } {
   const { project, w, h, zoom, game, me, selected, moveOrder, running } = o;
+  const pace = o.daysPerSecond ?? GAME_DAYS_PER_SECOND;
   const markers: Marker[] = [];
   const now = performance.now();
   let animating = false;
@@ -122,7 +125,7 @@ export function drawUnitsOverlay(ctx: CanvasRenderingContext2D, o: UnitsOverlayO
     if (moving) {
       const to = project(u.path[0]!);
       if (to) {
-        const f = legProgress(u, running, now);
+        const f = legProgress(u, running && !stalled(game, u), now, pace);
         x += (to[0] - from[0]) * f;
         y += (to[1] - from[1]) * f;
         animating = animating || running;

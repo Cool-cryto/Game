@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { CountryId, ProvinceId } from "@gs/shared";
-import { createGameState, provincesByOwner, type Command, type CountryState, type GameState } from "@gs/sim";
+import { createGameState, DEFAULT_SPEED, GAME_DAYS_PER_SECOND, provincesByOwner, SPEED_DAYS_PER_SECOND, type Command, type CountryState, type GameSpeed, type GameState } from "@gs/sim";
 import { GEOGRAPHY, MODERN_SCENARIO, registerStateCountries } from "../data/countries";
 import type { SimRequest, SimResponse } from "../sim/protocol";
 import { online, onlineCountry, setOnlineHooks, useOnline } from "../net/online";
@@ -10,8 +10,14 @@ interface GameStore {
   state: GameState;
   /** Province ids per owner; recomputed only when ownership changes. */
   provincesOf: Map<CountryId, ProvinceId[]>;
-  /** Time stands still only before you lead a country, or while something holds it (editor, game menu). */
+  /** Time stands still before you lead a country, while something holds it (editor, game menu), or when you pause. */
   paused: boolean;
+  /** You pressed pause (single player). */
+  userPaused: boolean;
+  /** Single-player speed, 1x-4x. Online rooms run at the server's pace. */
+  speed: GameSpeed;
+  setSpeed: (speed: GameSpeed) => void;
+  togglePause: () => void;
   /** Bumped when a different game is loaded (new game or loaded save). */
   generation: number;
   /** "local": single player in this browser. "online": the game runs on a server. */
@@ -61,7 +67,7 @@ const holds = new Set<string>();
 function syncClock() {
   const g = useGame.getState();
   if (g.mode !== "local") return;
-  const paused = previewMode || holds.size > 0 || !playerCountry(g.state);
+  const paused = previewMode || holds.size > 0 || g.userPaused || !playerCountry(g.state);
   if (paused === g.paused) return;
   useGame.setState({ paused });
   sim({ type: "setPaused", paused });
@@ -71,6 +77,18 @@ export const useGame = create<GameStore>((set, get) => ({
   state: initial,
   provincesOf: provincesByOwner(initial),
   paused: true,
+  userPaused: false,
+  speed: DEFAULT_SPEED,
+  setSpeed: (speed) => {
+    set({ speed, userPaused: false });
+    sim({ type: "setSpeed", daysPerSecond: SPEED_DAYS_PER_SECOND[speed] });
+    syncClock();
+  },
+  togglePause: () => {
+    if (get().mode !== "local") return;
+    set((s) => ({ userPaused: !s.userPaused }));
+    syncClock();
+  },
   generation: 0,
   mode: "local",
   errors: [],
@@ -94,6 +112,12 @@ export const useGame = create<GameStore>((set, get) => ({
     syncClock();
   },
 }));
+/** In-game days per real second right now (for drawing units gliding at the right pace). */
+export const daysPerSecondNow = () => {
+  const g = useGame.getState();
+  return g.mode === "local" ? SPEED_DAYS_PER_SECOND[g.speed] : GAME_DAYS_PER_SECOND;
+};
+
 // Picking a country (or loading a game with one) starts the clock.
 useGame.subscribe((s, prev) => {
   if (s.state !== prev.state || s.mode !== prev.mode) syncClock();

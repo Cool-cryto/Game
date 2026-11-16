@@ -10,7 +10,7 @@ import { MAP_MODES, NO_DATA } from "./mapModes";
 import type { DetailLevel, WorkerRequest, WorkerResponse } from "./workerProtocol";
 import { COUNTRIES, getCountry, getProvince, loadCities } from "../data/countries";
 import { clickMarker, drawUnitsOverlay, markerAt, politicalColor, previewMove, stackLabel, stripes, type Marker } from "./overlay";
-import { ownersRecord, playerCountry, useGame } from "../state/gameStore";
+import { daysPerSecondNow, ownersRecord, playerCountry, useGame } from "../state/gameStore";
 import { fogOf } from "../state/fog";
 import { sameSelection, useUi, type CameraCommand, type Selection } from "../state/uiStore";
 
@@ -284,6 +284,7 @@ export function WorldMap() {
         selected,
         moveOrder,
         running: !useGame.getState().paused,
+        daysPerSecond: daysPerSecondNow(),
       });
       markers = drawn.markers;
       // Keep drawing while units glide between provinces.

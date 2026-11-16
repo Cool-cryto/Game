@@ -3825,3 +3825,99 @@ button.infobar__country:hover .infobar__name {
   flex: 1 1 100%;
   flex-wrap: wrap;
 }
+
+/* ----- Pause and 1x-4x speed ----- */
+.time__btn {
+  height: 24px;
+  min-width: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--line, var(--border));
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-dim);
+  font: 600 11px/1 var(--font);
+  font-variant-numeric: tabular-nums;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+}
+.time__btn:hover {
+  color: var(--text);
+  border-color: var(--line-strong, var(--border));
+}
+.time__btn.is-on {
+  color: #1a1408;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.time__btn svg {
+  width: 11px;
+  height: 11px;
+  fill: currentColor;
+}
+.time__pause.is-on {
+  animation: time-pulse 1.4s ease-in-out infinite;
+}
+@keyframes time-pulse {
+  50% { opacity: 0.6; }
+}
+.time__speedset {
+  display: inline-flex;
+  gap: 2px;
+}
+.time__date .time__paused {
+  margin-left: 2px;
+}
+.time__date {
+  white-space: nowrap;
+}
+@media (max-width: 560px) {
+  .infobar .time {
+    gap: 4px;
+  }
+  .time__speedset .time__btn {
+    min-width: 20px;
+    padding: 0 2px;
+  }
+  .time__date .time__dot {
+    display: none;
+  }
+  .infobar .player__war {
+    white-space: nowrap;
+  }
+  .infobar {
+    gap: 8px;
+  }
+  .infobar .infobar__country {
+    gap: 6px;
+  }
+  /* The pause button already shows it. */
+  .time__date .time__paused {
+    display: none;
+  }
+}
+
+/* ----- War statistics ----- */
+.warstats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 8px 0;
+}
+.warstats > div {
+  padding: 6px 8px;
+  border: 1px solid var(--line, var(--border));
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.warstats dt {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.warstats dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}

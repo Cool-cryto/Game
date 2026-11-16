@@ -37,8 +37,14 @@ export interface ChatMessage {
   at: number;
 }
 
-/** The game always runs at this pace: in-game days per real second (single player and online alike). */
+/** The standard pace (2x): in-game days per real second. Online rooms always run at this pace. */
 export const GAME_DAYS_PER_SECOND = 21;
+
+/** Single-player game speeds (1x-4x). One clock drives every system; speed only changes how many days run per second. */
+export type GameSpeed = 1 | 2 | 3 | 4;
+export const GAME_SPEEDS: GameSpeed[] = [1, 2, 3, 4];
+export const SPEED_DAYS_PER_SECOND: Record<GameSpeed, number> = { 1: 10.5, 2: GAME_DAYS_PER_SECOND, 3: 42, 4: 63 };
+export const DEFAULT_SPEED: GameSpeed = 2;
 
 export interface Clock {
   paused: boolean;

@@ -102,7 +102,7 @@ population, GDP) lives in `GameState`.
 ```
  UI (React)            gameStore (zustand)           sim.worker.ts (background thread)
  sliders, buttons ──▶  send(command) ───────────────▶ queue ─▶ tick(state, commands)
-                       setSpeed / setPaused ────────▶ clock: 1–120 days per second
+                       setSpeed / setPaused ────────▶ clock: 10.5–63 days per second (1x–4x)
  map, panels  ◀──────  state  ◀──── a few times a second (immediately while paused)
 ```
 
@@ -226,8 +226,9 @@ Serverless platforms are not a good fit, because players keep a connection open.
 
 ### Faster war (Stage 15)
 
-- `military.ts`: `advanceMovement` calls `captureProvince` when an army enters an undefended, unfortified enemy
-  province; `siegeDays` is 0 without a fort (`advanceSieges` then captures at once). Speeds: 50 km/day on land, 800 at
+- `military.ts` (changed in Stage 17): provinces are taken by `advanceSieges` only; `siegeDays` is 2–12 days of
+  occupation without a fort plus ~15 per fort level, and an advancing army waits in each enemy province until it is
+  taken (`stalled`). Wars record `losses` and `captured` per country. Speeds: 50 km/day on land, 800 at
   sea, 1,600 in the air (before tech, infrastructure and railways).
 - `diplomacy.ts`: `capitalsFallen` (first step of `checkCapitulations`) annexes a country whose capital an enemy holds.
 - `ai.ts`: `aiDaily` keeps one army at the capital in wartime.
