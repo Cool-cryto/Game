@@ -220,7 +220,7 @@ function diplomacy(s: GameState, c: CountryState, neighbors: Set<CountryId>, sid
     const ratio = me.warRatio * (diff.aiWarRatio / DIFFICULTY_RULES.normal.aiWarRatio);
     if (!other?.active || other.overlord === c.id || relation(s, c.id, n) > hostility || allied(s, c.id, n) || hasTreaty(s, c.id, n, "nonAggression")) continue;
     if (mine < ratio * sidePower(n) || mine === 0) continue;
-    if (nextRandom(s.rng) < 0.015 * me.warChance * diff.aiWarChance) {
+    if (nextRandom(s.rng) < 0.015 * me.warChance * diff.aiWarChance * (s.settings?.aiAggression ?? 1)) {
       declareWar(s, c.id, n);
       return;
     }

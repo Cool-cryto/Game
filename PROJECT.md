@@ -150,7 +150,13 @@ Built: scenario system; **End of the Cold War (1991)** with the Soviet Union, Yu
 browser, export/import, play, host online); server support for scenarios and custom worlds; borders computed from the
 live map.
 
-### Stage 21 — Overhaul Stage E: diplomacy, politics, AI ✅ (current)
+### Stage 22 — Overhaul Stage F: modes, statistics, news ✅ (current)
+Built: world setup for new games (standard, alternate history, random world) with sandbox options (starting money,
+how warlike computer countries are, political crises on or off); statistics with 11 rankings and a two-country
+comparison; clickable news and alert sounds (with an off switch). What's still open is listed in
+[docs/OVERHAUL.md](docs/OVERHAUL.md) §3.
+
+### Stage 21 — Overhaul Stage E: diplomacy, politics, AI ✅
 Built: five AI personalities that drive war, armies, building and friendliness (8 wars in a 20-year run instead of
 0–1, with finances still sane); sanctions, economic and military aid, guarantees of independence; a peace conference
 with white peace, keeping occupied land, reparations and puppet states (tribute, following the overlord); coups,

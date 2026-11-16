@@ -14,16 +14,15 @@ import {
   type CountryState,
   type GameEvent,
 } from "@gs/sim";
-import { flagUrl, GEOGRAPHY, getCountry, landNeighbours } from "../../data/countries";
-import { gdpPerCapita } from "../../map/mapModes";
+import { GEOGRAPHY, getCountry, landNeighbours } from "../../data/countries";
 import { playerCountry, useGame } from "../../state/gameStore";
 import { useUi } from "../../state/uiStore";
 import { formatCompact, formatDate, formatInt, formatMoneyMillions, formatPercent } from "../format";
 import { BUDGET_LABEL, PolicySlider } from "../InfoPanel";
 import { Relations, SimpleWar } from "../simple/SimpleHud";
-import { Sparkline } from "../Sparkline";
 import { ProvinceList } from "./CoreScreens";
 import { Card, NeedCountry, Planned, Rows, ScreenFrame } from "./Screen";
+import { useSound } from "../sound";
 import { OrganizationsTab, TreatiesTab } from "./TreatiesScreen";
 
 const money = formatMoneyMillions;
@@ -170,88 +169,6 @@ export function SpendingSlider({ c, category, note }: { c: CountryState; categor
   );
 }
 
-// ============ Statistics ============
-
-const RANKINGS: { id: string; label: string; value: (c: CountryState) => number; format: (v: number) => string; hint?: string }[] = [
-  { id: "gdp", label: "Economy (GDP)", value: (c) => c.gdp, format: (v) => `${money(v)} / yr` },
-  { id: "population", label: "Population", value: (c) => c.population, format: formatCompact },
-  { id: "perperson", label: "GDP per person", value: (c) => gdpPerCapita(c) ?? 0, format: (v) => `$${formatInt(v)}` },
-  { id: "military", label: "Military spending", value: (c) => c.budget.defense * c.gdp, format: (v) => `${money(v)} / yr`, hint: "Defense budget per year (armies themselves are hidden by fog of war)" },
-  { id: "technology", label: "Technology", value: (c) => c.techLevel + c.researchProgress, format: (v) => `Level ${Math.floor(v)}` },
-];
-
-export function StatisticsScreen() {
-  return (
-    <ScreenFrame
-      id="statistics"
-      title="Statistics"
-      subtitle="How the world's countries compare"
-      tabs={[...RANKINGS.map((r) => ({ id: r.id, label: r.label, hint: r.hint })), { id: "charts", label: "Your charts" }]}
-    >
-      {(tab) => (tab === "charts" ? <Charts /> : <Ranking id={tab} />)}
-    </ScreenFrame>
-  );
-}
-
-function Ranking({ id }: { id: string }) {
-  const r = RANKINGS.find((x) => x.id === id)!;
-  const s = useGame((x) => x.state);
-  const me = playerCountry(s)?.id;
-  const select = useUi((x) => x.select);
-  const all = Object.values(s.countries).filter((c) => c.active).sort((a, b) => r.value(b) - r.value(a));
-  const total = all.reduce((a, c) => a + r.value(c), 0);
-  const myIndex = me ? all.findIndex((c) => c.id === me) : -1;
-  const shown = all.slice(0, 25);
-  const top = r.value(all[0]!) || 1;
-  return (
-    <>
-      {myIndex >= 0 && (
-        <p className="screen__note">
-          You are <strong>#{myIndex + 1}</strong> of {all.length}
-          {r.id !== "perperson" && r.id !== "technology" && total > 0 ? `, with ${formatPercent(r.value(all[myIndex]!) / total, 1)} of the world total` : ""}.
-        </p>
-      )}
-      <table className="table" data-testid={`ranking-${id}`}>
-        <tbody>
-          {[...shown, ...(myIndex >= 25 ? [all[myIndex]!] : [])].map((c) => {
-            const i = all.indexOf(c);
-            const info = getCountry(c.id);
-            const flag = info ? flagUrl(info) : null;
-            return (
-              <tr key={c.id} className={`table__click ${c.id === me ? "is-me" : ""}`} onClick={() => select({ kind: "country", id: c.id }, { focus: true })}>
-                <td className="num rank">{i + 1}</td>
-                <td>
-                  <span className="cell-flag">
-                    {flag ? <img src={flag} alt="" /> : <span className="flag-placeholder" />}
-                    {info?.name ?? c.id}
-                  </span>
-                </td>
-                <td className="bar-cell">
-                  <span className="mini-bar mini-bar--wide">
-                    <span style={{ width: `${(r.value(c) / top) * 100}%` }} />
-                  </span>
-                </td>
-                <td className="num">{r.format(r.value(c))}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </>
-  );
-}
-
-function Charts() {
-  const me = useGame((s) => playerCountry(s.state));
-  if (!me) return <p className="screen__note">Choose a country to see its charts.</p>;
-  return (
-    <div className="grid">
-      <Card title="Economy (GDP)">{me.history.gdp.length > 1 ? <Sparkline values={me.history.gdp} label="GDP history" /> : <p className="screen__note">Charts fill in month by month. Press Play.</p>}</Card>
-      <Card title="Population">{me.history.population.length > 1 ? <Sparkline values={me.history.population} label="Population history" /> : <p className="screen__note">Charts fill in month by month.</p>}</Card>
-    </div>
-  );
-}
-
 // ============ More ============
 
 export function MoreScreen() {
@@ -359,6 +276,8 @@ function SettingsTab() {
   const fog = useUi((s) => s.fog);
   const setFog = useUi((s) => s.setFog);
   const online = useGame((s) => s.mode === "online");
+  const sound = useSound((s) => s.on);
+  const setSound = useSound((s) => s.setOn);
   return (
     <div className="grid">
       <Card title="Display" wide>
@@ -367,6 +286,15 @@ function SettingsTab() {
           <span>
             <strong>Fog of war</strong>
             <span className="screen__note">{online ? "Always on when playing online." : "Only show foreign forces near your land, your units and your allies."}</span>
+          </span>
+        </label>
+      </Card>
+      <Card title="Sound" wide>
+        <label className="dialog__check">
+          <input type="checkbox" checked={sound} onChange={(e) => setSound(e.target.checked)} data-testid="sound-toggle" />
+          <span>
+            <strong>Alert sounds</strong>
+            <span className="screen__note">A short tone for wars, battles, peace and annexations involving your country.</span>
           </span>
         </label>
       </Card>

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { dateAt, type GameEvent } from "@gs/sim";
 import { playerCountry, useGame } from "../state/gameStore";
 import { formatDate } from "./format";
+import { useUi } from "../state/uiStore";
+import { playAlert } from "./sound";
 
 const ICON: Record<GameEvent["kind"], string> = {
   war: "⚔",
@@ -27,6 +29,7 @@ export function NewsFeed() {
   const [filter, setFilter] = useState<"mine" | "world">("world");
   const [open, setOpen] = useState(true);
   const [toast, setToast] = useState<GameEvent | null>(null);
+  const select = useUi((s) => s.select);
   const seen = useRef(events.length ? events[events.length - 1]! : null);
 
   const major = (e: GameEvent) => e.kind === "war" || e.kind === "peace" || e.kind === "annexation" || e.kind === "alliance";
@@ -40,6 +43,7 @@ export function NewsFeed() {
     const mineNew = fresh.filter((e) => me && e.countries.includes(me) && e.kind !== "military");
     if (!mineNew.length) return;
     setToast(mineNew[mineNew.length - 1]!);
+    playAlert(mineNew[mineNew.length - 1]!.kind);
     const t = setTimeout(() => setToast(null), 5000);
     return () => clearTimeout(t);
   }, [events, me]);
@@ -47,9 +51,9 @@ export function NewsFeed() {
   return (
     <>
       {toast && (
-        <div className={`news-toast news-toast--${toast.kind}`} role="status" data-testid="news-toast">
+        <div className={`news-toast news-toast--${toast.kind}`} role="status" data-testid="news-toast" title="Tap to close" onClick={() => setToast(null)}>
           <span className="news__icon">{ICON[toast.kind]}</span>
-          {toast.text}
+          <span className="news-toast__text">{toast.text}</span>
         </div>
       )}
       <section className={`news ${open ? "" : "news--closed"}`} aria-label="News">
@@ -71,7 +75,12 @@ export function NewsFeed() {
           <ul className="news__list" data-testid="news-list">
             {shown.length === 0 && <li className="news__empty">{filter === "mine" && !me ? "Pick a country to see your news." : "Nothing yet. News appears here as time runs."}</li>}
             {shown.map((e, i) => (
-              <li key={`${e.tick}-${i}`} className={`news__item news__item--${e.kind}`}>
+              <li
+                key={`${e.tick}-${i}`}
+                className={`news__item news__item--${e.kind} ${e.countries.length ? "news__item--link" : ""}`}
+                onClick={() => e.countries[0] && select({ kind: "country", id: e.countries.find((c) => c !== me) ?? e.countries[0] }, { focus: true })}
+                title={e.countries.length ? "Show on the map" : undefined}
+              >
                 <span className="news__icon" aria-hidden>
                   {ICON[e.kind]}
                 </span>

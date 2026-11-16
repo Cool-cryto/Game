@@ -331,3 +331,12 @@ Serverless platforms are not a good fit, because players keep a connection open.
 - `upheaval.ts`: `upheavalMonthly` (after `politicsMonthly`): `coup`, `revolution`, `breakaway` (new country `R-<n>` with
   a generated `color`). The web client calls `registerStateCountries` when the number of countries changes.
 - `checkCapitulations`: the population-share surrender check runs every 5 days.
+
+### Modes, statistics, news (Stage 22)
+
+- `modes.ts`: `applyWorldOptions(state, geo, options)` runs once on a fresh game (`GameMenu` → New game). Settings
+  `mode`, `startingMoney`, `aiAggression` (used in `ai.ts`), `upheaval` (checked in `engine.ts`).
+- `apps/web/src/ui/screens/Statistics.tsx`: `METRICS` (11 measures, `worldFacts` computed once per state), Rankings,
+  Compare, Charts.
+- `apps/web/src/ui/sound.ts`: `playAlert(kind)` (Web Audio), `useSound` (on/off, remembered in localStorage).
+  `NewsFeed` items select the country they're about.
